@@ -322,6 +322,8 @@ va_sl_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
 va_heat_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
 va_result_ready = False
 va_env_fig = go.Figure()
+va_compute_class = "compute-btn"   # red until an assessment is run; blue after
+va_stale = False                   # True when inputs change after a run
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +341,7 @@ def on_va_reactor_change(state):
     state.va_viewer_html = build_vessel_viewer_html(rid, VIEWER_H)
     state.va_media_caption = media_caption(rid)
     _refresh_corr(state)
+    _mark_stale(state)
     notify(state, "I", "Vessel geometry loaded.")
 
 
@@ -356,6 +359,7 @@ def on_va_reaction_change(state):
     if solvent and (is_known_solvent(solvent) or solvent in fluid_options):
         state.va_fluid = resolve_solvent_name(solvent) or solvent
         _load_fluid(state)
+    _mark_stale(state)
     notify(state, "I", "Reaction kinetics loaded.")
 
 
@@ -369,6 +373,7 @@ def _load_fluid(state):
 
 def on_va_fluid_change(state):
     _load_fluid(state)
+    _mark_stale(state)
     notify(state, "I", "Fluid properties loaded.")
 
 
@@ -376,6 +381,7 @@ def on_va_sys_change(state):
     """Temperature or pressure changed — refresh solvent properties."""
     if is_known_solvent(state.va_fluid):
         _load_fluid(state)
+    _mark_stale(state)
 
 
 def on_va_particle_change(state):
@@ -383,6 +389,19 @@ def on_va_particle_change(state):
     state.va_rho_p = _sf(row.get("rho_p_kg_m3"), state.va_rho_p)
     state.va_d50 = _sf(row.get("d50_um"), state.va_d50)
     state.va_phi = _sf(row.get("shape_factor"), state.va_phi)
+    _mark_stale(state)
+
+
+def _mark_stale(state):
+    """Flag the results as out-of-date and turn the Compute button red again."""
+    if state.va_result_ready and not state.va_stale:
+        state.va_stale = True
+        state.va_compute_class = "compute-btn"
+
+
+def on_va_input_change(state):
+    """Generic input-change hook — marks the assessment results stale."""
+    _mark_stale(state)
 
 
 def on_va_env_change(state):
@@ -526,6 +545,8 @@ def on_va_compute(state):
     _build_envelope(state, t_rxn)
 
     state.va_result_ready = True
+    state.va_compute_class = "compute-btn-ok"
+    state.va_stale = False
     state.va_status = (f"Computed at {state.va_n_rpm:.0f} RPM, {state.va_v_l:.3g} L "
                        f"({state.va_corr_mode}) — Re = {hydro['Re']:,.0f}, "
                        f"P/V = {hydro['P/V (W/L)']:.3g} W/L.")
@@ -660,37 +681,37 @@ page = Markdown(
 
 <|{va_P}|number|label=Pressure (atm)|on_change=on_va_sys_change|>
 
-<|{va_T_cool}|number|label=Coolant temp (°C)|>
+<|{va_T_cool}|number|label=Coolant temp (°C)|on_change=on_va_input_change|>
 |>
 
 <|layout|columns=1 2|
-<|{va_n_rpm}|number|label=Agitation speed N (RPM)|>
+<|{va_n_rpm}|number|label=Agitation speed N (RPM)|on_change=on_va_input_change|>
 
-<|{va_v_l}|number|label=Working volume (L)|>
+<|{va_v_l}|number|label=Working volume (L)|on_change=on_va_input_change|>
 |>
 
-<|{va_fed_mode}|toggle|lov={va_fed_mode_options}|label=Fed-batch|class_name=onoff-toggle|>
+<|{va_fed_mode}|toggle|lov={va_fed_mode_options}|label=Fed-batch|class_name=onoff-toggle|on_change=on_va_input_change|>
 
 <|part|render={va_fed_mode == "On"}|
 Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|layout|columns=1 1 1|
-<|{va_feed_rate}|number|label=Feed rate (mL/min)|>
+<|{va_feed_rate}|number|label=Feed rate (mL/min)|on_change=on_va_input_change|>
 
-<|{va_feed_diam}|number|label=Feed pipe ID (mm)|>
+<|{va_feed_diam}|number|label=Feed pipe ID (mm)|on_change=on_va_input_change|>
 
-<|{va_feed_location}|selector|lov={va_feed_location_options}|dropdown|label=Feed location|>
+<|{va_feed_location}|selector|lov={va_feed_location_options}|dropdown|label=Feed location|on_change=on_va_input_change|>
 |>
 |>
 
 <|Advanced: vessel geometry overrides|expandable|expanded=False|
 <|layout|columns=1 1 1 1|
-<|{va_d_tank}|number|label=D_tank (m)|>
+<|{va_d_tank}|number|label=D_tank (m)|on_change=on_va_input_change|>
 
-<|{va_d_imp}|number|label=D_imp (m)|>
+<|{va_d_imp}|number|label=D_imp (m)|on_change=on_va_input_change|>
 
-<|{va_np}|number|label=Np|>
+<|{va_np}|number|label=Np|on_change=on_va_input_change|>
 
-<|{va_nq}|number|label=Nq|>
+<|{va_nq}|number|label=Nq|on_change=on_va_input_change|>
 |>
 |>
 |>
@@ -708,43 +729,43 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|layout|columns=1 1 1 1 1|
 <|{va_fluid}|selector|lov={fluid_options}|dropdown|label=Solvent / fluid|on_change=on_va_fluid_change|>
 
-<|{va_rho}|number|label=ρ (kg/m³)|>
+<|{va_rho}|number|label=ρ (kg/m³)|on_change=on_va_input_change|>
 
-<|{va_mu}|number|label=μ (Pa·s)|>
+<|{va_mu}|number|label=μ (Pa·s)|on_change=on_va_input_change|>
 
-<|{va_dmol}|number|label=D_mol (m²/s)|>
+<|{va_dmol}|number|label=D_mol (m²/s)|on_change=on_va_input_change|>
 
-<|{va_sigma}|number|label=σ (N/m)|>
+<|{va_sigma}|number|label=σ (N/m)|on_change=on_va_input_change|>
 |>
 
 ### 🟤 Solid
-<|{va_sl_mode}|toggle|lov={va_sl_mode_options}|label=Include solid particles|class_name=onoff-toggle|>
+<|{va_sl_mode}|toggle|lov={va_sl_mode_options}|label=Include solid particles|class_name=onoff-toggle|on_change=on_va_input_change|>
 
 <|part|render={va_sl_mode == "On"}|
 <|layout|columns=1 1 1 1 1|
 <|{va_particle}|selector|lov={particle_options}|dropdown|label=Particle|on_change=on_va_particle_change|>
 
-<|{va_rho_p}|number|label=ρ_p (kg/m³)|>
+<|{va_rho_p}|number|label=ρ_p (kg/m³)|on_change=on_va_input_change|>
 
-<|{va_d50}|number|label=d50 (µm)|>
+<|{va_d50}|number|label=d50 (µm)|on_change=on_va_input_change|>
 
-<|{va_phi}|number|label=Shape factor φ|>
+<|{va_phi}|number|label=Shape factor φ|on_change=on_va_input_change|>
 
-<|{va_x_wt}|number|label=Solids loading X (wt-%)|>
+<|{va_x_wt}|number|label=Solids loading X (wt-%)|on_change=on_va_input_change|>
 |>
 |>
 
 ### 🫧 Gas
-<|{va_gas_mode}|toggle|lov={va_gas_mode_options}|label=Include gas phase|class_name=onoff-toggle|>
+<|{va_gas_mode}|toggle|lov={va_gas_mode_options}|label=Include gas phase|class_name=onoff-toggle|on_change=on_va_input_change|>
 
 <|part|render={va_gas_mode == "On"}|
-<|{va_gas_transfer}|toggle|lov={va_gas_transfer_options}|label=Mass-transfer mode|>
+<|{va_gas_transfer}|toggle|lov={va_gas_transfer_options}|label=Mass-transfer mode|on_change=on_va_input_change|>
 
 <|part|render={va_gas_transfer == "Sparging"}|
 <|layout|columns=1 1|
-<|{va_vs}|number|label=Superficial gas velocity v_s (m/s)|>
+<|{va_vs}|number|label=Superficial gas velocity v_s (m/s)|on_change=on_va_input_change|>
 
-<|{va_coalescing}|toggle|lov={va_coalescing_options}|label=Coalescence|>
+<|{va_coalescing}|toggle|lov={va_coalescing_options}|label=Coalescence|on_change=on_va_input_change|>
 |>
 |>
 |>
@@ -763,13 +784,13 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 
 #### Kinetics (editable)
 <|layout|columns=1 1 1 1|
-<|{va_k}|number|label=Rate constant k|>
+<|{va_k}|number|label=Rate constant k|on_change=on_va_input_change|>
 
-<|{va_c0}|number|label=C0 (mol/L)|>
+<|{va_c0}|number|label=C0 (mol/L)|on_change=on_va_input_change|>
 
-<|{va_trxn}|number|label=t_rxn (s, 0 = auto)|>
+<|{va_trxn}|number|label=t_rxn (s, 0 = auto)|on_change=on_va_input_change|>
 
-<|{va_dH}|number|label=ΔH_rxn (kJ/mol)|>
+<|{va_dH}|number|label=ΔH_rxn (kJ/mol)|on_change=on_va_input_change|>
 |>
 |>
 
@@ -778,12 +799,16 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 Choose the correlation source used for the assessment. Only sources registered
 for the selected vessel are offered.
 
-<|{va_corr_mode}|selector|lov={va_corr_options}|dropdown|label=Correlation source|>
+<|{va_corr_mode}|selector|lov={va_corr_options}|dropdown|label=Correlation source|on_change=on_va_input_change|>
 
 <|{va_corr_status}|text|>
 |>
 
-<|Compute Assessment|button|on_action=on_va_compute|class_name=compute-btn|>
+<|Compute Assessment|button|on_action=on_va_compute|class_name={va_compute_class}|>
+
+<|part|render={va_stale}|
+**⚠️ Inputs changed since the last run — click _Compute Assessment_ to refresh the results.**
+|>
 
 <|part|render={va_result_ready}|
 <|part|class_name=va-card|

@@ -493,6 +493,17 @@ button.compute-btn:hover {
     background-color: #b71c1c !important;
 }
 
+/* Blue variant shown after a Vessel Assessment has been run (results fresh). */
+.compute-btn-ok .MuiButton-root,
+button.compute-btn-ok {
+    background-color: #1565c0 !important;
+    color: #ffffff !important;
+}
+.compute-btn-ok .MuiButton-root:hover,
+button.compute-btn-ok:hover {
+    background-color: #0d47a1 !important;
+}
+
 /* Grouped "card" containers used to visually separate page sections
    (e.g. the Vessel Assessment page). */
 .va-card {

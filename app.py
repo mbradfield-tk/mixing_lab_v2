@@ -25,17 +25,20 @@ from heat_transfer_core import (
     load_csvs,
     safe_float,
 )
-from vessel_media import build_vessel_viewer_html, media_caption
 
-from pages import unit_converter
+from pages import (
+    fluid_database,
+    particle_database,
+    reaction_database,
+    unit_converter,
+    vessel_assessment,
+    vessel_database,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
 reactors_df, fluids_df, htm_db = load_csvs(DATA_DIR)
-
-reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
-particles_df = pd.read_csv(DATA_DIR / "particles.csv")
 
 reactor_options = sorted(reactors_df["reactor_name"].dropna().unique().tolist())
 fluid_options = sorted(fluids_df["fluid_name"].dropna().unique().tolist())
@@ -113,325 +116,6 @@ duty_fig.update_layout(title="Heat Duty over Time", xaxis_title="Time (min)", ya
 
 
 # ---------------------------------------------------------------------------
-# Friendly column labels for the library tables
-# ---------------------------------------------------------------------------
-# Maps raw CSV column names to display names in "Name [unit]" format. Any column
-# not listed here falls back to its raw name. Adjust freely if a guess is wrong.
-COLUMN_LABELS: dict[str, str] = {
-    # --- Reactors / Vessels ---
-    "reactor_id": "Reactor ID",
-    "reactor_name": "Reactor Name",
-    "owner": "Owner",
-    "tag": "Tag",
-    "location": "Location",
-    "manufacturer": "Manufacturer",
-    "manufacturer_model": "Manufacturer Model",
-    "type": "Type",
-    "scale": "Scale",
-    "D_tank_m": "Tank Diameter [m]",
-    "H_m": "Tank Height [m]",
-    "H_max_m": "Max Liquid Height [m]",
-    "D_imp_m": "Impeller Diameter [m]",
-    "impeller_type": "Impeller Type",
-    "Np": "Power Number",
-    "Nq": "Flow Number",
-    "N_rpm_min": "Min Speed [rpm]",
-    "N_rpm_max": "Max Speed [rpm]",
-    "N_rps": "Speed [rps]",
-    "V_L_min": "Min Volume [L]",
-    "V_L_max": "Max Volume [L]",
-    "V_L": "Working Volume [L]",
-    "shell_material": "Shell Material",
-    "lining": "Lining",
-    "lining_material": "Lining Material",
-    "baffles": "Baffles",
-    "bottom_dish": "Bottom Dish",
-    "top_dish": "Top Dish",
-    "impeller_count": "Impeller Count",
-    "imp1_clearance_m": "Impeller 1 Clearance [m]",
-    "imp1_height_m": "Impeller 1 Height [m]",
-    "D_imp2_m": "Impeller 2 Diameter [m]",
-    "Np2": "Power Number 2",
-    "imp2_clearance_m": "Impeller 2 Clearance [m]",
-    "imp2_height_m": "Impeller 2 Height [m]",
-    "D_imp3_m": "Impeller 3 Diameter [m]",
-    "Np3": "Power Number 3",
-    "imp3_clearance_m": "Impeller 3 Clearance [m]",
-    "imp3_height_m": "Impeller 3 Height [m]",
-    "Zwietering_S": "Zwietering S Constant",
-    "GMB_z": "GMB z",
-    "wall_thickness_mm": "Wall Thickness [mm]",
-    "OD_m": "Outer Diameter [m]",
-    "knuckle_radius_m": "Knuckle Radius [m]",
-    "instrumentation": "Instrumentation",
-    "discharge_location": "Discharge Location",
-    "insulated": "Insulated",
-    "gas_addition": "Gas Addition",
-    "gas_feed_control": "Gas Feed Control",
-    "no_ports": "Number of Ports",
-    "motor_power_kW": "Motor Power [kW]",
-    "aux_units": "Auxiliary Units",
-    "cip": "CIP",
-    "heating_cooling": "Heating / Cooling",
-    "heat_transfer_medium": "Heat Transfer Medium",
-    "heat_exchanger": "Heat Exchanger",
-    "T_max_C": "Max Temperature [°C]",
-    "P_max_atm": "Max Pressure [atm]",
-    "impeller_type2": "Impeller Type 2",
-    "impeller_type3": "Impeller Type 3",
-    "impeller_flow": "Impeller Flow",
-    "impeller_model": "Impeller Model",
-    "impeller_flow2": "Impeller Flow 2",
-    "impeller_model2": "Impeller Model 2",
-    "impeller_flow3": "Impeller Flow 3",
-    "impeller_model3": "Impeller Model 3",
-    "probes": "Probes",
-    "search_name": "Search Name",
-    # --- Fluids ---
-    "fluid_name": "Fluid Name",
-    "rho_kg_m3": "Density [kg/m³]",
-    "mu_Pa_s": "Viscosity [Pa·s]",
-    "D_mol_m2_s": "Molecular Diffusivity [m²/s]",
-    "surface_tension_N_m": "Surface Tension [N/m]",
-    "Cp_J_per_kgK": "Heat Capacity [J/kg·K]",
-    "k_W_per_mK": "Thermal Conductivity [W/m·K]",
-    "hsp_d": "Hansen δD [MPa^0.5]",
-    "hsp_p": "Hansen δP [MPa^0.5]",
-    "hsp_h": "Hansen δH [MPa^0.5]",
-    # --- Reactions ---
-    "reaction_name": "Reaction Name",
-    "order": "Reaction Order",
-    "k_value": "Rate Constant",
-    "k_units": "Rate Constant Units",
-    "C0_mol_L": "Initial Concentration [mol/L]",
-    "t_rxn_s": "Reaction Time [s]",
-    "T_C": "Temperature [°C]",
-    "solvent": "Solvent",
-    "delta_H_kJ_mol": "Heat of Reaction [kJ/mol]",
-    "reaction_scheme": "Reaction Scheme",
-    # --- Particles ---
-    "particle_name": "Particle Name",
-    "rho_p_kg_m3": "Particle Density [kg/m³]",
-    "d10_um": "D10 [µm]",
-    "d50_um": "D50 [µm]",
-    "d90_um": "D90 [µm]",
-    "shape_description": "Shape Description",
-    "shape_factor": "Shape Factor",
-    # --- Shared ---
-    "notes": "Notes",
-}
-
-
-def _friendly_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy of ``df`` with columns renamed to friendly display labels."""
-    return df.rename(columns={c: COLUMN_LABELS.get(c, c) for c in df.columns})
-
-
-def _friendly(col: str) -> str:
-    """Friendly label for a single column name (raw name if unmapped)."""
-    return COLUMN_LABELS.get(col, col)
-
-
-# ---------------------------------------------------------------------------
-# Vessel (reactor) database view
-# ---------------------------------------------------------------------------
-
-VESSEL_DISPLAY_COLS = [
-    "reactor_name", "owner", "manufacturer", "type", "scale",
-    "D_tank_m", "H_m", "D_imp_m", "impeller_type", "Np",
-    "N_rpm_min", "N_rpm_max", "V_L_min", "V_L_max", "V_L",
-    "shell_material", "lining_material", "bottom_dish",
-    "wall_thickness_mm", "T_max_C", "P_max_atm",
-    "heat_transfer_medium", "notes",
-]
-
-
-def _vessel_table(df: pd.DataFrame) -> pd.DataFrame:
-    cols = [c for c in VESSEL_DISPLAY_COLS if c in df.columns]
-    return df[cols].copy()
-
-
-vessel_full_df = _vessel_table(reactors_df)
-vessel_df = _friendly_columns(vessel_full_df.copy())
-vessel_search = ""
-vessel_count_msg = f"{len(vessel_df)} vessels in database."
-
-selected_vessel = reactor_options[0]
-vessel_detail_df = pd.DataFrame(columns=["Property", "Value"])
-
-
-def _reactor_id_for(reactor_name: str) -> str:
-    row = _reactor_row(reactor_name)
-    if row.empty:
-        return ""
-    return str(row.get("reactor_id", "") or "")
-
-
-def _build_vessel_detail(reactor_name: str) -> pd.DataFrame:
-    row = _reactor_row(reactor_name)
-    if row.empty:
-        return pd.DataFrame(columns=["Property", "Value"])
-    records = []
-    for col in reactors_df.columns:
-        val = row.get(col)
-        if pd.isna(val) or str(val).strip() == "":
-            continue
-        records.append({"Property": _friendly(col), "Value": str(val)})
-    return pd.DataFrame(records)
-
-
-vessel_detail_df = _build_vessel_detail(selected_vessel)
-vessel_viewer_html = build_vessel_viewer_html(_reactor_id_for(selected_vessel))
-vessel_media_caption = media_caption(_reactor_id_for(selected_vessel))
-
-
-def on_vessel_search(state):
-    query = (state.vessel_search or "").strip().lower()
-    if not query:
-        filtered = vessel_full_df.copy()
-    else:
-        mask = vessel_full_df.apply(
-            lambda r: r.astype(str).str.lower().str.contains(query, na=False).any(), axis=1
-        )
-        filtered = vessel_full_df[mask].copy()
-    state.vessel_df = _friendly_columns(filtered)
-    state.vessel_count_msg = f"{len(filtered)} of {len(vessel_full_df)} vessels match '{state.vessel_search}'." if query else f"{len(vessel_full_df)} vessels in database."
-
-
-def on_vessel_select(state):
-    state.vessel_detail_df = _build_vessel_detail(state.selected_vessel)
-    rid = _reactor_id_for(state.selected_vessel)
-    state.vessel_viewer_html = build_vessel_viewer_html(rid)
-    state.vessel_media_caption = media_caption(rid)
-
-
-# ---------------------------------------------------------------------------
-# Generic library pages (Fluids, Reactions, Particles)
-# ---------------------------------------------------------------------------
-# Taipy's `menu` renders a flat list, so these library pages reuse the same
-# search + table + detail pattern as the Vessel Library. Each library registers
-# its own module-level state variables and handlers via ``_make_library`` so the
-# Taipy GUI can bind them by name.
-
-
-def _build_generic_detail(df: pd.DataFrame, name_col: str, name: str) -> pd.DataFrame:
-    """Return a two-column Property/Value table for the selected row."""
-    if not name:
-        return pd.DataFrame(columns=["Property", "Value"])
-    match = df[df[name_col].astype(str) == str(name)]
-    if match.empty:
-        return pd.DataFrame(columns=["Property", "Value"])
-    row = match.iloc[0]
-    records = []
-    for col in df.columns:
-        val = row.get(col)
-        if pd.isna(val) or str(val).strip() == "":
-            continue
-        records.append({"Property": _friendly(col), "Value": str(val)})
-    return pd.DataFrame(records)
-
-
-def _make_library(key: str, df: pd.DataFrame, name_col: str, noun: str) -> list:
-    """Register state vars and handlers for a browsable library page.
-
-    Creates module globals ``{key}_full_df``, ``{key}_df``, ``{key}_search``,
-    ``{key}_count_msg``, ``{key}_options``, ``{key}_selected``,
-    ``{key}_detail_df`` and handlers ``on_{key}_search`` / ``on_{key}_select``.
-    """
-    full = df.copy()
-    options = sorted(full[name_col].dropna().astype(str).unique().tolist())
-    first = options[0] if options else ""
-
-    g = globals()
-    g[f"{key}_full_df"] = full
-    g[f"{key}_df"] = _friendly_columns(full.copy())
-    g[f"{key}_search"] = ""
-    g[f"{key}_count_msg"] = f"{len(full)} {noun} in database."
-    g[f"{key}_options"] = options
-    g[f"{key}_selected"] = first
-    g[f"{key}_detail_df"] = _build_generic_detail(full, name_col, first)
-
-    def on_search(state, _key=key, _full=full, _noun=noun):
-        query = (getattr(state, f"{_key}_search") or "").strip().lower()
-        if not query:
-            filtered = _full.copy()
-        else:
-            mask = _full.apply(
-                lambda r: r.astype(str).str.lower().str.contains(query, na=False).any(), axis=1
-            )
-            filtered = _full[mask].copy()
-        setattr(state, f"{_key}_df", _friendly_columns(filtered))
-        if query:
-            msg = f"{len(filtered)} of {len(_full)} {_noun} match '{getattr(state, f'{_key}_search')}'."
-        else:
-            msg = f"{len(_full)} {_noun} in database."
-        setattr(state, f"{_key}_count_msg", msg)
-
-    def on_select(state, _key=key, _full=full, _name_col=name_col):
-        setattr(
-            state,
-            f"{_key}_detail_df",
-            _build_generic_detail(_full, _name_col, getattr(state, f"{_key}_selected")),
-        )
-
-    g[f"on_{key}_search"] = on_search
-    g[f"on_{key}_select"] = on_select
-    return options
-
-
-_make_library("fluidlib", fluids_df, "fluid_name", "fluids")
-_make_library("reactionlib", reactions_df, "reaction_name", "reactions")
-_make_library("particlelib", particles_df, "particle_name", "particles")
-
-
-def _library_md(key: str, title: str, search_hint: str, intro: str) -> str:
-    """Build the Taipy markdown for a generic library page."""
-    tmpl = """
-# @TITLE@
-
-@INTRO@
-
-<|{@KEY@_count_msg}|text|>
-
-<|{@KEY@_search}|input|label=@HINT@|on_change=on_@KEY@_search|change_delay=300|>
-
-<|@TITLE@|expandable|expanded=False|
-<|{@KEY@_df}|table|width=100%|filter|page_size=15|>
-|>
-
-## Explore
-<|{@KEY@_selected}|selector|lov={@KEY@_options}|dropdown|label=Select entry|on_change=on_@KEY@_select|>
-
-<|Properties|expandable|expanded=False|
-<|{@KEY@_detail_df}|table|width=100%|show_all|>
-|>
-"""
-    return (
-        tmpl.replace("@TITLE@", title)
-        .replace("@INTRO@", intro)
-        .replace("@HINT@", search_hint)
-        .replace("@KEY@", key)
-    )
-
-
-fluid_library_md = _library_md(
-    "fluidlib", "Fluid Library",
-    "Search fluids (name, notes, ...)",
-    "Browse the same fluid/solvent properties used in the Mixing Lab app.",
-)
-reaction_library_md = _library_md(
-    "reactionlib", "Reaction Library",
-    "Search reactions (name, type, solvent, ...)",
-    "Browse the reaction kinetics database from the Mixing Lab app.",
-)
-particle_library_md = _library_md(
-    "particlelib", "Particle Library",
-    "Search particles (name, shape, notes, ...)",
-    "Browse the particle properties database from the Mixing Lab app.",
-)
-
-
-# ---------------------------------------------------------------------------
 # Navigation menu
 # ---------------------------------------------------------------------------
 
@@ -442,6 +126,7 @@ menu_options = [
     ("Fluid_Database", "Fluids"),
     ("Reaction_Database", "Reactions"),
     ("Particle_Database", "Particles"),
+    ("Vessel_Assessment", "Vessel Assessment"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
 ]
@@ -733,32 +418,6 @@ heat_transfer_md = """
 """
 
 
-vessel_database_md = """
-# Vessel Library
-
-Browse the same vessel geometries used in the Mixing Lab app.
-
-<|{vessel_count_msg}|text|>
-
-<|{vessel_search}|input|label=Search vessels (name, owner, material, ...)|on_change=on_vessel_search|change_delay=300|>
-
-<|Vessel Library|expandable|expanded=False|
-<|{vessel_df}|table|width=100%|filter|page_size=15|>
-|>
-
-## Explore Vessels
-<|{selected_vessel}|selector|lov={reactor_options}|dropdown|label=Select vessel|on_change=on_vessel_select|>
-
-<|Vessel properties|expandable|expanded=False|
-<|{vessel_detail_df}|table|width=100%|show_all|>
-|>
-
-<|{vessel_media_caption}|text|>
-
-<|part|content={vessel_viewer_html}|height=380px|>
-"""
-
-
 root_md = """
 <style>
 /* Replace the native hamburger (triple-bar) toggle icon of the Taipy menu
@@ -794,8 +453,8 @@ root_md = """
 }
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
    N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
-   Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Heat Transfer,
-   7=Unit Converter. */
+   Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
+   7=Heat Transfer, 8=Unit Converter. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -809,9 +468,12 @@ root_md = """
     content: "🟤";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(6) .MuiAvatar-root::after {
-    content: "🔥";
+    content: "🌀";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
+    content: "🔥";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
     content: "🔄";
 }
 
@@ -830,6 +492,51 @@ button.compute-btn {
 button.compute-btn:hover {
     background-color: #b71c1c !important;
 }
+
+/* Grouped "card" containers used to visually separate page sections
+   (e.g. the Vessel Assessment page). */
+.va-card {
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 10px;
+    padding: 2px 20px 16px;
+    margin: 0 0 20px 0;
+    background: rgba(128, 128, 128, 0.05);
+}
+
+/* Reaction-scheme highlight box. */
+.scheme-box {
+    display: block;
+    background: rgba(78, 140, 255, 0.10);
+    border-left: 4px solid #4e8cff;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: monospace;
+    margin: 8px 0 4px;
+}
+
+/* On/off toggles: red when OFF (first button) is selected, green when ON
+   (last button) is selected. Applies to controls tagged class_name=onoff-toggle. */
+.onoff-toggle .MuiToggleButton-root:first-of-type.Mui-selected {
+    background-color: #d32f2f !important;
+    color: #ffffff !important;
+}
+.onoff-toggle .MuiToggleButton-root:last-of-type.Mui-selected {
+    background-color: #2e7d32 !important;
+    color: #ffffff !important;
+}
+
+/* Operating-envelope chart height, keyed to the number of subplot rows.
+   The Taipy chart `height` property is not reactive after first render, so the
+   height is driven by a dynamic class_name instead (!important overrides the
+   inline height). Heights ≈ rows*300 + title/legend allowance. */
+.env-rows-1 { height: 430px !important; }
+.env-rows-2 { height: 690px !important; }
+.env-rows-3 { height: 990px !important; }
+.env-rows-4 { height: 1290px !important; }
+.env-rows-5 { height: 1590px !important; }
+.env-rows-6 { height: 1890px !important; }
+.env-rows-7 { height: 2190px !important; }
+.env-rows-8 { height: 2490px !important; }
 </style>
 
 <|menu|lov={menu_options}|on_action=on_menu_action|label=Mixing Lab|width=260px|class_name=htt-menu|>
@@ -844,10 +551,11 @@ root_md = root_md.replace("__LOGO_URI__", LOGO_DATA_URI)
 
 pages = {
     "/": root_md,
-    "Vessel_Database": vessel_database_md,
-    "Fluid_Database": fluid_library_md,
-    "Reaction_Database": reaction_library_md,
-    "Particle_Database": particle_library_md,
+    "Vessel_Database": vessel_database.page,
+    "Fluid_Database": fluid_database.page,
+    "Reaction_Database": reaction_database.page,
+    "Particle_Database": particle_database.page,
+    "Vessel_Assessment": vessel_assessment.page,
     "Heat_Transfer": heat_transfer_md,
     "Unit_Converter": unit_converter.page,
 }

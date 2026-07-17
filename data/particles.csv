@@ -1,0 +1,26 @@
+particle_name,rho_p_kg_m3,d10_um,d50_um,d90_um,shape_description,shape_factor,notes
+Glass beads (100 µm),2500.0,70.0,100.0,140.0,spherical,1.0,Ideal reference particle
+API crystal – needle,1400.0,10.0,50.0,120.0,needle,0.5,Typical needle-shaped pharmaceutical crystal
+API crystal – plate,1350.0,20.0,80.0,150.0,plate,0.7,Typical plate-shaped pharmaceutical crystal
+API crystal – equant,1300.0,30.0,75.0,130.0,equant,0.85,Roughly isometric crystal habit
+Sand (fine),2650.0,50.0,150.0,300.0,irregular,0.75,Fine sand reference
+Lactose monohydrate,1540.0,15.0,60.0,180.0,irregular,0.7,Common pharma excipient
+Microcrystalline cellulose,1560.0,20.0,50.0,100.0,fibrous,0.6,MCC (e.g. Avicel PH-101)
+Calcium carbonate,2710.0,5.0,30.0,80.0,rhombohedral,0.8,CaCO3 precipitate
+Pd/C (5 wt%),1800.0,10.0,30.0,60.0,irregular,0.7,Palladium on carbon; hydrogenation catalyst
+Pd/C (10 wt%),2000.0,10.0,30.0,60.0,irregular,0.7,Palladium on carbon; higher loading
+Pt/C (5 wt%),1900.0,10.0,30.0,60.0,irregular,0.7,Platinum on carbon; hydrogenation catalyst
+Raney nickel,6900.0,15.0,40.0,80.0,irregular,0.65,Skeletal Ni catalyst; pyrophoric when dry
+Magnesium turnings,1740.0,200.0,1000.0,3000.0,irregular,0.4,Mg turnings for Grignard reactions
+Magnesium powder,1740.0,30.0,75.0,200.0,irregular,0.7,Mg powder for Grignard / Rieke chemistry
+Zinc dust,7130.0,5.0,20.0,50.0,spherical,0.85,Zn dust; Reformatsky / Negishi reactions
+Iron powder,7870.0,20.0,50.0,100.0,irregular,0.75,Fe powder; reductions / coupling reactions
+Copper(I) iodide,5670.0,5.0,15.0,40.0,irregular,0.7,CuI; Ullmann / Buchwald coupling catalyst
+Pd(OH)2/C (Pearlman),1900.0,10.0,30.0,60.0,irregular,0.7,Pearlman's catalyst; debenzylation
+Activated carbon,500.0,15.0,40.0,100.0,irregular,0.6,Charcoal for decolorisation / adsorption
+Celite (diatomaceous earth),450.0,10.0,30.0,80.0,irregular,0.65,Filter aid; catalyst support
+Alumina (Al2O3),3950.0,20.0,50.0,120.0,irregular,0.75,Catalyst support; chromatography
+Silica gel,2200.0,30.0,60.0,150.0,spherical,0.9,Catalyst support; chromatography
+Sodium borohydride,1070.0,50.0,150.0,400.0,irregular,0.7,NaBH4; solid reductant (partially soluble)
+Potassium carbonate,2430.0,50.0,200.0,500.0,irregular,0.7,K2CO3; solid base catalyst
+NaHCO3 estimate,2200.0,20.0,150.0,400.0,irregular,0.85,

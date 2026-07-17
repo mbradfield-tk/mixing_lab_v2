@@ -1,0 +1,11 @@
+htm_name,T_min_C,T_max_C,rho_kg_m3,Cp_J_kgK,mu_Pa_s,k_W_mK,h_jacket_override,notes
+Water,5.0,95.0,997.0,4182.0,8.9e-4,0.607,,Standard cooling/heating medium
+Water-Glycol (50/50),-30.0,105.0,1075.0,3350.0,3.5e-3,0.400,,50 wt-% ethylene glycol in water
+Syltherm 800,-40.0,400.0,935.0,1630.0,9.6e-4,0.135,,Dow silicone HTF wide range
+Syltherm HF,-73.0,260.0,873.0,1590.0,5.0e-4,0.100,,Dow silicone HTF low-temperature focus
+Dowtherm A,15.0,400.0,1056.0,1590.0,2.5e-3,0.138,,Eutectic mix of biphenyl / diphenyl oxide
+Dowtherm Q,-35.0,330.0,993.0,1660.0,2.2e-3,0.114,,Diethylbenzene / alkylated aromatics blend
+Steam (condensing),100.0,250.0,0.6,2010.0,1.2e-5,0.025,8000.0,"Condensing steam: very high h_o (6000-12000 W/(m2·K))"
+Therminol 66,-3.0,345.0,1005.0,1680.0,3.0e-3,0.118,,Partially hydrogenated terphenyl
+Marlotherm SH,-5.0,350.0,1040.0,1630.0,2.8e-3,0.120,,Benzyltoluene-based HTF
+"Brine (CaCl2 25%)",-40.0,60.0,1230.0,2810.0,4.5e-3,0.540,,25 wt-% calcium chloride in water

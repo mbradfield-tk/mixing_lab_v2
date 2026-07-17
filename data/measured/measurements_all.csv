@@ -1,0 +1,49 @@
+reactor_id,exp_id,meas_id,type,fluid,variable,units,value
+RX-017,Nalas,1,set,methanol,stir speed,rpm,100
+RX-017,Nalas,1,set,methanol,fill volume,L,0.065
+RX-017,Nalas,1,measured,methanol,kLa,per_sec,0.0063
+RX-017,Nalas,2,set,methanol,stir speed,rpm,200
+RX-017,Nalas,2,set,methanol,fill volume,L,0.065
+RX-017,Nalas,2,measured,methanol,kLa,per_sec,0.01
+RX-017,Nalas,3,set,methanol,stir speed,rpm,400
+RX-017,Nalas,3,set,methanol,fill volume,L,0.065
+RX-017,Nalas,3,measured,methanol,kLa,per_sec,0.023
+RX-017,Nalas,4,set,methanol,stir speed,rpm,500
+RX-017,Nalas,4,set,methanol,fill volume,L,0.065
+RX-017,Nalas,4,measured,methanol,kLa,per_sec,0.024
+RX-017,Nalas,5,set,methanol,stir speed,rpm,600
+RX-017,Nalas,5,set,methanol,fill volume,L,0.065
+RX-017,Nalas,5,measured,methanol,kLa,per_sec,0.057
+RX-017,Nalas,6,set,methanol,stir speed,rpm,700
+RX-017,Nalas,6,set,methanol,fill volume,L,0.065
+RX-017,Nalas,6,measured,methanol,kLa,per_sec,0.14
+RX-017,Nalas,7,set,methanol,stir speed,rpm,1000
+RX-017,Nalas,7,set,methanol,fill volume,L,0.065
+RX-017,Nalas,7,measured,methanol,kLa,per_sec,0.34
+RX-017,Nalas,8,set,methanol,stir speed,rpm,400
+RX-017,Nalas,8,set,methanol,fill volume,L,0.1
+RX-017,Nalas,8,measured,methanol,kLa,per_sec,0.0065
+RX-017,Nalas,9,set,methanol,stir speed,rpm,500
+RX-017,Nalas,9,set,methanol,fill volume,L,0.1
+RX-017,Nalas,9,measured,methanol,kLa,per_sec,0.0072
+RX-017,Nalas,10,set,methanol,stir speed,rpm,700
+RX-017,Nalas,10,set,methanol,fill volume,L,0.1
+RX-017,Nalas,10,measured,methanol,kLa,per_sec,0.0093
+RX-017,Nalas,11,set,methanol,stir speed,rpm,1000
+RX-017,Nalas,11,set,methanol,fill volume,L,0.1
+RX-017,Nalas,11,measured,methanol,kLa,per_sec,0.014
+RX-017,Nalas,12,set,methanol,stir speed,rpm,1000
+RX-017,Nalas,12,set,methanol,fill volume,L,0.1
+RX-017,Nalas,12,measured,methanol,kLa,per_sec,0.02
+RX-017,Nalas,13,set,methanol,stir speed,rpm,100
+RX-017,Nalas,13,set,methanol,fill volume,L,0.05
+RX-017,Nalas,13,measured,methanol,kLa,per_sec,0.011
+RX-017,Nalas,14,set,methanol,stir speed,rpm,100
+RX-017,Nalas,14,set,methanol,fill volume,L,0.065
+RX-017,Nalas,14,measured,methanol,kLa,per_sec,0.0063
+RX-017,Nalas,15,set,methanol,stir speed,rpm,100
+RX-017,Nalas,15,set,methanol,fill volume,L,0.08
+RX-017,Nalas,15,measured,methanol,kLa,per_sec,0.0051
+RX-017,Nalas,1,set,THF,stir speed,rpm,100
+RX-017,Nalas,1,set,THF,fill volume,L,0.065
+RX-017,Nalas,1,measured,THF,kLa,per_sec,0.007

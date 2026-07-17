@@ -1,0 +1,17 @@
+[
+  {
+    "reactor_name": "Nalas \u2013 EasyMax 102",
+    "name": "Surface kLa (1/s) \u2013 fitted Experimental",
+    "param": "kla_surface",
+    "corr_type": "Experimental",
+    "template_id": "kla_surf_eps_vl",
+    "coeffs": [
+      8.162628459692043e-05,
+      0.2687543288078393,
+      -2.1091181746850025
+    ],
+    "r2": 0.9062074286265519,
+    "source": "Fitted in Mixing Lab",
+    "description": "Fitted from uploaded data using template 'kLa_surf = A\u00b7\u03b5^b\u00b7V_L^c  (dissipation + volume)'. R\u00b2 = 0.9062."
+  }
+]

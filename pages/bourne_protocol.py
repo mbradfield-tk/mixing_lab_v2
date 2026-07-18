@@ -43,6 +43,7 @@ from utils.solvent_properties import (
     list_solvents,
     resolve_solvent_name,
 )
+from utils.report_builder import build_bourne_protocol_pdf, report_filename
 from pages import _db_common as db
 from vessel_media import build_vessel_viewer_html, media_caption
 
@@ -312,6 +313,7 @@ bp_t1_hydro_df = pd.DataFrame(columns=["Condition", "N (RPM)", "P/m (W/kg)", "P/
                                        "t_E micro (s)", "η (µm)"])
 bp_t1_kpi_df = _new_kpi_df(1)
 bp_t1_kpi_result_df = _empty_result(1)
+bp_t1_result = None
 bp_t1_assessed = False
 bp_t1_sensitive = False
 bp_t1_verdict = ""
@@ -340,6 +342,7 @@ bp_t2_time = 20.0       # min
 bp_t2_cond_df = pd.DataFrame(columns=["Condition", "Feed time (min)", "Flow rate (mL/min)", "Note"])
 bp_t2_kpi_df = _new_kpi_df(2)
 bp_t2_kpi_result_df = _empty_result(2)
+bp_t2_result = None
 bp_t2_assessed = False
 bp_t2_sensitive = False
 bp_t2_verdict = ""
@@ -351,6 +354,7 @@ bp_show_t3 = False
 bp_t3_cond_df = pd.DataFrame(columns=["Feed location", "ε_loc/ε_avg", "ε_loc (W/kg)", "t_E micro (s)"])
 bp_t3_kpi_df = _new_kpi_df(3)
 bp_t3_kpi_result_df = _empty_result(3)
+bp_t3_result = None
 bp_t3_assessed = False
 bp_t3_sensitive = False
 bp_t3_verdict = ""
@@ -360,6 +364,11 @@ bp_t3_verdict = ""
 # ---------------------------------------------------------------------------
 bp_summary = ""
 bp_show_summary = False
+
+# PDF export
+bp_pdf_bytes = b""
+bp_pdf_name = "Bourne_Protocol.pdf"
+bp_pdf_ready = False
 
 
 # ---------------------------------------------------------------------------
@@ -616,15 +625,18 @@ def _append_kpi(df: pd.DataFrame, test: int) -> pd.DataFrame:
 
 def _reset_downstream(state, from_test: int):
     """Invalidate assessments downstream of the test that was (re)assessed."""
+    state.bp_pdf_ready = False
     if from_test <= 1:
         state.bp_t2_assessed = False
         state.bp_t2_sensitive = False
+        state.bp_t2_result = None
         state.bp_t2_verdict = ""
         state.bp_show_t2 = False
         state.bp_t2_kpi_result_df = _empty_result(2)
     if from_test <= 2:
         state.bp_t3_assessed = False
         state.bp_t3_sensitive = False
+        state.bp_t3_result = None
         state.bp_t3_verdict = ""
         state.bp_show_t3 = False
         state.bp_t3_kpi_result_df = _empty_result(3)
@@ -636,6 +648,7 @@ def on_bp_t1_assess(state):
         notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t1_kpi_result_df = res["table"]
+    state.bp_t1_result = res
     state.bp_t1_assessed = True
     state.bp_t1_sensitive = res["sensitive"]
     _reset_downstream(state, 1)
@@ -691,6 +704,7 @@ def on_bp_t2_assess(state):
         notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t2_kpi_result_df = res["table"]
+    state.bp_t2_result = res
     state.bp_t2_assessed = True
     state.bp_t2_sensitive = res["sensitive"]
     _reset_downstream(state, 2)
@@ -742,8 +756,10 @@ def on_bp_t3_assess(state):
         notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t3_kpi_result_df = res["table"]
+    state.bp_t3_result = res
     state.bp_t3_assessed = True
     state.bp_t3_sensitive = res["sensitive"]
+    state.bp_pdf_ready = False
     prefix = _kpi_prefix(res)
     if res["sensitive"]:
         state.bp_t3_verdict = (
@@ -824,6 +840,176 @@ def _build_summary(state):
 
 
 # ---------------------------------------------------------------------------
+# PDF export
+# ---------------------------------------------------------------------------
+def _kpi_snapshot(res: dict, test: int) -> dict:
+    """Convert an ``_assess_kpis`` result into the report_builder response dict."""
+    low, ctr, high = KPI_COLUMNS[test]
+    kpi_results = [{
+        "name": f'{r["name"]} ({r["unit"]})' if r["unit"] else r["name"],
+        "qualitative": False,
+        "resp": [r["low"], r["ctr"], r["high"]],
+        "max_pct": r["max_pct"],
+        "sensitive": r["sensitive"],
+    } for r in res["results"]]
+    return {
+        "labels": [low, ctr, high],
+        "kpi_results": kpi_results,
+        "n_sensitive": res["n_sensitive"],
+        "n_total": res["n_total"],
+        "status": res["status"],
+        "sensitive": res["sensitive"],
+    }
+
+
+def _t1_conditions_snap(state) -> list:
+    D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
+    V_m3 = state.bp_v_l / 1000.0
+    pm_c = state.bp_t1_pm_eff
+    out = []
+    for label, factor in (("Low (0.1x P/m)", 0.1), ("Centre (1x P/m)", 1.0), ("High (10x P/m)", 10.0)):
+        n_rps = _n_for_pm(pm_c * factor, V_m3, Np, D)
+        n_rpm = n_rps * 60.0
+        if state.bp_n_max > 0 and n_rpm > state.bp_n_max:
+            n_rpm, n_rps = state.bp_n_max, state.bp_n_max / 60.0
+        if state.bp_n_min > 0 and n_rpm < state.bp_n_min:
+            n_rpm, n_rps = state.bp_n_min, state.bp_n_min / 60.0
+        P = impeller_power(Np, rho, n_rps, D)
+        eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
+        out.append({
+            "Condition": label,
+            "Volume (L)": state.bp_v_l,
+            "N (RPM)": n_rpm,
+            "P/m (W/kg)": eps / rho if rho > 0 else 0.0,
+            "P/V (W/L)": eps / 1000.0,
+            "Tip speed (m/s)": tip_speed(n_rps, D),
+        })
+    return out
+
+
+def _centerpoint_metrics(state) -> dict:
+    D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
+    nu = mu / rho if rho > 0 else 0.0
+    V_m3 = state.bp_v_l / 1000.0
+    n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
+    P = impeller_power(Np, rho, n_rps, D)
+    eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
+    eps_kg = eps / rho if rho > 0 else 0.0
+    return {
+        "N (RPM)": n_rps * 60.0,
+        "P/m (W/kg)": eps_kg,
+        "Re": reynolds_number(n_rps, D, rho, mu),
+        "Tip speed (m/s)": tip_speed(n_rps, D),
+        "Blend time (s)": blend_time_turbulent(state.bp_nq, V_m3, D, n_rps),
+        "Micromix t_E (s)": micromixing_time_engulfment(eps_kg, nu),
+        "Kolmogorov eta (um)": kolmogorov_length(nu, eps_kg) * 1e6,
+    }
+
+
+def _feed_time_centre(state) -> float:
+    vol = state.bp_t2_feed_vol
+    if state.bp_t2_mode == "Feed rate":
+        return vol / max(state.bp_t2_rate, 1e-9)
+    return max(state.bp_t2_time, 1e-9)
+
+
+def _t2_conditions_snap(state) -> dict:
+    D, Np = state.bp_d_imp, state.bp_np
+    V_m3 = state.bp_v_l / 1000.0
+    vol = state.bp_t2_feed_vol
+    t_c = _feed_time_centre(state)
+    rows = []
+    for label, tf in (("Slow (1/3x rate)", t_c * 3.0), ("Centre", t_c), ("Fast (3x rate)", t_c / 3.0)):
+        rows.append({"Condition": label, "Feed time (min)": tf,
+                     "Flow rate (mL/min)": vol / tf if tf > 0 else 0.0})
+    return {
+        "N_RPM": _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D) * 60.0,
+        "feed_vol_mL": vol,
+        "feed_location": "Held constant (centerpoint)",
+        "rows": rows,
+    }
+
+
+def _t3_conditions_snap(state) -> dict:
+    D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
+    V_m3 = state.bp_v_l / 1000.0
+    n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
+    P = impeller_power(Np, rho, n_rps, D)
+    eps_avg = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0  # W/m3
+    rows = [
+        {"Feed Location": "Surface", "eps_loc/eps_avg": 0.1, "eps_loc (W/m3)": 0.1 * eps_avg},
+        {"Feed Location": "Sub-surface (mid-tank)", "eps_loc/eps_avg": 1.0, "eps_loc (W/m3)": 1.0 * eps_avg},
+        {"Feed Location": "Impeller zone", "eps_loc/eps_avg": 3.0, "eps_loc (W/m3)": 3.0 * eps_avg},
+    ]
+    return {"N_RPM": n_rps * 60.0, "feed_time_min": _feed_time_centre(state),
+            "eps_avg_W_m3": eps_avg, "rows": rows}
+
+
+def _dominant_and_conclusions(state):
+    """Return (dominant regime, list of (test, verdict, icon) conclusions)."""
+    def _verdict(res):
+        n, N = res["n_sensitive"], res["n_total"]
+        if res["status"] == "sensitive":
+            return f"**Sensitive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
+        if res["status"] == "may_be_sensitive":
+            return f"**Possibly sensitive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
+        return f"**Not sensitive** (0/{N} KPIs)"
+
+    conclusions = []
+    if state.bp_t1_result:
+        conclusions.append(("Test 1 - Impeller speed", _verdict(state.bp_t1_result), ""))
+    if state.bp_t2_result:
+        conclusions.append(("Test 2 - Feed rate", _verdict(state.bp_t2_result), ""))
+    if state.bp_t3_result:
+        conclusions.append(("Test 3 - Feed location", _verdict(state.bp_t3_result), ""))
+
+    if not state.bp_t1_assessed:
+        dominant = "Incomplete"
+    elif not state.bp_t1_sensitive:
+        dominant = "Mixing-insensitive"
+    elif state.bp_t2_assessed and not state.bp_t2_sensitive:
+        dominant = "Micromixing"
+    elif state.bp_t3_assessed and state.bp_t3_sensitive:
+        dominant = "Mesomixing"
+    elif state.bp_t3_assessed and not state.bp_t3_sensitive:
+        dominant = "Macromixing"
+    else:
+        dominant = "Incomplete"
+    return dominant, conclusions
+
+
+def on_bp_export_pdf(state):
+    if not state.bp_t1_assessed or not state.bp_t1_result:
+        notify(state, "W", "Assess at least Test 1 before exporting a report.")
+        return
+    try:
+        dominant, conclusions = _dominant_and_conclusions(state)
+        snap = {
+            "reactor": state.bp_reactor,
+            "fluid": state.bp_fluid,
+            "V_L": state.bp_v_l,
+            "dominant": dominant,
+            "conclusions": conclusions,
+            "scaleup_notes": [],
+            "t1_conditions": _t1_conditions_snap(state),
+            "t1_responses": _kpi_snapshot(state.bp_t1_result, 1),
+            "centerpoint_metrics": _centerpoint_metrics(state),
+        }
+        if state.bp_t2_result:
+            snap["t2_conditions"] = _t2_conditions_snap(state)
+            snap["t2_responses"] = _kpi_snapshot(state.bp_t2_result, 2)
+        if state.bp_t3_result:
+            snap["t3_conditions"] = _t3_conditions_snap(state)
+            snap["t3_responses"] = _kpi_snapshot(state.bp_t3_result, 3)
+        state.bp_pdf_bytes = build_bourne_protocol_pdf(snap)
+        state.bp_pdf_name = report_filename("Bourne_Protocol", state.bp_reactor)
+        state.bp_pdf_ready = True
+        notify(state, "S", "PDF report generated \u2014 click Download.")
+    except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
+        notify(state, "E", f"PDF generation failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
@@ -859,9 +1045,7 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 |>
 
 <|part|
-<|{bp_media_caption}|text|>
-
-<|part|content={bp_viewer_html}|height=300px|>
+<|part|content={bp_viewer_html}|height=360px|>
 |>
 |>
 |>
@@ -991,6 +1175,16 @@ Impeller**).
 <|part|render={bp_show_summary}|class_name=va-card|
 ## Summary
 <|{bp_summary}|text|mode=markdown|>
+
+### Export report
+Generate a PDF capturing the system, each completed test's conditions and
+responses, and the decision-tree conclusion.
+
+<|Generate PDF report|button|on_action=on_bp_export_pdf|class_name=compute-btn|>
+
+<|part|render={bp_pdf_ready}|
+<|Download PDF|file_download|content={bp_pdf_bytes}|name={bp_pdf_name}|label=⬇️ Download PDF|>
+|>
 |>
 """
 )

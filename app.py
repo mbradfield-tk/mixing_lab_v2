@@ -29,6 +29,7 @@ from heat_transfer_core import (
 from pages import (
     bourne_protocol,
     fluid_database,
+    mixing_sensitivity,
     particle_database,
     reaction_database,
     unit_converter,
@@ -129,6 +130,7 @@ menu_options = [
     ("Particle_Database", "Particles"),
     ("Vessel_Assessment", "Vessel Assessment"),
     ("Bourne_Protocol", "Bourne Protocol"),
+    ("Mixing_Sensitivity", "Reaction Sensitivity Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
 ]
@@ -456,7 +458,7 @@ root_md = """
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
    N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
    Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
-   7=Bourne Protocol, 8=Heat Transfer, 9=Unit Converter. */
+   7=Bourne Protocol, 8=Reaction Sensitivity, 9=Heat Transfer, 10=Unit Converter. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -476,9 +478,12 @@ root_md = """
     content: "🅱️";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
-    content: "🔥";
+    content: "🧭";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
+    content: "🔥";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(10) .MuiAvatar-root::after {
     content: "🔄";
 }
 
@@ -705,6 +710,7 @@ pages = {
     "Particle_Database": particle_database.page,
     "Vessel_Assessment": vessel_assessment.page,
     "Bourne_Protocol": bourne_protocol.page,
+    "Mixing_Sensitivity": mixing_sensitivity.page,
     "Heat_Transfer": heat_transfer_md,
     "Unit_Converter": unit_converter.page,
 }

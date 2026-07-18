@@ -18,6 +18,7 @@ row position even after deletions.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -86,12 +87,21 @@ def name_taken(df: pd.DataFrame, name_col: str, name: str) -> bool:
     return name.strip().lower() in set(existing)
 
 
-def filter_rows(df: pd.DataFrame, query: str) -> pd.DataFrame:
-    """Return rows where any cell contains ``query`` (case-insensitive)."""
+def filter_rows(df: pd.DataFrame, query: str, columns: list[str] | None = None) -> pd.DataFrame:
+    """Return rows where any cell contains ``query`` (case-insensitive).
+
+    When ``columns`` is given, only those columns are searched (names not present
+    in ``df`` are ignored).
+    """
     q = (query or "").strip().lower()
     if not q:
         return df.copy()
-    mask = df.apply(
+    search_df = df
+    if columns:
+        present = [c for c in columns if c in df.columns]
+        if present:
+            search_df = df[present]
+    mask = search_df.apply(
         lambda r: r.astype(str).str.lower().str.contains(q, na=False).any(), axis=1
     )
     return reset(df[mask])
@@ -217,18 +227,34 @@ def friendly(col: str) -> str:
     return COLUMN_LABELS.get(col, col)
 
 
+_UNIT_RE = re.compile(r"^(.*?)\s*\[([^\]]+)\]\s*$")
+
+
+def split_label(label: str) -> tuple[str, str]:
+    """Split a ``"Name [unit]"`` label into ``(name, unit)``.
+
+    Labels without a trailing bracketed unit return ``(label, "")``.
+    """
+    match = _UNIT_RE.match(label or "")
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    return label, ""
+
+
 def detail_table(df: pd.DataFrame, name_col: str, name: str) -> pd.DataFrame:
-    """Return a two-column Property/Value table for the row named ``name``."""
+    """Return a Property/Value/Units table for the row named ``name``."""
+    cols = ["Property", "Value", "Units"]
     if not name:
-        return pd.DataFrame(columns=["Property", "Value"])
+        return pd.DataFrame(columns=cols)
     match = df[df[name_col].astype(str) == str(name)]
     if match.empty:
-        return pd.DataFrame(columns=["Property", "Value"])
+        return pd.DataFrame(columns=cols)
     row = match.iloc[0]
     records = []
     for col in df.columns:
         val = row.get(col)
         if pd.isna(val) or str(val).strip() == "":
             continue
-        records.append({"Property": friendly(col), "Value": str(val)})
+        prop, unit = split_label(friendly(col))
+        records.append({"Property": prop, "Value": str(val), "Units": unit or "–"})
     return pd.DataFrame(records)

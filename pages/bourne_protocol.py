@@ -116,7 +116,7 @@ def _n_for_pm(pm_wkg: float, V_m3: float, Np: float, D: float) -> float:
 
 
 def _reactor_summary_df(row: pd.Series) -> pd.DataFrame:
-    """Small Parameter/Value table of a reactor's volume & speed limits."""
+    """Small Property/Value/Units table of a reactor's volume & speed limits."""
     vmin = _sf(row.get("V_L_min"))
     vmax = _sf(row.get("V_L_max"), _sf(row.get("V_L")))
     nmin = _sf(row.get("N_rpm_min"))
@@ -124,18 +124,18 @@ def _reactor_summary_df(row: pd.Series) -> pd.DataFrame:
     dimp = _sf(row.get("D_imp_m"))
     Np = _sf(row.get("Np"))
 
-    def _rng(a, b, unit):
+    def _rng(a, b):
         if a <= 0 and b <= 0:
             return "—"
         if a > 0 and b > 0:
-            return f"{a:g} – {b:g} {unit}"
-        return f"{(a or b):g} {unit}"
+            return f"{a:g} – {b:g}"
+        return f"{(a or b):g}"
 
     rows = [
-        {"Property": "Working volume", "Value": _rng(vmin, vmax, "L")},
-        {"Property": "Impeller speed", "Value": _rng(nmin, nmax, "RPM")},
-        {"Property": "Impeller diameter", "Value": f"{dimp:g} m" if dimp > 0 else "—"},
-        {"Property": "Power number Np", "Value": f"{Np:g}" if Np > 0 else "—"},
+        {"Property": "Working volume", "Value": _rng(vmin, vmax), "Units": "L"},
+        {"Property": "Impeller speed", "Value": _rng(nmin, nmax), "Units": "RPM"},
+        {"Property": "Impeller diameter", "Value": f"{dimp:g}" if dimp > 0 else "—", "Units": "m"},
+        {"Property": "Power number Np", "Value": f"{Np:g}" if Np > 0 else "—", "Units": "–"},
     ]
     return pd.DataFrame(rows)
 
@@ -457,9 +457,9 @@ def _build_t1_plot(state):
     D, Np = state.bp_d_imp, state.bp_np
     pm_c = state.bp_t1_pm_eff
     vols = np.linspace(v_min, v_max, 50)
-    targets = [("0.1× P/m", pm_c * 0.1, "#1565c0"),
-               ("1× P/m (centre)", pm_c, "#2e7d32"),
-               ("10× P/m", pm_c * 10.0, "#c62828")]
+    targets = [("0.1× P/m", pm_c * 0.1, "#9E9E9E"),
+               ("1× P/m (centre)", pm_c, "#E1251B"),
+               ("10× P/m", pm_c * 10.0, "#7A1008")]
     fig = go.Figure()
     for label, pm, color in targets:
         rpm = [_n_for_pm(pm, v / 1000.0, Np, D) * 60.0 for v in vols]

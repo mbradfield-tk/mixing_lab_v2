@@ -24,6 +24,8 @@ COLUMNS = [
 # State
 # ---------------------------------------------------------------------------
 particle_df = db.load_csv(PARTICLE_CSV, COLUMNS)
+particle_search = ""
+particle_view_df = particle_df
 particle_export = db.csv_bytes(particle_df)
 particle_msg = f"{len(particle_df)} particles in database."
 
@@ -47,24 +49,48 @@ def _persist(state) -> None:
     db.save_csv(state.particle_df, PARTICLE_CSV)
     state.particle_export = db.csv_bytes(state.particle_df)
     state.particle_msg = f"{len(state.particle_df)} particles in database."
+    state.particle_view_df = _apply_search(state)
+
+
+def _apply_search(state) -> pd.DataFrame:
+    """Full frame, or a filtered (read-only) view while searching."""
+    query = (state.particle_search or "").strip()
+    return db.filter_rows(state.particle_df, query) if query else state.particle_df
+
+
+def on_particle_search(state):
+    state.particle_view_df = _apply_search(state)
+
+
+def _searching(state) -> bool:
+    if (state.particle_search or "").strip():
+        notify(state, "W", "Clear the search box to edit the database.")
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
 def on_particle_edit(state, var_name, payload):
+    if _searching(state):
+        return
     state.particle_df = db.apply_edit(state.particle_df.copy(), payload)
     _persist(state)
     notify(state, "S", "Saved.")
 
 
 def on_particle_delete(state, var_name, payload):
+    if _searching(state):
+        return
     state.particle_df = db.delete_row(state.particle_df.copy(), payload)
     _persist(state)
     notify(state, "I", "Row deleted.")
 
 
 def on_particle_add(state, var_name, payload):
+    if _searching(state):
+        return
     state.particle_df = db.add_blank(state.particle_df.copy(), COLUMNS)
     _persist(state)
 
@@ -117,13 +143,17 @@ page = Markdown(
 <|{particle_msg}|text|>
 
 Edit particle properties inline — **every change is saved automatically**. Use
-the column filters to narrow the table, or the **Add Particle** form below for a
-validated entry.
+the search box or column filters to narrow the table, or the **Add Particle**
+form below for a validated entry.
 
-<|{particle_df}|table|editable|filter|rebuild|on_edit=on_particle_edit|on_delete=on_particle_delete|on_add=on_particle_add|width=100%|page_size=12|>
+<|Particle database|expandable|expanded=False|
+<|{particle_search}|input|label=Search particles|on_change=on_particle_search|class_name=db-search|>
+
+<|{particle_view_df}|table|editable={particle_search == ""}|filter|rebuild|on_edit=on_particle_edit|on_delete=on_particle_delete|on_add=on_particle_add|width=100%|page_size=12|>
+|>
 
 ## Add Particle
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{part_new_name}|input|label=Particle name *|>
 
 <|{part_new_rho}|number|label=Density ρ_p (kg/m³)|>
@@ -131,7 +161,7 @@ validated entry.
 <|{part_new_factor}|number|label=Shape factor|>
 |>
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{part_new_d10}|number|label=D10 (µm)|>
 
 <|{part_new_d50}|number|label=D50 (µm)|>
@@ -139,7 +169,7 @@ validated entry.
 <|{part_new_d90}|number|label=D90 (µm)|>
 |>
 
-<|layout|columns=1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{part_new_shape}|input|label=Shape description|>
 
 <|{part_new_notes}|input|label=Notes|>

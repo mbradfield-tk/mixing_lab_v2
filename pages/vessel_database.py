@@ -36,6 +36,8 @@ vessel_raw_df = db.load_csv(REACTOR_CSV, ["reactor_name"])  # source of truth (r
 vessel_columns = list(vessel_raw_df.columns)
 vessel_colmap = _reverse_map(vessel_columns)               # friendly -> raw
 vessel_df = db.friendly_columns(vessel_raw_df)             # displayed / edited (friendly columns)
+vessel_search = ""                                         # global search box
+vessel_view_df = vessel_df                                 # what the table shows (full or filtered)
 vessel_export = db.csv_bytes(vessel_raw_df)
 vessel_msg = f"{len(vessel_raw_df)} vessels in database."
 
@@ -70,6 +72,28 @@ def _refresh_display(state) -> None:
     state.vessel_columns = list(state.vessel_raw_df.columns)
     state.vessel_colmap = _reverse_map(state.vessel_columns)
     state.vessel_df = db.friendly_columns(state.vessel_raw_df)
+    state.vessel_view_df = _apply_search(state)
+
+
+def _apply_search(state) -> pd.DataFrame:
+    """Return the full friendly frame, or a filtered (read-only) view when searching.
+
+    Searches only the Reactor Name and Owner columns.
+    """
+    query = (state.vessel_search or "").strip()
+    return (db.filter_rows(state.vessel_df, query, columns=["Reactor Name", "Owner"])
+            if query else state.vessel_df)
+
+
+def on_vessel_search(state):
+    state.vessel_view_df = _apply_search(state)
+
+
+def _searching(state) -> bool:
+    if (state.vessel_search or "").strip():
+        notify(state, "W", "Clear the search box to edit the database.")
+        return True
+    return False
 
 
 def _persist(state) -> None:
@@ -114,7 +138,7 @@ def on_admin_lock(state):
 # Table CRUD handlers (operate on the raw frame; display stays friendly)
 # ---------------------------------------------------------------------------
 def on_vessel_edit(state, var_name, payload):
-    if not _require_admin(state):
+    if _searching(state) or not _require_admin(state):
         return
     raw_payload = dict(payload)
     raw_payload["col"] = state.vessel_colmap.get(payload["col"], payload["col"])
@@ -125,7 +149,7 @@ def on_vessel_edit(state, var_name, payload):
 
 
 def on_vessel_delete(state, var_name, payload):
-    if not _require_admin(state):
+    if _searching(state) or not _require_admin(state):
         return
     state.vessel_raw_df = db.delete_row(state.vessel_raw_df.copy(), payload)
     _refresh_display(state)
@@ -134,7 +158,7 @@ def on_vessel_delete(state, var_name, payload):
 
 
 def on_vessel_add(state, var_name, payload):
-    if not _require_admin(state):
+    if _searching(state) or not _require_admin(state):
         return
     state.vessel_raw_df = db.add_blank(state.vessel_raw_df.copy(), state.vessel_columns)
     _refresh_display(state)
@@ -175,28 +199,14 @@ page = Markdown(
 
 <|{vessel_msg}|text|>
 
-## Admin
-<|{admin_status}|text|>
-
-<|part|render={not admin_authenticated}|
-<|layout|columns=1 1 auto|
-<|{admin_user}|input|label=Admin username|>
-
-<|{admin_pw}|input|password|label=Admin password|on_action=on_admin_unlock|>
-
-<|Unlock editing|button|on_action=on_admin_unlock|>
-|>
-|>
-
-<|part|render={admin_authenticated}|
-<|Lock editing|button|on_action=on_admin_lock|>
-|>
-
 ## Database
-Editing is enabled only when unlocked above. Reactor images are added separately.
+Editing is enabled only when unlocked in the **Admin** panel at the bottom of the
+page. Reactor images are added separately.
 
 <|Vessel database|expandable|expanded=False|
-<|{vessel_df}|table|editable={admin_authenticated}|filter|rebuild|on_edit=on_vessel_edit|on_delete=on_vessel_delete|on_add=on_vessel_add|width=100%|page_size=12|>
+<|{vessel_search}|input|label=Search by name or owner|on_change=on_vessel_search|class_name=db-search|>
+
+<|{vessel_view_df}|table|editable={admin_authenticated and vessel_search == ""}|filter|rebuild|on_edit=on_vessel_edit|on_delete=on_vessel_delete|on_add=on_vessel_add|width=100%|page_size=12|>
 |>
 
 ## Explore Vessel
@@ -215,6 +225,25 @@ Editing is enabled only when unlocked above. Reactor images are added separately
 <|Download CSV|file_download|content={vessel_export}|name=reactors_export.csv|label=⬇️ Download vessel database|>
 
 <|{vessel_upload}|file_selector|label=⬆️ Import CSV (replaces database)|on_action=on_vessel_import|extensions=.csv|active={admin_authenticated}|>
+|>
+
+<|part|class_name=va-card|
+## Admin
+<|{admin_status}|text|>
+
+<|part|render={not admin_authenticated}|
+<|layout|columns=230px 230px 150px|
+<|{admin_user}|input|label=Admin username|>
+
+<|{admin_pw}|input|password|label=Admin password|on_action=on_admin_unlock|>
+
+<|Unlock editing|button|on_action=on_admin_unlock|>
+|>
+|>
+
+<|part|render={admin_authenticated}|
+<|Lock editing|button|on_action=on_admin_lock|>
+|>
 |>
 """
 )

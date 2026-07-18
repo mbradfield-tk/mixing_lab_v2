@@ -487,57 +487,127 @@ root_md = """
     display: none !important;
 }
 
-/* Make the Compute Heat Transfer button stand out. */
+/* ---- Takeda corporate palette (red / gray / white) --------------------- */
+/* Section headings in Takeda red; sub-headings in a neutral gray. */
+h1, h2 {
+    color: #E1251B;
+}
+h3, h4 {
+    color: #4A4A4A;
+}
+/* Default (non-tagged) buttons use Takeda red so all actions read as on-brand. */
+.taipy-button .MuiButton-root,
+button.taipy-button {
+    background-color: #E1251B !important;
+    color: #ffffff !important;
+}
+.taipy-button .MuiButton-root:hover,
+button.taipy-button:hover {
+    background-color: #A81A12 !important;
+}
+/* Text/link accents and focused input outlines in Takeda red. */
+a, .MuiLink-root {
+    color: #E1251B;
+}
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+    border-color: #E1251B !important;
+}
+.MuiInputLabel-root.Mui-focused {
+    color: #E1251B !important;
+}
+/* Highlight the selected sidebar-menu item with a red accent. */
+.htt-menu .MuiList-root .Mui-selected {
+    background-color: rgba(225, 37, 27, 0.12) !important;
+    border-left: 3px solid #E1251B;
+}
+/* Table header row: subtle Takeda-red tint for a corporate feel. */
+.taipy-table .MuiTableCell-head {
+    background-color: #FBEBEA !important;
+    color: #4A4A4A !important;
+    font-weight: 600;
+}
+
+/* ---- Dark-mode adjustments (Taipy adds `.taipy-dark` on the root) -------
+   Keep the Takeda red accents but swap light surfaces/text for dark-legible
+   equivalents so cards and headings don't jar against a dark background. */
+.taipy-dark h1, .taipy-dark h2 {
+    color: #FF5247;
+}
+.taipy-dark h3, .taipy-dark h4 {
+    color: #C7CBD1;
+}
+.taipy-dark .va-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.14);
+    border-left-color: #E1251B;
+}
+.taipy-dark .scheme-box {
+    background: rgba(225, 37, 27, 0.16);
+}
+.taipy-dark .taipy-table .MuiTableCell-head {
+    background-color: rgba(225, 37, 27, 0.24) !important;
+    color: #F0F0F0 !important;
+}
+.taipy-dark a,
+.taipy-dark .MuiLink-root {
+    color: #FF5247;
+}
+.taipy-dark .htt-menu .MuiList-root .Mui-selected {
+    background-color: rgba(225, 37, 27, 0.28) !important;
+}
+
+/* Make the primary action button stand out in Takeda red. */
 .compute-btn .MuiButton-root,
 button.compute-btn {
-    background-color: #d32f2f !important;
+    background-color: #E1251B !important;
     color: #ffffff !important;
 }
 .compute-btn .MuiButton-root:hover,
 button.compute-btn:hover {
-    background-color: #b71c1c !important;
+    background-color: #A81A12 !important;
 }
 
-/* Blue variant shown after a Vessel Assessment has been run (results fresh). */
+/* Neutral gray variant shown after a result has been computed (results fresh). */
 .compute-btn-ok .MuiButton-root,
 button.compute-btn-ok {
-    background-color: #1565c0 !important;
+    background-color: #5C6670 !important;
     color: #ffffff !important;
 }
 .compute-btn-ok .MuiButton-root:hover,
 button.compute-btn-ok:hover {
-    background-color: #0d47a1 !important;
+    background-color: #3E464E !important;
 }
 
 /* Grouped "card" containers used to visually separate page sections
-   (e.g. the Vessel Assessment page). */
+   (e.g. the Vessel Assessment page). White card with a Takeda-red left accent. */
 .va-card {
-    border: 1px solid rgba(128, 128, 128, 0.35);
-    border-radius: 10px;
+    border: 1px solid #E6E6E6;
+    border-left: 3px solid #E1251B;
+    border-radius: 8px;
     padding: 2px 20px 16px;
     margin: 0 0 20px 0;
-    background: rgba(128, 128, 128, 0.05);
+    background: #ffffff;
 }
 
 /* Reaction-scheme highlight box. */
 .scheme-box {
     display: block;
-    background: rgba(78, 140, 255, 0.10);
-    border-left: 4px solid #4e8cff;
+    background: rgba(225, 37, 27, 0.08);
+    border-left: 4px solid #E1251B;
     padding: 10px 14px;
     border-radius: 6px;
     font-family: monospace;
     margin: 8px 0 4px;
 }
 
-/* On/off toggles: red when OFF (first button) is selected, green when ON
-   (last button) is selected. Applies to controls tagged class_name=onoff-toggle. */
+/* On/off toggles: neutral gray when OFF (first button) is selected, Takeda red
+   when ON (last button) is selected. Applies to class_name=onoff-toggle. */
 .onoff-toggle .MuiToggleButton-root:first-of-type.Mui-selected {
-    background-color: #d32f2f !important;
+    background-color: #6E6E6E !important;
     color: #ffffff !important;
 }
 .onoff-toggle .MuiToggleButton-root:last-of-type.Mui-selected {
-    background-color: #2e7d32 !important;
+    background-color: #E1251B !important;
     color: #ffffff !important;
 }
 
@@ -545,14 +615,14 @@ button.compute-btn-ok:hover {
    The Taipy chart `height` property is not reactive after first render, so the
    height is driven by a dynamic class_name instead (!important overrides the
    inline height). Heights ≈ rows*300 + title/legend allowance. */
-.env-rows-1 { height: 430px !important; }
-.env-rows-2 { height: 690px !important; }
-.env-rows-3 { height: 990px !important; }
-.env-rows-4 { height: 1290px !important; }
-.env-rows-5 { height: 1590px !important; }
-.env-rows-6 { height: 1890px !important; }
-.env-rows-7 { height: 2190px !important; }
-.env-rows-8 { height: 2490px !important; }
+.env-rows-1 { height: 520px !important; }
+.env-rows-2 { height: 880px !important; }
+.env-rows-3 { height: 1240px !important; }
+.env-rows-4 { height: 1600px !important; }
+.env-rows-5 { height: 1960px !important; }
+.env-rows-6 { height: 2320px !important; }
+.env-rows-7 { height: 2680px !important; }
+.env-rows-8 { height: 3040px !important; }
 
 /* Editable-table cell dropdowns (MUI Autocomplete) inherit the narrow column
    width, clipping long option text. Let the popup size to its content instead. */
@@ -562,6 +632,57 @@ button.compute-btn-ok:hover {
     max-width: 460px !important;
 }
 .MuiAutocomplete-popper .MuiAutocomplete-option {
+    white-space: nowrap;
+}
+
+/* Global search box shown above each database table. */
+.db-search {
+    max-width: 380px;
+    margin: 4px 0 12px 0;
+}
+
+/* Neat, level form controls: inside layout grids every input/selector fills its
+   column and is top-aligned, and all number/text/selector fields share one
+   height so boxes line up cleanly regardless of label length. Tight, uniform
+   gaps keep related inputs grouped without excess white space. */
+.taipy-layout {
+    align-items: start;
+    row-gap: 8px;
+    column-gap: 12px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.taipy-layout .taipy-number,
+.taipy-layout .taipy-selector,
+.taipy-layout .taipy-input,
+.taipy-layout .taipy-date {
+    width: 100%;
+}
+.taipy-number .MuiInputBase-root,
+.taipy-input .MuiInputBase-root,
+.taipy-selector .MuiInputBase-root {
+    min-height: 48px;
+}
+/* Trim the default dense-form margins so stacked fields sit closer together. */
+.taipy-number.MuiFormControl-marginDense,
+.taipy-input.MuiFormControl-marginDense,
+.taipy-selector.MuiFormControl-marginDense {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+/* Add/entry forms: cap the grid width so inputs stay grouped and compact
+   instead of stretching across the full page on wide screens. */
+.form-grid {
+    max-width: 780px;
+}
+
+/* Let table columns size to their content instead of wrapping text. Wide tables
+   scroll horizontally within their container rather than cramming columns and
+   wrapping cell/header text unnecessarily. */
+.taipy-table .MuiTableContainer-root {
+    overflow-x: auto;
+}
+.taipy-table .MuiTableCell-root {
     white-space: nowrap;
 }
 </style>
@@ -592,6 +713,16 @@ pages = {
 # type. Register one for `str` so the vessel viewer HTML is served as-is.
 Gui.register_content_provider(str, lambda html: html)
 
+# Takeda corporate palette applied to the MUI theme so every primary-coloured
+# component (buttons, toggles, checkboxes, focused inputs) reads as Takeda red.
+TAKEDA_THEME = {
+    "palette": {
+        "primary": {"main": "#E1251B"},
+        "secondary": {"main": "#5C6670"},
+    },
+}
+
 if __name__ == "__main__":
-    Gui(pages=pages).run(title="Mixing Lab V2", use_reloader=True, port="auto", dark_mode=False)
+    Gui(pages=pages).run(title="Mixing Lab V2", use_reloader=True, port="auto",
+                         dark_mode=False, theme=TAKEDA_THEME)
 

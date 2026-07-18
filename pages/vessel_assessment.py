@@ -315,11 +315,11 @@ _HYDRO_ROWS = [
 
 # Results
 va_status = "Set inputs and click Compute Assessment."
-va_hydro_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
+va_hydro_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_dam_df = pd.DataFrame(columns=["Type", "Damköhler", "Value", "Regime"])
 va_assess = ""
-va_sl_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
-va_heat_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
+va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
+va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_result_ready = False
 va_env_fig = go.Figure()
 va_compute_class = "compute-btn"   # red until an assessment is run; blue after
@@ -454,13 +454,13 @@ def on_va_compute(state):
         n_rps = state.va_n_rpm / 60.0
         assess = particle_suspension_criterion(n_rps, n_js_rps)
         state.va_sl_df = pd.DataFrame([
-            {"Parameter": "Just-suspended speed N_js", "Units": "RPM", "Value": f"{n_js_rpm:.1f}"},
-            {"Parameter": "Operating speed N", "Units": "RPM", "Value": f"{state.va_n_rpm:.1f}"},
-            {"Parameter": "N / N_js", "Units": "–", "Value": f"{(state.va_n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}"},
-            {"Parameter": "Suspension state", "Units": "–", "Value": assess},
+            {"Parameter": "Just-suspended speed N_js", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
+            {"Parameter": "Operating speed N", "Value": f"{state.va_n_rpm:.1f}", "Units": "RPM"},
+            {"Parameter": "N / N_js", "Value": f"{(state.va_n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
+            {"Parameter": "Suspension state", "Value": assess, "Units": "–"},
         ])
     else:
-        state.va_sl_df = pd.DataFrame(columns=["Parameter", "Units", "Value"])
+        state.va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     # Gas-liquid mass transfer only counts when a gas phase is active.
     if state.va_gas_mode == "On":
@@ -475,7 +475,7 @@ def on_va_compute(state):
 
     # Hydrodynamics KPI table
     state.va_hydro_df = pd.DataFrame(
-        [{"Parameter": name, "Units": unit, "Value": f"{hydro[key]:,.4g}"}
+        [{"Parameter": name, "Value": f"{hydro[key]:,.4g}", "Units": unit}
          for key, name, unit in _HYDRO_ROWS])
 
     def _regime(da: float) -> str:
@@ -533,14 +533,14 @@ def on_va_compute(state):
             fluid_name=state.va_fluid)
         q_cool = heat_removal_capacity(u_val, area, abs(state.va_T - state.va_T_cool))
         state.va_heat_df = pd.DataFrame([
-            {"Parameter": "Heat generation Q_gen", "Units": "W", "Value": f"{q_gen:,.1f}"},
-            {"Parameter": "Overall U", "Units": "W/m²·K", "Value": f"{u_val:,.1f}"},
-            {"Parameter": "Jacket area A", "Units": "m²", "Value": f"{area:,.4g}"},
-            {"Parameter": "Cooling capacity Q_cool", "Units": "W", "Value": f"{q_cool:,.1f}"},
-            {"Parameter": "Balance", "Units": "–", "Value": heat_balance_assessment(q_gen, q_cool)},
+            {"Parameter": "Heat generation Q_gen", "Value": f"{q_gen:,.1f}", "Units": "W"},
+            {"Parameter": "Overall U", "Value": f"{u_val:,.1f}", "Units": "W/m²·K"},
+            {"Parameter": "Jacket area A", "Value": f"{area:,.4g}", "Units": "m²"},
+            {"Parameter": "Cooling capacity Q_cool", "Value": f"{q_cool:,.1f}", "Units": "W"},
+            {"Parameter": "Balance", "Value": heat_balance_assessment(q_gen, q_cool), "Units": "–"},
         ])
     else:
-        state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value"])
+        state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
 
@@ -609,9 +609,10 @@ def _build_envelope(state, t_rxn: float):
     cols = min(3, n)
     rows = int(np.ceil(n / cols))
     positions = [(i // cols + 1, i % cols + 1) for i in range(n)]
-    # Keep inter-row gaps modest as the row count grows (Plotly spacing is a
-    # fraction of total height, so a constant fraction would swamp many rows).
-    vspace = min(0.12, 0.30 / max(rows - 1, 1))
+    # Give each inter-row gap enough room for the lower row's x-axis title and
+    # the next row's subplot title (Plotly spacing is a fraction of the total
+    # height, so scale it down only as the row count grows).
+    vspace = min(0.22, 0.6 / max(rows - 1, 1))
     fig = make_subplots(rows=rows, cols=cols, subplot_titles=params,
                         vertical_spacing=vspace, horizontal_spacing=0.08)
     for p, (r, c) in zip(params, positions):
@@ -621,16 +622,16 @@ def _build_envelope(state, t_rxn: float):
         fig.add_trace(go.Scatter(
             x=np.concatenate([n_arr, n_arr[::-1]]),
             y=np.concatenate([y_hi, y_lo[::-1]]),
-            fill="toself", fillcolor="rgba(31,119,180,0.15)",
+            fill="toself", fillcolor="rgba(92,102,112,0.15)",
             line={"width": 0}, hoverinfo="skip", showlegend=False), row=r, col=c)
         # Max-volume boundary (solid) and min-volume boundary (dotted).
         fig.add_trace(go.Scatter(
-            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#1f77b4"},
+            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#5C6670"},
             name=f"V_max = {v_max:.0f} L", legendgroup="vmax",
             showlegend=first), row=r, col=c)
         fig.add_trace(go.Scatter(
             x=n_arr, y=y_lo, mode="lines",
-            line={"width": 2, "color": "#1f77b4", "dash": "dot"},
+            line={"width": 2, "color": "#5C6670", "dash": "dot"},
             name=f"V_min = {v_min:.0f} L", legendgroup="vmin",
             showlegend=first), row=r, col=c)
         # Current operating point (red star).
@@ -645,7 +646,7 @@ def _build_envelope(state, t_rxn: float):
             fig.update_yaxes(type="log", row=r, col=c)
             for thr, col_ in ((0.1, "orange"), (1.0, "red")):
                 fig.add_hline(y=thr, line_dash="dash", line_color=col_, row=r, col=c)
-    fig_height = max(340, rows * 300)
+    fig_height = max(360, rows * 360)
     # Place the horizontal legend a consistent ~45 px above the plot area (legend
     # y is a fraction of plot-area height, so it must scale with the figure).
     _t_margin = 90

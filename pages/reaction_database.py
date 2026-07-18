@@ -25,6 +25,8 @@ COLUMNS = [
 # State
 # ---------------------------------------------------------------------------
 reaction_df = db.load_csv(REACTION_CSV, COLUMNS)
+reaction_search = ""
+reaction_view_df = reaction_df
 reaction_export = db.csv_bytes(reaction_df)
 reaction_msg = f"{len(reaction_df)} reactions in database."
 
@@ -59,24 +61,48 @@ def _persist(state) -> None:
     state.reaction_export = db.csv_bytes(state.reaction_df)
     state.reaction_msg = f"{len(state.reaction_df)} reactions in database."
     state.reaction_scheme_options = ["— none —"] + state.reaction_df["reaction_name"].dropna().astype(str).tolist()
+    state.reaction_view_df = _apply_search(state)
+
+
+def _apply_search(state) -> pd.DataFrame:
+    """Full frame, or a filtered (read-only) view while searching."""
+    query = (state.reaction_search or "").strip()
+    return db.filter_rows(state.reaction_df, query) if query else state.reaction_df
+
+
+def on_reaction_search(state):
+    state.reaction_view_df = _apply_search(state)
+
+
+def _searching(state) -> bool:
+    if (state.reaction_search or "").strip():
+        notify(state, "W", "Clear the search box to edit the database.")
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
 def on_reaction_edit(state, var_name, payload):
+    if _searching(state):
+        return
     state.reaction_df = db.apply_edit(state.reaction_df.copy(), payload)
     _persist(state)
     notify(state, "S", "Saved.")
 
 
 def on_reaction_delete(state, var_name, payload):
+    if _searching(state):
+        return
     state.reaction_df = db.delete_row(state.reaction_df.copy(), payload)
     _persist(state)
     notify(state, "I", "Row deleted.")
 
 
 def on_reaction_add(state, var_name, payload):
+    if _searching(state):
+        return
     state.reaction_df = db.add_blank(state.reaction_df.copy(), COLUMNS)
     _persist(state)
 
@@ -150,10 +176,14 @@ page = Markdown(
 <|{reaction_msg}|text|>
 
 Edit kinetic data inline — **every change is saved automatically**. Use the
-column filters to narrow the table, the row actions to add or delete rows, or
-the **Add Reaction** form below for a validated entry.
+search box or column filters to narrow the table, the row actions to add or
+delete rows, or the **Add Reaction** form below for a validated entry.
 
-<|{reaction_df}|table|editable|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+<|Reaction database|expandable|expanded=False|
+<|{reaction_search}|input|label=Search reactions|on_change=on_reaction_search|class_name=db-search|>
+
+<|{reaction_view_df}|table|editable={reaction_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+|>
 
 ## Reaction Scheme
 <|{reaction_scheme_selected}|selector|lov={reaction_scheme_options}|dropdown|label=View scheme for reaction|on_change=on_reaction_scheme_select|>
@@ -161,7 +191,7 @@ the **Add Reaction** form below for a validated entry.
 <|{reaction_scheme_text}|text|class_name=scheme-box|>
 
 ## Add Reaction
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{rxn_new_name}|input|label=Reaction name *|>
 
 <|{rxn_new_type}|input|label=Type (e.g. Cross-coupling)|>
@@ -169,7 +199,7 @@ the **Add Reaction** form below for a validated entry.
 <|{rxn_new_order}|selector|lov={rxn_order_options}|dropdown|label=Kinetic order|>
 |>
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{rxn_new_k}|number|label=Rate constant k|>
 
 <|{rxn_new_k_units}|input|label=k units|>
@@ -177,7 +207,7 @@ the **Add Reaction** form below for a validated entry.
 <|{rxn_new_C0}|number|label=C0 (mol/L)|>
 |>
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{rxn_new_trxn}|number|label=Reaction time (s, 0 = auto)|>
 
 <|{rxn_new_T}|number|label=Temperature (°C)|>
@@ -185,13 +215,13 @@ the **Add Reaction** form below for a validated entry.
 <|{rxn_new_solvent}|input|label=Solvent|>
 |>
 
-<|layout|columns=1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{rxn_new_dH}|number|label=ΔH_rxn (kJ/mol, negative = exothermic)|>
 
 <|{rxn_new_notes}|input|label=Notes|>
 |>
 
-<|{rxn_new_scheme}|input|label=Reaction scheme (e.g. A + B → C + D)|>
+<|{rxn_new_scheme}|input|label=Reaction scheme (e.g. A + B → C + D)|class_name=form-grid|>
 
 <|Add reaction|button|on_action=on_reaction_add_row|>
 

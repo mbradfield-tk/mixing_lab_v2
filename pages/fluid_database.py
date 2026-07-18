@@ -65,11 +65,15 @@ fluid_tab = "Solvent Library"
 # ---------------------------------------------------------------------------
 solvent_library_df = pd.DataFrame(solvent_info_table())
 solvent_options = list_solvents()
+solvent_search = ""
+solvent_library_view_df = solvent_library_df
 
 # ---------------------------------------------------------------------------
 # Custom fluids (editable, persisted)
 # ---------------------------------------------------------------------------
 fluid_df = db.load_csv(FLUID_CSV, COLUMNS)
+fluid_search = ""
+fluid_view_df = fluid_df
 fluid_export = db.csv_bytes(fluid_df)
 fluid_msg = f"{len(fluid_df)} custom fluids (plus {len(solvent_options)} built-in solvents)."
 
@@ -94,7 +98,7 @@ fluid_upload = ""
 solvent_selected = solvent_options[0]
 solvent_P = 1.0
 solvent_T = 25.0
-solvent_props_df = pd.DataFrame(columns=["Property", "Value"])
+solvent_props_df = pd.DataFrame(columns=["Property", "Value", "Units"])
 solvent_range_msg = ""
 solvent_prop_fig = go.Figure()
 
@@ -129,6 +133,30 @@ def _persist(state) -> None:
     state.fluid_msg = f"{len(state.fluid_df)} custom fluids (plus {len(solvent_options)} built-in solvents)."
     custom = state.fluid_df["fluid_name"].dropna().astype(str).tolist() if not state.fluid_df.empty else []
     state.blend_available = sorted(SOLVENT_DB.keys()) + custom
+    state.fluid_view_df = _apply_fluid_search(state)
+
+
+def _apply_fluid_search(state) -> pd.DataFrame:
+    """Full custom-fluids frame, or a filtered (read-only) view while searching."""
+    query = (state.fluid_search or "").strip()
+    return db.filter_rows(state.fluid_df, query) if query else state.fluid_df
+
+
+def on_fluid_search(state):
+    state.fluid_view_df = _apply_fluid_search(state)
+
+
+def _fluid_searching(state) -> bool:
+    if (state.fluid_search or "").strip():
+        notify(state, "W", "Clear the search box to edit the database.")
+        return True
+    return False
+
+
+def on_solvent_library_search(state):
+    query = (state.solvent_search or "").strip()
+    state.solvent_library_view_df = (
+        db.filter_rows(state.solvent_library_df, query) if query else state.solvent_library_df)
 
 
 def _fluid_props(fname: str, df: pd.DataFrame, T: float = 25.0) -> dict | None:
@@ -156,18 +184,18 @@ def _compute_solvent_props(name: str, P_atm: float, T_C: float):
     bp_at_P = boiling_point_at_pressure(P_atm, sd)
     props = get_properties(name, T_C, P_atm)
     props_df = pd.DataFrame([
-        {"Property": "Density ρ (kg/m³)", "Value": f"{props['rho_kg_m3']:.2f}"},
-        {"Property": "Viscosity μ (Pa·s)", "Value": f"{props['mu_Pa_s']:.6f}"},
-        {"Property": "Surface tension σ (N/m)", "Value": f"{props['surface_tension_N_m']:.4f}"},
-        {"Property": "Diffusivity D (m²/s)", "Value": f"{props['D_mol_m2_s']:.3e}"},
-        {"Property": "Specific heat Cp (J/kg·K)", "Value": f"{props['Cp_J_per_kgK']:.1f}"},
-        {"Property": "Thermal conductivity k (W/m·K)", "Value": f"{props['k_W_per_mK']:.4f}"},
-        {"Property": "Vapour pressure (atm)", "Value": f"{props['vapor_pressure_atm']:.4f}"},
-        {"Property": "b.p. at P (°C)", "Value": f"{bp_at_P:.1f}"},
-        {"Property": "Normal b.p. (°C)", "Value": f"{sd.bp_C:.1f}"},
-        {"Property": "m.p. (°C)", "Value": f"{props['mp_C']:.1f}"},
-        {"Property": "MW (g/mol)", "Value": f"{props['mw']:.2f}"},
-        {"Property": "CAS", "Value": str(props["cas"])},
+        {"Property": "Density ρ", "Value": f"{props['rho_kg_m3']:.2f}", "Units": "kg/m³"},
+        {"Property": "Viscosity μ", "Value": f"{props['mu_Pa_s']:.6f}", "Units": "Pa·s"},
+        {"Property": "Surface tension σ", "Value": f"{props['surface_tension_N_m']:.4f}", "Units": "N/m"},
+        {"Property": "Diffusivity D", "Value": f"{props['D_mol_m2_s']:.3e}", "Units": "m²/s"},
+        {"Property": "Specific heat Cp", "Value": f"{props['Cp_J_per_kgK']:.1f}", "Units": "J/kg·K"},
+        {"Property": "Thermal conductivity k", "Value": f"{props['k_W_per_mK']:.4f}", "Units": "W/m·K"},
+        {"Property": "Vapour pressure", "Value": f"{props['vapor_pressure_atm']:.4f}", "Units": "atm"},
+        {"Property": "b.p. at P", "Value": f"{bp_at_P:.1f}", "Units": "°C"},
+        {"Property": "Normal b.p.", "Value": f"{sd.bp_C:.1f}", "Units": "°C"},
+        {"Property": "m.p.", "Value": f"{props['mp_C']:.1f}", "Units": "°C"},
+        {"Property": "MW", "Value": f"{props['mw']:.2f}", "Units": "g/mol"},
+        {"Property": "CAS", "Value": str(props["cas"]), "Units": "–"},
     ])
     if props["in_range"]:
         range_msg = f"Liquid range at {P_atm:.3f} atm: {sd.mp_C:.0f} – {bp_at_P:.0f} °C."
@@ -212,18 +240,24 @@ solvent_props_df, solvent_range_msg, solvent_prop_fig = _compute_solvent_props(
 # Handlers — Custom fluid CRUD
 # ---------------------------------------------------------------------------
 def on_fluid_edit(state, var_name, payload):
+    if _fluid_searching(state):
+        return
     state.fluid_df = db.apply_edit(state.fluid_df.copy(), payload)
     _persist(state)
     notify(state, "S", "Saved.")
 
 
 def on_fluid_delete(state, var_name, payload):
+    if _fluid_searching(state):
+        return
     state.fluid_df = db.delete_row(state.fluid_df.copy(), payload)
     _persist(state)
     notify(state, "I", "Row deleted.")
 
 
 def on_fluid_add(state, var_name, payload):
+    if _fluid_searching(state):
+        return
     state.fluid_df = db.add_blank(state.fluid_df.copy(), COLUMNS)
     _persist(state)
 
@@ -401,12 +435,18 @@ Reference table of all built-in solvents with **properties at 25 °C and 1 atm**
 These are always available in the assessment tools — pick one and set any
 temperature to get properties from literature correlations.
 
-<|{solvent_library_df}|table|width=100%|filter|page_size=15|>
+<|Built-in solvent library|expandable|expanded=True|
+<|{solvent_search}|input|label=Search solvents|on_change=on_solvent_library_search|class_name=db-search|>
+
+<|{solvent_library_view_df}|table|width=100%|filter|page_size=15|>
+|>
 
 ### Custom Fluids
 Manually added fluids with fixed (temperature-independent) properties.
 
+<|Custom fluids|expandable|expanded=False|
 <|{fluid_df}|table|width=100%|filter|page_size=10|>
+|>
 |>
 
 <|part|render={fluid_tab == "Solvent Properties"}|
@@ -438,10 +478,14 @@ Add or edit **custom fluids** not in the built-in solvent library (mixtures,
 slurries, concentrated acids). Custom fluids have fixed properties.
 **Every table edit is saved automatically.**
 
-<|{fluid_df}|table|editable|filter|rebuild|on_edit=on_fluid_edit|on_delete=on_fluid_delete|on_add=on_fluid_add|width=100%|page_size=12|>
+<|Custom fluids database|expandable|expanded=True|
+<|{fluid_search}|input|label=Search custom fluids|on_change=on_fluid_search|class_name=db-search|>
+
+<|{fluid_view_df}|table|editable={fluid_search == ""}|filter|rebuild|on_edit=on_fluid_edit|on_delete=on_fluid_delete|on_add=on_fluid_add|width=100%|page_size=12|>
+|>
 
 ### Add Custom Fluid
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{flu_new_name}|input|label=Fluid name *|>
 
 <|{flu_new_rho}|number|label=Density ρ (kg/m³)|>
@@ -449,7 +493,7 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 <|{flu_new_mu}|number|label=Viscosity μ (Pa·s)|>
 |>
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{flu_new_D}|number|label=Diffusivity D (m²/s)|>
 
 <|{flu_new_sigma}|number|label=Surface tension σ (N/m)|>
@@ -457,7 +501,7 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 <|{flu_new_Cp}|number|label=Specific heat Cp (J/kg·K)|>
 |>
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{flu_new_k}|number|label=Thermal conductivity k (W/m·K)|>
 
 <|{flu_new_notes}|input|label=Notes|>
@@ -466,7 +510,7 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 |>
 
 **Hansen solubility parameters** _(optional — for miscibility screening; 0 = unknown)_
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{flu_new_hd}|number|label=δd dispersion (MPa½)|>
 
 <|{flu_new_hp}|number|label=δp polar (MPa½)|>

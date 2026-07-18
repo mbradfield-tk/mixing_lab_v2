@@ -27,6 +27,7 @@ from heat_transfer_core import (
 )
 
 from pages import (
+    bourne_protocol,
     fluid_database,
     particle_database,
     reaction_database,
@@ -127,6 +128,7 @@ menu_options = [
     ("Reaction_Database", "Reactions"),
     ("Particle_Database", "Particles"),
     ("Vessel_Assessment", "Vessel Assessment"),
+    ("Bourne_Protocol", "Bourne Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
 ]
@@ -454,7 +456,7 @@ root_md = """
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
    N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
    Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
-   7=Heat Transfer, 8=Unit Converter. */
+   7=Bourne Protocol, 8=Heat Transfer, 9=Unit Converter. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -471,9 +473,12 @@ root_md = """
     content: "🌀";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
-    content: "🔥";
+    content: "🅱️";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
+    content: "🔥";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
     content: "🔄";
 }
 
@@ -548,6 +553,17 @@ button.compute-btn-ok:hover {
 .env-rows-6 { height: 1890px !important; }
 .env-rows-7 { height: 2190px !important; }
 .env-rows-8 { height: 2490px !important; }
+
+/* Editable-table cell dropdowns (MUI Autocomplete) inherit the narrow column
+   width, clipping long option text. Let the popup size to its content instead. */
+.MuiAutocomplete-popper {
+    width: max-content !important;
+    min-width: 180px !important;
+    max-width: 460px !important;
+}
+.MuiAutocomplete-popper .MuiAutocomplete-option {
+    white-space: nowrap;
+}
 </style>
 
 <|menu|lov={menu_options}|on_action=on_menu_action|label=Mixing Lab|width=260px|class_name=htt-menu|>
@@ -567,6 +583,7 @@ pages = {
     "Reaction_Database": reaction_database.page,
     "Particle_Database": particle_database.page,
     "Vessel_Assessment": vessel_assessment.page,
+    "Bourne_Protocol": bourne_protocol.page,
     "Heat_Transfer": heat_transfer_md,
     "Unit_Converter": unit_converter.page,
 }

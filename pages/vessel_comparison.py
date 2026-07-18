@@ -1196,7 +1196,7 @@ Ratios use the midpoint (average of the 4 corners) for each parameter, relative 
 |>
 
 <|part|render={vc_pdf_ready}|
-<|Download PDF|file_download|content={vc_pdf_bytes}|name={vc_pdf_name}|label=⬇️ Download PDF|>
+<|Download PDF|file_download|content={vc_pdf_bytes}|name={vc_pdf_name}|label=Download PDF|>
 |>
 |>
 |>

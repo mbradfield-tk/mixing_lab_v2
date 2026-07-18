@@ -1806,3 +1806,133 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
         pdf.ln(4)
 
     return report_bytes(pdf)
+
+
+# ---------------------------------------------------------------------------
+# Vessel Assessment report (Page 6)
+# ---------------------------------------------------------------------------
+def _strip_report_md(text: str) -> str:
+    """Remove markdown bold markers and traffic-light emoji for PDF text."""
+    for tok in ("**", "\U0001F534", "\U0001F7E1", "\U0001F7E2", "\u26AA"):
+        text = text.replace(tok, "")
+    return text.strip()
+
+
+def _df_to_rows(df, cols=None):
+    """Return (headers, rows) of strings from a DataFrame."""
+    if df is None or getattr(df, "empty", True):
+        return [], []
+    cols = cols or list(df.columns)
+    headers = [str(c) for c in cols]
+    rows = [[("" if v is None else str(v)) for v in (r.get(c, "") for c in cols)]
+            for _, r in df.iterrows()]
+    return headers, rows
+
+
+def embed_fig_fit(pdf: "MixingReport", fig, max_w: float = 185.0, max_h: float = 235.0):
+    """Embed a Plotly figure, scaled to fit the page width/height, centred.
+
+    Returns True on success, False when the image could not be rendered
+    (e.g. the kaleido/Chrome image backend is unavailable).
+    """
+    if fig is None:
+        return False
+    try:
+        png = fig_to_png_bytes(fig)
+    except Exception as exc:  # noqa: BLE001
+        warnings.warn(f"Skipping envelope chart in report: {exc}")
+        return False
+    if not png or png[:4] != b"\x89PNG":
+        warnings.warn("Skipping envelope chart in report: invalid PNG output.")
+        return False
+    import struct
+    try:
+        w_px, h_px = struct.unpack(">II", png[16:24])
+    except Exception:  # noqa: BLE001
+        w_px, h_px = 700, 500
+    aspect = (h_px / w_px) if w_px else 0.7
+    w = max_w
+    if w * aspect > max_h:
+        w = max_h / aspect
+    if pdf.get_y() + w * aspect > pdf.h - pdf.b_margin:
+        pdf.add_page()
+    pdf.image(io.BytesIO(png), x=(pdf.w - w) / 2.0, w=w)
+    pdf.ln(4)
+    return True
+
+
+def build_vessel_assessment_pdf(snap: dict) -> bytes:
+    """Build a PDF report for the Vessel Assessment page (hydrodynamics,
+    Damkohler mixing sensitivity, optional solid-suspension / heat balance, and
+    the operating-envelope chart)."""
+    reactor = snap.get("reactor", "")
+    pdf = new_report(f"Vessel Assessment \u2014 {reactor}")
+
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Vessel Assessment Report"), align="C")
+    pdf.ln(18)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Vessel", reactor, bold_val=True)
+    fluid = snap.get("fluid", "")
+    pdf.kv("Fluid", f"{fluid}  ({snap.get('T', 0):.1f} deg C, {snap.get('P', 0):.2f} atm)")
+    pdf.kv("Agitation speed", f"{snap.get('N_rpm', 0):.0f} RPM")
+    pdf.kv("Working volume", f"{snap.get('V_L', 0):.3g} L")
+    pdf.kv("Correlation source", str(snap.get("corr_mode", "")))
+    pdf.kv("Reaction", str(snap.get("reaction", "")), bold_val=True)
+    pdf.kv("Characteristic reaction time", f"{snap.get('t_rxn', 0):.4g} s")
+    if snap.get("dH"):
+        pdf.kv("Heat of reaction", f"{snap.get('dH', 0):.1f} kJ/mol")
+    pdf.ln(3)
+
+    # Hydrodynamics
+    headers, rows = _df_to_rows(snap.get("hydro_df"))
+    if rows:
+        pdf.section_title("Hydrodynamics")
+        pdf.data_table(headers, rows, col_widths=[95, 55, 35])
+
+    # Mixing sensitivity
+    pdf.section_title("Mixing Sensitivity (Damkohler)")
+    assess = _strip_report_md(str(snap.get("assessment", "")))
+    if assess:
+        colour = "RED" if "limited" in assess.lower() else (
+            "AMBER" if "transition" in assess.lower() or "sensitive" in assess.lower() else "GREEN")
+        pdf.assessment_box(assess, colour)
+    headers, rows = _df_to_rows(snap.get("dam_df"))
+    if rows:
+        pdf.data_table(headers, rows, col_widths=[70, 30, 35, 50])
+
+    # Solid suspension (optional)
+    headers, rows = _df_to_rows(snap.get("sl_df"))
+    if rows:
+        pdf.section_title("Solid Suspension")
+        pdf.data_table(headers, rows, col_widths=[95, 55, 35])
+
+    # Heat balance (optional)
+    headers, rows = _df_to_rows(snap.get("heat_df"))
+    if rows:
+        pdf.section_title("Heat Balance")
+        pdf.data_table(headers, rows, col_widths=[95, 55, 35])
+
+    # Operating envelope chart
+    fig = snap.get("env_fig")
+    if fig is not None:
+        pdf.add_page()
+        pdf.section_title("Operating Envelope")
+        caption = _strip_report_md(str(snap.get("env_caption", "")))
+        params = snap.get("env_params") or []
+        if params:
+            pdf.body_text("Parameters: " + ", ".join(str(p) for p in params))
+        if caption:
+            pdf.body_text(caption)
+        pdf.body_text(
+            "Each parameter is swept across the vessel's RPM range. The solid line is "
+            "the maximum fill-volume boundary, the dotted line the minimum fill-volume "
+            "boundary, and the shaded band the reachable envelope. The star marks the "
+            "current operating point.")
+        if not embed_fig_fit(pdf, fig):
+            pdf.body_text("(Chart image unavailable - the image export backend is not installed.)")
+
+    return report_bytes(pdf)

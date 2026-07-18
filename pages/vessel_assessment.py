@@ -38,6 +38,7 @@ from utils.solvent_properties import (
     resolve_solvent_name,
 )
 from utils.rom_registry import available_modes, compute_reactor_hydro_with_mode
+from utils.report_builder import build_vessel_assessment_pdf, report_filename
 from vessel_media import build_vessel_viewer_html, media_caption
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -341,6 +342,10 @@ va_env_fig = go.Figure()
 va_compute_class = "compute-btn"   # red until an assessment is run; blue after
 va_stale = False                   # True when inputs change after a run
 
+va_pdf_bytes = b""
+va_pdf_name = "Vessel_Assessment.pdf"
+va_pdf_ready = False
+
 
 # ---------------------------------------------------------------------------
 # Change handlers — load defaults
@@ -413,6 +418,7 @@ def _mark_stale(state):
     if state.va_result_ready and not state.va_stale:
         state.va_stale = True
         state.va_compute_class = "compute-btn"
+        state.va_pdf_ready = False
 
 
 def on_va_input_change(state):
@@ -427,6 +433,32 @@ def on_va_env_change(state):
     t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
     if t_rxn > 0:
         _build_envelope(state, t_rxn)
+        state.va_pdf_ready = False
+
+
+def on_va_export_pdf(state):
+    """Generate a PDF report of the current assessment (incl. the envelope chart)."""
+    if not state.va_result_ready:
+        notify(state, "W", "Compute the assessment before exporting.")
+        return
+    try:
+        t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
+        snap = {
+            "reactor": state.va_reactor, "fluid": state.va_fluid,
+            "T": state.va_T, "P": state.va_P, "N_rpm": state.va_n_rpm,
+            "V_L": state.va_v_l, "corr_mode": state.va_corr_mode,
+            "reaction": state.va_reaction, "t_rxn": t_rxn, "dH": state.va_dH,
+            "hydro_df": state.va_hydro_df, "assessment": state.va_assess,
+            "dam_df": state.va_dam_df, "sl_df": state.va_sl_df,
+            "heat_df": state.va_heat_df, "env_fig": state.va_env_fig,
+            "env_caption": state.va_env_caption, "env_params": state.va_env_params,
+        }
+        state.va_pdf_bytes = build_vessel_assessment_pdf(snap)
+        state.va_pdf_name = report_filename("Vessel_Assessment", state.va_reactor)
+        state.va_pdf_ready = True
+        notify(state, "S", "PDF report generated — click Download.")
+    except Exception as exc:  # noqa: BLE001
+        notify(state, "E", f"PDF generation failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +595,7 @@ def on_va_compute(state):
     state.va_result_ready = True
     state.va_compute_class = "compute-btn-ok"
     state.va_stale = False
+    state.va_pdf_ready = False
     state.va_status = (f"Computed at {state.va_n_rpm:.0f} RPM, {state.va_v_l:.3g} L "
                        f"({state.va_corr_mode}) — Re = {hydro['Re']:,.0f}, "
                        f"P/V = {hydro['P/V (W/L)']:.3g} W/L.")
@@ -861,6 +894,19 @@ panels mark the 0.1 and 1.0 mixing-sensitivity thresholds.
 <|{va_env_caption}|text|mode=markdown|>
 
 <|chart|figure={va_env_fig}|class_name={va_env_class}|rebuild=True|>
+|>
+
+<|part|class_name=va-card|
+## Export Report
+Generate a PDF capturing the system configuration, hydrodynamics, Damköhler
+mixing-sensitivity, optional solid-suspension / heat balance, and the operating
+envelope chart.
+
+<|Generate PDF report|button|on_action=on_va_export_pdf|class_name=compute-btn|>
+
+<|part|render={va_pdf_ready}|
+<|Download PDF|file_download|content={va_pdf_bytes}|name={va_pdf_name}|label=⬇️ Download PDF|>
+|>
 |>
 |>
 """

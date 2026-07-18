@@ -156,6 +156,20 @@ def _logo_data_uri() -> str:
 
 LOGO_DATA_URI = _logo_data_uri()
 
+
+def _takeda_logo_uri() -> str:
+    """Return the centred page logo (takeda.svg) as a base64 ``data:`` URI."""
+    import base64
+
+    path = BASE_DIR / "images" / "general" / "takeda.svg"
+    if not path.exists():
+        return ""
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+TAKEDA_LOGO_URI = _takeda_logo_uri()
+
 def _time_factor(unit: str) -> float:
     return {"Seconds": 1.0, "Minutes": 60.0, "Hours": 3600.0}.get(unit, 60.0)
 
@@ -669,6 +683,17 @@ button.compute-btn-ok:hover {
     margin: 4px 0 12px 0;
 }
 
+/* Centred Takeda logo shown at the top of every page (in the shared shell,
+   above the page content). */
+.page-logo {
+    text-align: center;
+    margin: 6px 0 10px;
+}
+.page-logo img {
+    height: 40px;
+    width: auto;
+}
+
 /* Neat, level form controls: inside layout grids every input/selector fills its
    column and is top-aligned, and all number/text/selector fields share one
    height so boxes line up cleanly regardless of label length. Tight, uniform
@@ -719,10 +744,14 @@ button.compute-btn-ok:hover {
 
 <|toggle|theme|class_name=theme-toggle|>
 
+<|part|class_name=page-logo|
+![Takeda](__TAKEDA_URI__)
+|>
+
 <|content|>
 """
 
-root_md = root_md.replace("__LOGO_URI__", LOGO_DATA_URI)
+root_md = root_md.replace("__LOGO_URI__", LOGO_DATA_URI).replace("__TAKEDA_URI__", TAKEDA_LOGO_URI)
 
 
 pages = {

@@ -21,6 +21,8 @@ plot, qualitative KPI capture, confirmatory experiments, and PDF/CSV export.
 """
 from __future__ import annotations
 
+import csv
+import io
 from pathlib import Path
 
 import numpy as np
@@ -70,6 +72,21 @@ def _sf(val, default=0.0) -> float:
         return default if np.isnan(f) else f
     except (TypeError, ValueError):
         return default
+
+
+def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
+    """Midpoint of a reactor's min/max range (fill volume, agitation speed).
+
+    Falls back to whichever bound is available, then to ``fallback``."""
+    lo = _sf(row.get(min_key), 0.0)
+    hi = _sf(row.get(max_key), 0.0)
+    if lo > 0 and hi > 0:
+        return (lo + hi) / 2.0
+    if hi > 0:
+        return hi
+    if lo > 0:
+        return lo
+    return fallback
 
 
 def _reactor_row(name: str) -> pd.Series:
@@ -287,7 +304,7 @@ bp_np = _sf(_r0.get("Np"), 5.0)
 bp_nq = _sf(_r0.get("Nq"), 0.79)
 bp_n_min = _sf(_r0.get("N_rpm_min"), 0.0)
 bp_n_max = _sf(_r0.get("N_rpm_max"), 1000.0)
-bp_v_l = _sf(_r0.get("V_L_min"), _sf(_r0.get("V_L"), 1.0))
+bp_v_l = _avg_range(_r0, "V_L_min", "V_L_max", _sf(_r0.get("V_L"), 1.0))
 bp_v_min = _sf(_r0.get("V_L_min"), 0.0)
 bp_v_max = _sf(_r0.get("V_L_max"), _sf(_r0.get("V_L"), bp_v_l))
 bp_reactor_summary_df = _reactor_summary_df(_r0)
@@ -305,7 +322,7 @@ bp_started = False
 bp_t1_ctr_mode = "Default (0.2 W/kg)"
 bp_t1_ctr_mode_options = ["Default (0.2 W/kg)", "Custom P/m", "Custom RPM"]
 bp_t1_pm_center = 0.2    # W/kg (Custom P/m mode)
-bp_t1_rpm_center = 300.0  # RPM (Custom RPM mode)
+bp_t1_rpm_center = _avg_range(_r0, "N_rpm_min", "N_rpm_max", 300.0)  # RPM (Custom RPM mode)
 bp_t1_pm_eff = 0.2       # resolved centre P/m (W/kg), used by Tests 1 & 3
 bp_t1_ctr_info = ""
 bp_t1_hydro_df = pd.DataFrame(columns=["Condition", "N (RPM)", "P/m (W/kg)", "P/V (W/L)",
@@ -370,6 +387,11 @@ bp_pdf_bytes = b""
 bp_pdf_name = "Bourne_Protocol.pdf"
 bp_pdf_ready = False
 
+# CSV export for the Reaction Sensitivity Protocol
+bp_sens_csv_bytes = b""
+bp_sens_csv_name = "Bourne_for_Sensitivity.csv"
+bp_sens_csv_ready = False
+
 
 # ---------------------------------------------------------------------------
 # Change handlers
@@ -381,7 +403,8 @@ def on_bp_reactor_change(state):
     state.bp_nq = _sf(row.get("Nq"), state.bp_nq)
     state.bp_n_min = _sf(row.get("N_rpm_min"), 0.0)
     state.bp_n_max = _sf(row.get("N_rpm_max"), 1000.0)
-    state.bp_v_l = _sf(row.get("V_L_min"), _sf(row.get("V_L"), state.bp_v_l))
+    state.bp_t1_rpm_center = _avg_range(row, "N_rpm_min", "N_rpm_max", state.bp_t1_rpm_center)
+    state.bp_v_l = _avg_range(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), state.bp_v_l))
     state.bp_v_min = _sf(row.get("V_L_min"), 0.0)
     state.bp_v_max = _sf(row.get("V_L_max"), _sf(row.get("V_L"), state.bp_v_l))
     state.bp_reactor_summary_df = _reactor_summary_df(row)
@@ -1009,6 +1032,61 @@ def on_bp_export_pdf(state):
         notify(state, "E", f"PDF generation failed: {exc}")
 
 
+def _sens_test_finding(sensitive: bool, assessed: bool, test: int) -> str:
+    """Short per-test finding label for the Sensitivity Protocol CSV export."""
+    if not assessed:
+        return ""
+    if test == 1:
+        return "Mixing-sensitive (impeller speed)" if sensitive else "Mixing-insensitive"
+    if test == 2:
+        return "Sensitive to feed rate (mesomixing)" if sensitive else "Micromixing-controlled"
+    return "Sensitive to feed location (mesomixing)" if sensitive else "Macromixing-controlled"
+
+
+def on_bp_export_sens_csv(state):
+    """Export the Bourne outcome as a field/value CSV the Sensitivity page imports."""
+    if not state.bp_t1_assessed:
+        notify(state, "W", "Assess at least Test 1 before exporting.")
+        return
+    try:
+        dominant, _ = _dominant_and_conclusions(state)
+        mechanism = dominant if dominant in ("Micromixing", "Mesomixing", "Macromixing") else ""
+        overall = "yes" if state.bp_t1_sensitive else "no"
+
+        def _kpis(res):
+            return (res or {}).get("sensitive_names", "") if res else ""
+
+        rows = [
+            ("record_type", "bourne_results"),
+            ("project_name", ""),
+            ("reactor", str(state.bp_reactor)),
+            ("fluid", str(state.bp_fluid)),
+            ("test1_assessed", "yes" if state.bp_t1_assessed else "no"),
+            ("test1_finding", _sens_test_finding(state.bp_t1_sensitive, state.bp_t1_assessed, 1)),
+            ("test1_sensitive_kpis", _kpis(state.bp_t1_result)),
+            ("test2_assessed", "yes" if state.bp_t2_assessed else "no"),
+            ("test2_finding", _sens_test_finding(state.bp_t2_sensitive, state.bp_t2_assessed, 2)),
+            ("test2_sensitive_kpis", _kpis(state.bp_t2_result)),
+            ("test3_assessed", "yes" if state.bp_t3_assessed else "no"),
+            ("test3_finding", _sens_test_finding(state.bp_t3_sensitive, state.bp_t3_assessed, 3)),
+            ("test3_sensitive_kpis", _kpis(state.bp_t3_result)),
+            ("overall_sensitive", overall),
+            ("dominant_mechanism", mechanism),
+        ]
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["field", "value"])
+        writer.writerows(rows)
+        state.bp_sens_csv_bytes = buf.getvalue().encode("utf-8")
+        state.bp_sens_csv_name = report_filename(
+            "Bourne_for_Sensitivity", state.bp_reactor).replace(".pdf", ".csv")
+        state.bp_sens_csv_ready = True
+        notify(state, "S", "CSV export ready \u2014 click Download, then import it on the "
+               "Reaction Sensitivity Protocol page.")
+    except Exception as exc:  # noqa: BLE001 - surface export errors to the user
+        notify(state, "E", f"CSV export failed: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
@@ -1184,6 +1262,17 @@ responses, and the decision-tree conclusion.
 
 <|part|render={bp_pdf_ready}|
 <|Download PDF|file_download|content={bp_pdf_bytes}|name={bp_pdf_name}|label=⬇️ Download PDF|>
+|>
+
+### Export for the Reaction Sensitivity Protocol
+Export the outcome as a CSV that can be imported into the **🧭 Reaction
+Sensitivity Protocol** (Step 0 pre-screen) to feed the experimental result into
+the overall sensitivity assessment.
+
+<|Generate Sensitivity CSV|button|on_action=on_bp_export_sens_csv|class_name=compute-btn|>
+
+<|part|render={bp_sens_csv_ready}|
+<|Download CSV|file_download|content={bp_sens_csv_bytes}|name={bp_sens_csv_name}|label=Download Sensitivity CSV|>
 |>
 |>
 """

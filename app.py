@@ -34,6 +34,7 @@ from pages import (
     reaction_database,
     unit_converter,
     vessel_assessment,
+    vessel_comparison,
     vessel_database,
 )
 
@@ -129,6 +130,7 @@ menu_options = [
     ("Reaction_Database", "Reactions"),
     ("Particle_Database", "Particles"),
     ("Vessel_Assessment", "Vessel Assessment"),
+    ("Vessel_Comparison", "Vessel Comparison"),
     ("Bourne_Protocol", "Bourne Protocol"),
     ("Mixing_Sensitivity", "Reaction Sensitivity Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
@@ -458,7 +460,8 @@ root_md = """
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
    N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
    Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
-   7=Bourne Protocol, 8=Reaction Sensitivity, 9=Heat Transfer, 10=Unit Converter. */
+   7=Vessel Comparison, 8=Bourne Protocol, 9=Reaction Sensitivity, 10=Heat Transfer,
+   11=Unit Converter. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -475,15 +478,18 @@ root_md = """
     content: "🌀";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
-    content: "🅱️";
+    content: "⚖️";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
-    content: "🧭";
+    content: "🅱️";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
-    content: "🔥";
+    content: "🧭";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(10) .MuiAvatar-root::after {
+    content: "🔥";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
     content: "🔄";
 }
 
@@ -549,6 +555,11 @@ a, .MuiLink-root {
 .taipy-dark .scheme-box {
     background: rgba(225, 37, 27, 0.16);
 }
+.taipy-dark .result-box {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+    border-left-color: #9AA1A9;
+}
 .taipy-dark .taipy-table .MuiTableCell-head {
     background-color: rgba(225, 37, 27, 0.24) !important;
     color: #F0F0F0 !important;
@@ -603,6 +614,18 @@ button.compute-btn-ok:hover {
     border-radius: 6px;
     font-family: monospace;
     margin: 8px 0 4px;
+}
+
+/* Result callout: wraps a step's computed assessment so the outcome stands
+   apart from the input controls and the white card background. */
+.result-box {
+    display: block;
+    background: #F4F5F6;
+    border: 1px solid #E1E4E8;
+    border-left: 4px solid #5C6670;
+    border-radius: 6px;
+    padding: 4px 16px 8px;
+    margin: 12px 0 4px;
 }
 
 /* On/off toggles: neutral gray when OFF (first button) is selected, Takeda red
@@ -709,6 +732,7 @@ pages = {
     "Reaction_Database": reaction_database.page,
     "Particle_Database": particle_database.page,
     "Vessel_Assessment": vessel_assessment.page,
+    "Vessel_Comparison": vessel_comparison.page,
     "Bourne_Protocol": bourne_protocol.page,
     "Mixing_Sensitivity": mixing_sensitivity.page,
     "Heat_Transfer": heat_transfer_md,

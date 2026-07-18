@@ -142,6 +142,8 @@ page = Markdown(
 
 <|{particle_msg}|text|>
 
+<|part|class_name=va-card|
+## Database
 Edit particle properties inline — **every change is saved automatically**. Use
 the search box or column filters to narrow the table, or the **Add Particle**
 form below for a validated entry.
@@ -151,7 +153,9 @@ form below for a validated entry.
 
 <|{particle_view_df}|table|editable={particle_search == ""}|filter|rebuild|on_edit=on_particle_edit|on_delete=on_particle_delete|on_add=on_particle_add|width=100%|page_size=12|>
 |>
+|>
 
+<|part|class_name=va-card|
 ## Add Particle
 <|layout|columns=1 1 1|class_name=form-grid|
 <|{part_new_name}|input|label=Particle name *|>
@@ -176,12 +180,15 @@ form below for a validated entry.
 |>
 
 <|Add particle|button|on_action=on_particle_add_row|>
+|>
 
+<|part|class_name=va-card|
 ## Import / Export
 <|layout|columns=1 1|
-<|Download CSV|file_download|content={particle_export}|name=particles_export.csv|label=⬇️ Download particle database|>
+<|Download CSV|file_download|content={particle_export}|name=particles_export.csv|label=Download particle database|>
 
-<|{particle_upload}|file_selector|label=⬆️ Import CSV (replaces database)|on_action=on_particle_import|extensions=.csv|>
+<|{particle_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_particle_import|extensions=.csv|>
+|>
 |>
 """
 )

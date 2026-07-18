@@ -429,6 +429,7 @@ page = Markdown(
 <|{fluid_tab}|toggle|lov={fluid_tab_options}|>
 
 <|part|render={fluid_tab == "Solvent Library"}|
+<|part|class_name=va-card|
 ## Built-in Solvent Library
 
 Reference table of all built-in solvents with **properties at 25 °C and 1 atm**.
@@ -440,7 +441,9 @@ temperature to get properties from literature correlations.
 
 <|{solvent_library_view_df}|table|width=100%|filter|page_size=15|>
 |>
+|>
 
+<|part|class_name=va-card|
 ### Custom Fluids
 Manually added fluids with fixed (temperature-independent) properties.
 
@@ -448,15 +451,17 @@ Manually added fluids with fixed (temperature-independent) properties.
 <|{fluid_df}|table|width=100%|filter|page_size=10|>
 |>
 |>
+|>
 
 <|part|render={fluid_tab == "Solvent Properties"}|
+<|part|class_name=va-card|
 ## Solvent Properties at Temperature
 
 Compute physical properties for a built-in solvent at any liquid-phase
 temperature and pressure. The Antoine equation adjusts the boiling point for
 non-atmospheric pressure.
 
-<|layout|columns=1 1 1|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{solvent_selected}|selector|lov={solvent_options}|dropdown|label=Solvent|on_change=on_solvent_change|>
 
 <|{solvent_P}|number|label=Pressure (atm)|on_change=on_solvent_change|>
@@ -470,8 +475,10 @@ non-atmospheric pressure.
 
 <|chart|figure={solvent_prop_fig}|height=780px|>
 |>
+|>
 
 <|part|render={fluid_tab == "Custom Fluids"}|
+<|part|class_name=va-card|
 ## Custom Fluids
 
 Add or edit **custom fluids** not in the built-in solvent library (mixtures,
@@ -483,7 +490,9 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 
 <|{fluid_view_df}|table|editable={fluid_search == ""}|filter|rebuild|on_edit=on_fluid_edit|on_delete=on_fluid_delete|on_add=on_fluid_add|width=100%|page_size=12|>
 |>
+|>
 
+<|part|class_name=va-card|
 ### Add Custom Fluid
 <|layout|columns=1 1 1|class_name=form-grid|
 <|{flu_new_name}|input|label=Fluid name *|>
@@ -518,15 +527,17 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 <|{flu_new_hh}|number|label=δh H-bonding (MPa½)|>
 |>
 |>
+|>
 
 <|part|render={fluid_tab == "Blend"}|
+<|part|class_name=va-card|
 ## Blend Fluids
 
 Create a blend from solvents and/or custom fluids. Enter proportions on a
 **volume** or **mass** basis; properties are combined with literature mixing
 rules (log-mixing viscosity, volume-additive density, etc.).
 
-<|layout|columns=2 1 1|
+<|layout|columns=2 1 1|class_name=form-grid|
 <|{blend_selected}|selector|lov={blend_available}|multiple|dropdown|label=Component fluids|on_change=on_blend_select|>
 
 <|{blend_basis}|toggle|lov={blend_basis_options}|label=Input basis|>
@@ -537,8 +548,11 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 ### Component amounts
 <|{blend_input_df}|table|editable|rebuild|on_edit=on_blend_amount_edit|width=60%|show_all|>
 
-<|Compute blend|button|on_action=on_blend_compute|>
+<|Compute blend|button|on_action=on_blend_compute|class_name=compute-btn|>
+|>
 
+<|part|class_name=va-card|
+### Results
 <|{blend_status}|text|>
 
 <|{blend_result_df}|table|width=100%|show_all|>
@@ -546,13 +560,16 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 ### Miscibility screening
 <|{blend_misc_df}|table|width=100%|show_all|>
 |>
+|>
 
 <|part|render={fluid_tab == "Import / Export"}|
+<|part|class_name=va-card|
 ## Import / Export (custom fluids)
 <|layout|columns=1 1|
-<|Download CSV|file_download|content={fluid_export}|name=fluids_export.csv|label=⬇️ Download custom fluids|>
+<|Download CSV|file_download|content={fluid_export}|name=fluids_export.csv|label=Download custom fluids|>
 
-<|{fluid_upload}|file_selector|label=⬆️ Import CSV (replaces custom fluids)|on_action=on_fluid_import|extensions=.csv|>
+<|{fluid_upload}|file_selector|label=Import CSV (replaces custom fluids)|on_action=on_fluid_import|extensions=.csv|>
+|>
 |>
 |>
 """

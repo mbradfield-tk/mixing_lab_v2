@@ -71,6 +71,22 @@ def _sf(val, default=0.0) -> float:
         return default
 
 
+def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
+    """Midpoint of a reactor's min/max range (e.g. fill volume, agitation speed).
+
+    Falls back to whichever bound is available, then to ``fallback`` when neither
+    is defined."""
+    lo = _sf(row.get(min_key), 0.0)
+    hi = _sf(row.get(max_key), 0.0)
+    if lo > 0 and hi > 0:
+        return (lo + hi) / 2.0
+    if hi > 0:
+        return hi
+    if lo > 0:
+        return lo
+    return fallback
+
+
 def _reactor_row(name: str) -> pd.Series:
     row = reactors_df[reactors_df["reactor_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
@@ -203,10 +219,10 @@ va_media_caption = media_caption(_reactor_id(va_reactor))
 _r0 = _reactor_row(va_reactor)
 va_d_tank = _sf(_r0.get("D_tank_m"), 0.1)
 va_d_imp = _sf(_r0.get("D_imp_m"), 0.05)
-va_n_rpm = _sf(_r0.get("N_rpm_max"), 300.0)
+va_n_rpm = _avg_range(_r0, "N_rpm_min", "N_rpm_max", 300.0)
 va_np = _sf(_r0.get("Np"), 5.0)
 va_nq = _sf(_r0.get("Nq"), 0.79)
-va_v_l = _sf(_r0.get("V_L"), _sf(_r0.get("V_L_max"), 1.0))
+va_v_l = _avg_range(_r0, "V_L_min", "V_L_max", _sf(_r0.get("V_L"), 1.0))
 
 # Operation mode — fed-batch (unlocks feed inputs feeding the mesomixing check)
 va_fed_mode = "Off"
@@ -333,10 +349,10 @@ def on_va_reactor_change(state):
     row = _reactor_row(state.va_reactor)
     state.va_d_tank = _sf(row.get("D_tank_m"), state.va_d_tank)
     state.va_d_imp = _sf(row.get("D_imp_m"), state.va_d_imp)
-    state.va_n_rpm = _sf(row.get("N_rpm_max"), state.va_n_rpm)
+    state.va_n_rpm = _avg_range(row, "N_rpm_min", "N_rpm_max", state.va_n_rpm)
     state.va_np = _sf(row.get("Np"), state.va_np)
     state.va_nq = _sf(row.get("Nq"), state.va_nq)
-    state.va_v_l = _sf(row.get("V_L"), _sf(row.get("V_L_max"), state.va_v_l))
+    state.va_v_l = _avg_range(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), state.va_v_l))
     rid = _reactor_id(state.va_reactor)
     state.va_viewer_html = build_vessel_viewer_html(rid, VIEWER_H)
     state.va_media_caption = media_caption(rid)
@@ -622,16 +638,16 @@ def _build_envelope(state, t_rxn: float):
         fig.add_trace(go.Scatter(
             x=np.concatenate([n_arr, n_arr[::-1]]),
             y=np.concatenate([y_hi, y_lo[::-1]]),
-            fill="toself", fillcolor="rgba(92,102,112,0.15)",
+            fill="toself", fillcolor="rgba(92,102,112,0.22)",
             line={"width": 0}, hoverinfo="skip", showlegend=False), row=r, col=c)
         # Max-volume boundary (solid) and min-volume boundary (dotted).
         fig.add_trace(go.Scatter(
-            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#5C6670"},
+            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#000000"},
             name=f"V_max = {v_max:.0f} L", legendgroup="vmax",
             showlegend=first), row=r, col=c)
         fig.add_trace(go.Scatter(
             x=n_arr, y=y_lo, mode="lines",
-            line={"width": 2, "color": "#5C6670", "dash": "dot"},
+            line={"width": 2, "color": "#000000", "dash": "dot"},
             name=f"V_min = {v_min:.0f} L", legendgroup="vmin",
             showlegend=first), row=r, col=c)
         # Current operating point (red star).
@@ -654,6 +670,7 @@ def _build_envelope(state, t_rxn: float):
     _legend_y = 1 + 45 / _plot_area
     fig.update_layout(
         height=fig_height, margin={"t": _t_margin, "b": 40},
+        plot_bgcolor="rgba(225,37,27,0.06)", paper_bgcolor="white",
         legend={"orientation": "h", "y": _legend_y, "yanchor": "bottom",
                 "x": 0.5, "xanchor": "center"})
     state.va_env_fig = fig

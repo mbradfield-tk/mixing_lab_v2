@@ -175,6 +175,8 @@ page = Markdown(
 
 <|{reaction_msg}|text|>
 
+<|part|class_name=va-card|
+## Database
 Edit kinetic data inline — **every change is saved automatically**. Use the
 search box or column filters to narrow the table, the row actions to add or
 delete rows, or the **Add Reaction** form below for a validated entry.
@@ -184,12 +186,16 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 
 <|{reaction_view_df}|table|editable={reaction_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
 |>
+|>
 
+<|part|class_name=va-card|
 ## Reaction Scheme
 <|{reaction_scheme_selected}|selector|lov={reaction_scheme_options}|dropdown|label=View scheme for reaction|on_change=on_reaction_scheme_select|>
 
 <|{reaction_scheme_text}|text|class_name=scheme-box|>
+|>
 
+<|part|class_name=va-card|
 ## Add Reaction
 <|layout|columns=1 1 1|class_name=form-grid|
 <|{rxn_new_name}|input|label=Reaction name *|>
@@ -224,12 +230,15 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 <|{rxn_new_scheme}|input|label=Reaction scheme (e.g. A + B → C + D)|class_name=form-grid|>
 
 <|Add reaction|button|on_action=on_reaction_add_row|>
+|>
 
+<|part|class_name=va-card|
 ## Import / Export
-<|layout|columns=1 1|
-<|Download CSV|file_download|content={reaction_export}|name=reactions_export.csv|label=⬇️ Download reaction database|>
+<|layout|columns=1 3|
+<|Download CSV|file_download|content={reaction_export}|name=reactions_export.csv|label=Download reaction database|>
 
-<|{reaction_upload}|file_selector|label=⬆️ Import CSV (replaces database)|on_action=on_reaction_import|extensions=.csv|>
+<|{reaction_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_reaction_import|extensions=.csv|>
+|>
 |>
 """
 )

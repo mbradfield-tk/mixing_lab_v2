@@ -186,8 +186,10 @@ ms_step5_assess = ""
 # ---------------------------------------------------------------------------
 # State — Step 6 (summary) + Step 7 (export)
 # ---------------------------------------------------------------------------
+ms_started = False
 ms_ready = False
-ms_summary_note = ""
+ms_summary_note = ("*Set your inputs in the steps below, then click **Start assessment** to see "
+                   "the overall verdict, findings, and recommended next steps.*")
 ms_findings_df = pd.DataFrame(columns=["Sensitivity Type", "Finding"])
 ms_verdict = ""
 ms_nextsteps_df = pd.DataFrame(columns=["Area", "Recommended action"])
@@ -222,6 +224,10 @@ def _bourne_derive(state):
 # Central recompute — runs on every relevant input change
 # ---------------------------------------------------------------------------
 def _recompute(state):
+    # No assessment is made until the user explicitly starts it (avoids showing
+    # results for the default inputs on page load).
+    if not getattr(state, "ms_started", False):
+        return
     # ---- Step 0: Bourne pre-screen -------------------------------------
     b_sensitive, b_mechs, b_done = _bourne_derive(state)
     test_rows = state.ms_bourne_findings_df.to_dict("records") if not state.ms_bourne_findings_df.empty else []
@@ -284,6 +290,11 @@ def _recompute(state):
     using_approx = state.ms_kinetics_avail.startswith("Approximate")
     kinetics_declined = state.ms_kinetics_avail.startswith("No")
     kinetics_ok = (t_rxn > 0) and not kinetics_declined
+    # "known" = usable t_rxn for the Damköhler-based (theory) mechanisms;
+    # "resolved" = the kinetics question has been answered (available OR declined),
+    # which is enough to produce an overall verdict from the other evidence.
+    kinetics_known = kinetics_ok
+    kinetics_resolved = kinetics_ok or kinetics_declined
 
     n_sym = "k'" if order.startswith("pseudo") else "k"
     conc = {"0": "", "1": "·C", "2": "·C²"}.get(order.split("-")[-1] if order else "1", f"·C^{order}")
@@ -433,7 +444,7 @@ def _recompute(state):
         state.ms_dt_ad_caption = ""
 
     # ---- Step 5: mixing time vs reaction time --------------------------
-    if t_rxn > 0:
+    if kinetics_known and t_rxn > 0:
         state.ms_trxn_caption = f"Your reaction time: **t_rxn = {t_rxn:.4g} s**."
         if t_rxn < 0.1:
             state.ms_step5_assess = _amd(
@@ -459,21 +470,28 @@ def _recompute(state):
             micro_likely = False
     else:
         state.ms_trxn_caption = ""
-        state.ms_step5_assess = ""
+        if kinetics_declined:
+            state.ms_step5_assess = _amd(
+                "unknown", "Reaction kinetics not available — the mixing-time vs reaction-time "
+                "comparison cannot be evaluated. A Bourne pre-screen (Test 1) gives a direct "
+                "experimental answer.")
+        else:
+            state.ms_step5_assess = ""
         micro_likely = False
 
     # ---- Step 6: findings, verdict, next steps -------------------------
     findings = _build_findings(
         b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
         meso_sensitive, competing, is_semi_batch, multiphase, phases,
-        has_enthalpy, heat_sensitive, dH_eff, dt_ad)
+        has_enthalpy, heat_sensitive, dH_eff, dt_ad, kinetics_known)
     verdict, verdict_kind = _build_verdict(
         b_sensitive, b_mechs, b_done, findings, competing)
     next_steps = _build_next_steps(
         b_sensitive, b_mechs, using_approx, micro_likely, t_rxn, meso_sensitive,
-        multiphase, has_enthalpy, heat_sensitive, is_semi_batch)
+        multiphase, has_enthalpy, heat_sensitive, is_semi_batch, kinetics_known,
+        kinetics_declined)
 
-    state.ms_ready = bool(kinetics_ok and phases and competing_set and heat_resolved)
+    state.ms_ready = bool(kinetics_resolved and phases and competing_set and heat_resolved)
 
     state.ms_findings_df = pd.DataFrame(
         [{"Sensitivity Type": m, "Finding": f"{s} — {d}"} for m, s, d in findings])
@@ -519,7 +537,7 @@ def _strip_md(text: str) -> str:
 # ---------------------------------------------------------------------------
 def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                     meso_sensitive, competing, is_semi_batch, multiphase, phases,
-                    has_enthalpy, heat_sensitive, dH_eff, dt_ad):
+                    has_enthalpy, heat_sensitive, dH_eff, dt_ad, kinetics_known):
     findings: list[tuple[str, str, str]] = []
     kpi_phrase = _sensitive_kpi_phrase(test_rows)
     rem = _remaining_tests(b_done)
@@ -544,7 +562,11 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
                          "Consider running Bourne Protocol Part 1 for a direct experimental answer."))
 
     # Micromixing
-    if micro_likely:
+    if not kinetics_known:
+        findings.append(("Micromixing", "⚪ Unknown",
+                         "Reaction kinetics not available — micromixing cannot be assessed from "
+                         "t_rxn. A Bourne pre-screen (Test 1) gives a direct experimental answer."))
+    elif micro_likely:
         findings.append(("Micromixing", "🔴 Likely sensitive",
                          f"t_rxn = {t_rxn:.4g} s — fast enough that local energy dissipation "
                          "controls the mixing rate."))
@@ -568,7 +590,11 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
                          "No competing reactions; batch process (no feed addition)."))
 
     # Macromixing
-    if t_rxn < 60:
+    if not kinetics_known:
+        findings.append(("Macromixing (blend time)", "⚪ Unknown",
+                         "Reaction kinetics not available — t_rxn cannot be compared to the "
+                         "vessel blend time."))
+    elif t_rxn < 60:
         findings.append(("Macromixing (blend time)", "🟡 Check at scale",
                          f"t_rxn = {t_rxn:.4g} s is within the range of blend times in larger "
                          "vessels (10–120 s). Compute Da_macro for your reactor."))
@@ -671,7 +697,8 @@ def _build_verdict(b_sensitive, b_mechs, b_done, findings, competing):
 
 
 def _build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
-                      meso_sensitive, multiphase, has_enthalpy, heat_sensitive, is_semi_batch):
+                      meso_sensitive, multiphase, has_enthalpy, heat_sensitive, is_semi_batch,
+                      kinetics_known, kinetics_declined):
     steps: list[dict] = []
     if b_sensitive is None:
         steps.append({"Area": "Bourne pre-screen",
@@ -692,7 +719,12 @@ def _build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
     if using_approx:
         steps.append({"Area": "Kinetics",
                       "Recommended action": "Measure actual kinetics to replace the approximate values."})
-    if micro_likely or t_rxn < 60:
+    if kinetics_declined:
+        steps.append({"Area": "Kinetics",
+                      "Recommended action": "Measure the reaction kinetics (e.g. reaction "
+                      "calorimetry / in-situ monitoring) and add them to the database to enable "
+                      "the Damköhler-based mixing assessment."})
+    if kinetics_known and (micro_likely or t_rxn < 60):
         steps.append({"Area": "Damköhler analysis",
                       "Recommended action": "Compute Da_macro / Da_micro for your reactor on the "
                       "Vessel Assessment page."})
@@ -732,11 +764,19 @@ def on_ms_reaction_change(state):
         except Exception:  # noqa: BLE001
             pass
     state.ms_c0_heat = round(C0, 4) if C0 > 0 else 1.0
-    _recompute(state)
+    _safe_recompute(state)
 
 
 def on_ms_change(state):
-    _recompute(state)
+    _safe_recompute(state)
+
+
+def _safe_recompute(state):
+    """Recompute all assessments; surface any error instead of leaving them stale."""
+    try:
+        _recompute(state)
+    except Exception as exc:  # noqa: BLE001 - never leave the UI silently stale
+        notify(state, "E", f"Assessment update failed: {exc}")
 
 
 def on_ms_bourne_import(state):
@@ -804,37 +844,51 @@ def on_ms_export_pdf(state):
 
 
 def on_ms_init(state):
-    """Populate all assessments on first load."""
+    """Start (or refresh) the assessment once the user has set the inputs."""
+    state.ms_started = True
     on_ms_reaction_change(state)
 
 
-# ---------------------------------------------------------------------------
-# Pre-populate default assessments at import so the page is not blank on load.
-# ---------------------------------------------------------------------------
-class _InitNS:
-    pass
-
-
-def _prepopulate():
-    ns = _InitNS()
-    for _k, _v in list(globals().items()):
-        if _k.startswith("ms_") and not callable(_v):
-            setattr(ns, _k, _v.copy() if hasattr(_v, "copy") else _v)
-    ns._ms_cache = {}
-    try:
-        on_ms_reaction_change(ns)
-    except Exception:  # noqa: BLE001 - never block import on a default-compute error
-        return
-    for _k in ("ms_step0_assess", "ms_kinetics_md", "ms_step1_assess", "ms_step2_assess",
-               "ms_step3_assess", "ms_step4_assess", "ms_step5_assess", "ms_trxn_caption",
-               "ms_dt_ad_caption", "ms_ready", "ms_findings_df", "ms_verdict",
-               "ms_summary_note", "ms_nextsteps_df", "ms_show_dh_action",
-               "ms_rho_cp", "ms_c0_heat"):
-        if hasattr(ns, _k):
-            globals()[_k] = getattr(ns, _k)
-
-
-_prepopulate()
+def on_ms_reset(state):
+    """Reset every input back to its default and clear all results/recommendations."""
+    # inputs
+    state.ms_bourne_status = ms_bourne_status_options[0]
+    state.ms_bourne_mech = "Not resolved"
+    state.ms_bourne_tests = ["Test 1"]
+    state.ms_bourne_upload = ""
+    state.ms_kinetics_avail = ms_kinetics_options[0]
+    state.ms_reaction = reaction_options[0] if reaction_options else ""
+    state.ms_semi_batch = "Off"
+    state.ms_phases = ["Liquid"]
+    state.ms_competing = "— select —"
+    state.ms_dh_action = "— select —"
+    state.ms_dh_ref = dh_ref_options[0]
+    state.ms_rho_cp = 1800.0
+    state.ms_c0_heat = 1.0
+    # computed outputs
+    state.ms_step0_assess = ""
+    state.ms_step1_assess = ""
+    state.ms_step2_assess = ""
+    state.ms_step3_assess = ""
+    state.ms_step4_assess = ""
+    state.ms_step5_assess = ""
+    state.ms_kinetics_md = ""
+    state.ms_trxn_caption = ""
+    state.ms_dt_ad_caption = ""
+    state.ms_show_dh_action = False
+    state.ms_bourne_meta_caption = ""
+    state.ms_bourne_findings_df = pd.DataFrame(columns=["Test", "Finding", "Sensitive KPI(s)"])
+    state.ms_findings_df = pd.DataFrame(columns=["Sensitivity Type", "Finding"])
+    state.ms_nextsteps_df = pd.DataFrame(columns=["Area", "Recommended action"])
+    state.ms_verdict = ""
+    state.ms_summary_note = ("*Set your inputs in the steps below, then click **Start assessment** "
+                             "to see the overall verdict, findings, and recommended next steps.*")
+    state.ms_pdf_ready = False
+    state.ms_pdf_bytes = b""
+    # back to the pre-start state so no results are shown
+    state.ms_ready = False
+    state.ms_started = False
+    notify(state, "I", "Assessment reset — set your inputs and start again.")
 
 
 # ---------------------------------------------------------------------------
@@ -849,7 +903,16 @@ and, if so, **which mechanism controls** it — micromixing, mesomixing,
 macromixing, interphase mass transport, or heat transfer. Work through the steps;
 the **Summary** synthesises everything into an overall verdict.
 
-<|Refresh assessment|button|on_action=on_ms_init|class_name=compute-btn|>
+<|part|render={not ms_started}|
+▶️ **Set your inputs in the steps below, then start the assessment.** No results are
+shown until you do.
+
+<|Start assessment|button|on_action=on_ms_init|class_name=compute-btn|>
+|>
+
+<|part|render={ms_started}|
+<|🔄 Reset assessment|button|on_action=on_ms_reset|class_name=compute-btn|>
+|>
 
 <|part|class_name=va-card|
 ## Step 0 — Bourne Protocol Pre-Screen
@@ -864,7 +927,7 @@ have run the Bourne Protocol, enter the outcome (or import its results CSV).
 <|{ms_bourne_tests}|selector|lov={ms_bourne_tests_options}|multiple|dropdown|label=Tests completed|on_change=on_ms_change|>
 |>
 
-<|{ms_bourne_upload}|file_selector|label=⬆️ Import Bourne results CSV (optional)|on_action=on_ms_bourne_import|extensions=.csv|>
+<|{ms_bourne_upload}|file_selector|label=Import Bourne results CSV (optional)|on_action=on_ms_bourne_import|extensions=.csv|>
 
 <|part|render={ms_bourne_meta_caption != ""}|
 <|{ms_bourne_meta_caption}|text|mode=markdown|>
@@ -874,7 +937,9 @@ have run the Bourne Protocol, enter the outcome (or import its results CSV).
 <|{ms_bourne_findings_df}|table|width=100%|show_all|>
 |>
 
+<|part|render={ms_started}|class_name=result-box|
 <|{ms_step0_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -890,9 +955,11 @@ reference timescale for every mechanism below.
 
 <|{ms_semi_batch}|toggle|lov={ms_semi_batch_options}|label=Semi-batch (fed-batch) process|class_name=onoff-toggle|on_change=on_ms_change|>
 
+<|part|render={ms_started}|class_name=result-box|
 <|{ms_kinetics_md}|text|mode=markdown|>
 
 <|{ms_step1_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -902,7 +969,9 @@ kLa, or solid dissolution k_SL) before mixing even matters.
 
 <|{ms_phases}|selector|lov={ms_phase_options}|multiple|dropdown|label=Which phases are present?|on_change=on_ms_change|class_name=form-grid|>
 
+<|part|render={ms_started}|class_name=result-box|
 <|{ms_step2_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -913,7 +982,9 @@ selectivity.
 
 <|{ms_competing}|selector|lov={ms_competing_options}|dropdown|label=Are there competing reactions?|on_change=on_ms_change|class_name=form-grid|>
 
+<|part|render={ms_started}|class_name=result-box|
 <|{ms_step3_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -936,9 +1007,11 @@ The selected reaction has **no ΔH data**. Choose how to proceed:
 <|{ms_c0_heat}|number|label=Limiting-reagent C₀ (mol/L)|on_change=on_ms_change|>
 |>
 
+<|part|render={ms_started}|class_name=result-box|
 <|{ms_dt_ad_caption}|text|mode=markdown|>
 
 <|{ms_step4_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -947,16 +1020,18 @@ The Damköhler number Da = t_mix / t_rxn; when Da > 1 the reaction outpaces mixi
 and is mixing-sensitive. Micromixing t_E ≈ 17.3·√(ν/ε); macromixing (blend time)
 θ₉₅ = 5.2·V/(N_Q·N·D³), which grows ∝ T^(2/3) with scale.
 
+<|part|render={ms_step5_assess != ""}|class_name=result-box|
 <|{ms_trxn_caption}|text|mode=markdown|>
 
 <|{ms_step5_assess}|text|mode=markdown|>
+|>
 |>
 
 <|part|class_name=va-card|
 ## Step 6 — Summary & Recommendations
 <|{ms_summary_note}|text|mode=markdown|>
 
-<|part|render={ms_ready}|
+<|part|render={ms_ready}|class_name=result-box|
 ### Overall verdict
 <|{ms_verdict}|text|mode=markdown|>
 
@@ -980,7 +1055,7 @@ Generate a PDF capturing the inputs, findings, overall verdict, and next steps.
 <|Generate PDF report|button|on_action=on_ms_export_pdf|class_name=compute-btn|>
 
 <|part|render={ms_pdf_ready}|
-<|Download PDF|file_download|content={ms_pdf_bytes}|name={ms_pdf_name}|label=⬇️ Download PDF|>
+<|Download PDF|file_download|content={ms_pdf_bytes}|name={ms_pdf_name}|label=Download PDF|>
 |>
 |>
 """

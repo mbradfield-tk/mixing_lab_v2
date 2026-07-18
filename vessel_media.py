@@ -115,3 +115,60 @@ def media_caption(reactor_id: str) -> str:
     kind, path = media
     label = "Interactive 3D model" if kind == "3d" else "Image"
     return f"{label}: {path.name}"
+
+
+def _viewer_card_body(name: str, reactor_id: str, height: int) -> str:
+    """Return the inner HTML (title + media) for one vessel card."""
+    media = find_vessel_media(reactor_id)
+    title = (f"<div style=\"font-weight:600;color:#333;margin-bottom:6px;"
+             f"font-family:sans-serif;font-size:14px;\">{name}</div>")
+    if media is None:
+        body = (f"<div style=\"height:{height}px;display:flex;align-items:center;"
+                "justify-content:center;color:#999;background:#f5f5f5;border-radius:4px;"
+                "font-family:sans-serif;font-size:13px;\">No image available</div>")
+        return title + body
+    kind, path = media
+    if kind == "3d":
+        mime = "model/gltf-binary" if path.suffix.lower() == ".glb" else "model/gltf+json"
+        src = _data_uri(str(path), mime)
+        body = (
+            f"<model-viewer src=\"{src}\" camera-controls auto-rotate "
+            "rotation-per-second=\"20deg\" interaction-prompt=\"none\" "
+            "shadow-intensity=\"1\" exposure=\"1\" "
+            f"style=\"width:100%;height:{height}px;background:#f5f5f5;border-radius:4px;\">"
+            "</model-viewer>")
+        return title + body
+    suffix = path.suffix.lower().lstrip(".")
+    mime = f"image/{'jpeg' if suffix in ('jpg', 'jpeg') else suffix}"
+    src = _data_uri(str(path), mime)
+    body = (f"<div style=\"height:{height}px;display:flex;align-items:center;"
+            "justify-content:center;background:#f5f5f5;border-radius:4px;\">"
+            f"<img src=\"{src}\" alt=\"{name}\" "
+            f"style=\"max-width:100%;max-height:{height}px;object-fit:contain;\"/></div>")
+    return title + body
+
+
+def build_multi_vessel_viewer_html(items: list[tuple[str, str]], height: int = 280) -> str:
+    """Build one HTML document showing several vessels side-by-side.
+
+    ``items`` is a list of ``(display_name, reactor_id)`` tuples. 3D models are
+    navigable; otherwise the best 2D image (or a placeholder) is shown. The row
+    scrolls horizontally when it overflows.
+    """
+    if not items:
+        return _placeholder_html("Select one or more vessels to preview.")
+    needs_3d = any((find_vessel_media(rid) or ("", None))[0] == "3d" for _n, rid in items)
+    script = _model_viewer_script() if needs_3d else ""
+    cards = "".join(
+        "<div style=\"flex:0 0 auto;width:260px;border:1px solid #E6E6E6;"
+        "border-radius:8px;padding:8px;background:#ffffff;\">"
+        f"{_viewer_card_body(name, rid, height)}</div>"
+        for name, rid in items
+    )
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        f"{script}</head>"
+        "<body style='margin:0;background:transparent;'>"
+        "<div style=\"display:flex;gap:12px;overflow-x:auto;padding:6px 4px 12px;\">"
+        f"{cards}</div></body></html>"
+    )

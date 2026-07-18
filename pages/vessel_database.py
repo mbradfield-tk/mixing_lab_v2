@@ -199,6 +199,7 @@ page = Markdown(
 
 <|{vessel_msg}|text|>
 
+<|part|class_name=va-card|
 ## Database
 Editing is enabled only when unlocked in the **Admin** panel at the bottom of the
 page. Reactor images are added separately.
@@ -208,7 +209,9 @@ page. Reactor images are added separately.
 
 <|{vessel_view_df}|table|editable={admin_authenticated and vessel_search == ""}|filter|rebuild|on_edit=on_vessel_edit|on_delete=on_vessel_delete|on_add=on_vessel_add|width=100%|page_size=12|>
 |>
+|>
 
+<|part|class_name=va-card|
 ## Explore Vessel
 <|{selected_vessel}|selector|lov={vessel_options}|dropdown|label=Select vessel|on_change=on_vessel_select|>
 
@@ -219,12 +222,15 @@ page. Reactor images are added separately.
 <|{vessel_media_caption}|text|>
 
 <|part|content={vessel_viewer_html}|height=380px|>
+|>
 
+<|part|class_name=va-card|
 ## Import / Export
 <|layout|columns=1 1|
-<|Download CSV|file_download|content={vessel_export}|name=reactors_export.csv|label=⬇️ Download vessel database|>
+<|Download CSV|file_download|content={vessel_export}|name=reactors_export.csv|label=Download vessel database|>
 
-<|{vessel_upload}|file_selector|label=⬆️ Import CSV (replaces database)|on_action=on_vessel_import|extensions=.csv|active={admin_authenticated}|>
+<|{vessel_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_vessel_import|extensions=.csv|active={admin_authenticated}|>
+|>
 |>
 
 <|part|class_name=va-card|

@@ -1261,7 +1261,7 @@ responses, and the decision-tree conclusion.
 <|Generate PDF report|button|on_action=on_bp_export_pdf|class_name=compute-btn|>
 
 <|part|render={bp_pdf_ready}|
-<|Download PDF|file_download|content={bp_pdf_bytes}|name={bp_pdf_name}|label=⬇️ Download PDF|>
+<|Download PDF|file_download|content={bp_pdf_bytes}|name={bp_pdf_name}|label=Download PDF|>
 |>
 
 ### Export for the Reaction Sensitivity Protocol

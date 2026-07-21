@@ -31,7 +31,39 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 V2_DIR = HERE.parent
-SRC = V2_DIR.parent / "mixing_lab" / "pages" / "equations_reference.py"
+
+# ---------------------------------------------------------------------------
+# Locate the original Streamlit equations_reference.py
+# ---------------------------------------------------------------------------
+# 1) Explicit override via env var (highest priority):
+#      MIXING_LAB_STREAMLIT_SRC=/some/path/equations_reference.py python build_equations.py
+# 2) Otherwise, try a list of known locations in order (local dev first,
+#    then server layout). First existing path wins.
+_SRC_CANDIDATES = [
+    # Local dev on Mac: sibling repo alongside mixing_lab_2
+    V2_DIR.parent / "mixing_lab" / "pages" / "equations_reference.py",
+    # Server layout
+    Path("/opt/streamlit/mixing_lab/pages/equations_reference.py"),
+]
+
+def _resolve_src() -> Path:
+    override = os.environ.get("MIXING_LAB_STREAMLIT_SRC")
+    if override:
+        p = Path(override).expanduser().resolve()
+        if not p.exists():
+            raise SystemExit(f"MIXING_LAB_STREAMLIT_SRC set but not found: {p}")
+        return p
+    for cand in _SRC_CANDIDATES:
+        if cand.exists():
+            return cand
+    tried = "\n  ".join(str(c) for c in _SRC_CANDIDATES)
+    raise SystemExit(
+        "Could not find the Streamlit equations_reference.py.\n"
+        f"Tried:\n  {tried}\n"
+        "Set MIXING_LAB_STREAMLIT_SRC=/path/to/equations_reference.py to override."
+    )
+
+SRC = _resolve_src()
 OUT = V2_DIR / "data" / "equations_reference.json"
 
 _TEXT_METHODS = {"header", "subheader", "markdown", "caption", "write",
@@ -165,6 +197,8 @@ def _convert_inline(text: str) -> str:
 def main() -> None:
     if not SRC.exists():
         raise SystemExit(f"Streamlit source not found: {SRC}")
+    print(f"Using Streamlit source: {SRC}")
+    print(f"Writing output to: {OUT}")
     sections = _parse_sections(SRC)
     n_eq = 0
     out_sections = []

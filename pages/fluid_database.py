@@ -430,13 +430,13 @@ page = Markdown(
 
 <|part|render={fluid_tab == "Solvent Library"}|
 <|part|class_name=va-card|
-## Built-in Solvent Library
+## Solvent Library
 
 Reference table of all built-in solvents with **properties at 25 °C and 1 atm**.
 These are always available in the assessment tools — pick one and set any
 temperature to get properties from literature correlations.
 
-<|Built-in solvent library|expandable|expanded=True|
+<|Solvent database|expandable|expanded=False|
 <|{solvent_search}|input|label=Search solvents|on_change=on_solvent_library_search|class_name=db-search|>
 
 <|{solvent_library_view_df}|table|width=100%|filter|page_size=15|>

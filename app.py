@@ -28,6 +28,7 @@ from heat_transfer_core import (
 
 from pages import (
     bourne_protocol,
+    equations_reference,
     fluid_database,
     mixing_sensitivity,
     particle_database,
@@ -135,6 +136,7 @@ menu_options = [
     ("Mixing_Sensitivity", "Reaction Sensitivity Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
+    ("Equations_Reference", "Equations Reference"),
 ]
 
 
@@ -475,7 +477,7 @@ root_md = """
    N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
    Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
    7=Vessel Comparison, 8=Bourne Protocol, 9=Reaction Sensitivity, 10=Heat Transfer,
-   11=Unit Converter. */
+   11=Unit Converter, 12=Equations Reference. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -505,6 +507,9 @@ root_md = """
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
     content: "🔄";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(12) .MuiAvatar-root::after {
+    content: "📐";
 }
 
 /* Hide the "Mode" text label on the theme toggle; the sun/moon icons suffice. */
@@ -694,6 +699,27 @@ button.compute-btn-ok:hover {
     width: auto;
 }
 
+/* Pre-rendered equation images on the Equations Reference page. Capped to a
+   small height so they read like inline text; wide equations still shrink to
+   fit the page width. Raise --eq-h to make them larger. */
+.eq-img {
+    margin: 4px 0 12px 2px;
+}
+.eq-img img {
+    max-width: 100%;
+    max-height: 34px;
+    height: auto;
+    width: auto;
+    vertical-align: middle;
+}
+
+.taipy-dark .eq-img {
+    background: #f4f5f6;
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
 /* Neat, level form controls: inside layout grids every input/selector fills its
    column and is top-aligned, and all number/text/selector fields share one
    height so boxes line up cleanly regardless of label length. Tight, uniform
@@ -766,6 +792,7 @@ pages = {
     "Mixing_Sensitivity": mixing_sensitivity.page,
     "Heat_Transfer": heat_transfer_md,
     "Unit_Converter": unit_converter.page,
+    "Equations_Reference": equations_reference.page,
 }
 
 # The `part` element's `content` property needs a content provider for the bound
@@ -781,7 +808,37 @@ TAKEDA_THEME = {
     },
 }
 
+# if __name__ == "__main__":
+#     Gui(pages=pages).run(title="Mixing Lab V2", use_reloader=True, port="auto",
+#                          dark_mode=False, theme=TAKEDA_THEME)
+    
+# ------------------------------------------------------------------------------->
+# Adding this for server deployment --------------------------------------------->
+
+def create_app():
+    """WSGI factory used by Gunicorn in production:
+
+        gunicorn 'app:create_app()'  --worker-class gevent  --workers 1
+    """
+    gui = Gui(pages=pages)
+    return gui.run(
+        title="Mixing Lab 2.0",
+        dark_mode=False,
+        theme=TAKEDA_THEME,
+        run_server=False,      # return the Flask app instead of starting a server
+        use_reloader=False,
+        debug=False,
+        async_mode="gevent",
+    )
+
 if __name__ == "__main__":
-    Gui(pages=pages).run(title="Mixing Lab V2", use_reloader=True, port="auto",
-                         dark_mode=False, theme=TAKEDA_THEME)
+    # Local development — a fresh Gui instance, its own server, reloader on.
+    Gui(pages=pages).run(
+        title="Mixing Lab 2.0",
+        dark_mode=False,
+        theme=TAKEDA_THEME,
+        use_reloader=True,
+        port="auto",
+        debug=True,
+    )
 

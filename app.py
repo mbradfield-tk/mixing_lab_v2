@@ -815,12 +815,11 @@ TAKEDA_THEME = {
 # ------------------------------------------------------------------------------->
 # Adding this for server deployment --------------------------------------------->
 
-def create_app():
-    """WSGI factory used by Gunicorn in production:
+# ---- Module-level Gui instance (so Taipy sees the module's globals) ----
+gui = Gui(pages=pages)
 
-        gunicorn 'app:create_app()'  --worker-class gevent  --workers 1
-    """
-    gui = Gui(pages=pages)
+def create_app():
+    """WSGI factory used by Gunicorn in production."""
     return gui.run(
         title="Mixing Lab 2.0",
         dark_mode=False,
@@ -832,8 +831,8 @@ def create_app():
     )
 
 if __name__ == "__main__":
-    # Local development — a fresh Gui instance, its own server, reloader on.
-    Gui(pages=pages).run(
+    # Local development — same Gui instance, its own server, reloader on.
+    gui.run(
         title="Mixing Lab 2.0",
         dark_mode=False,
         theme=TAKEDA_THEME,

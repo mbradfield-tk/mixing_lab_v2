@@ -251,5 +251,11 @@ page. Reactor images are added separately.
 <|Lock editing|button|on_action=on_admin_lock|>
 |>
 |>
+
+<|part|class_name=va-card|
+<|Updated: 2026.07.22|text|>
+|>
+|>
+
 """
 )

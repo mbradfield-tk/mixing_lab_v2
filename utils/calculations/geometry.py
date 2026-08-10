@@ -14,9 +14,41 @@ REFERENCES (per function)
         ASME F&D head geometry.  [NOT in context/ - verify]
     liquid_height_from_volume
         Geometric volume-to-height inversion.  [definition]
+    parse_cone_angle_deg, cone_depth
+        Conical bottom depth from a cone angle (measured from the horizontal)
+        parsed from the dish label, e.g. "Conical 60°".  Defaults to 45°
+        (depth = D/2, the standard 90°-included cone).  [definition]
 """
 
+import re
+
 import numpy as np
+
+
+def parse_cone_angle_deg(dish_type: str, default: float = 45.0) -> float:
+    """Cone wall angle from the horizontal (deg), parsed from a dish label.
+
+    A number in the label (``"Conical 60°"``, ``"Cone 30 deg"``) is taken as the
+    angle the cone wall makes with the horizontal plane; steeper -> deeper cone.
+    Falls back to ``default`` (45° -> depth = D/2) when no valid angle is given.
+    """
+    s = str(dish_type).lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", s)
+    if m is None:
+        m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if m is not None:
+        ang = float(m.group(1))
+        if 5.0 <= ang <= 85.0:
+            return ang
+    return default
+
+
+def cone_depth(D_tank: float, dish_type: str = "", default_angle_deg: float = 45.0) -> float:
+    """Conical bottom depth (m) for a tank ID and its (parsed) cone angle."""
+    if D_tank <= 0:
+        return 0.0
+    ang = parse_cone_angle_deg(dish_type, default_angle_deg)
+    return (D_tank / 2.0) * np.tan(np.radians(ang))
 
 
 def dish_geometry(D_tank: float, dish_type: str = "") -> tuple[float, float]:
@@ -27,7 +59,7 @@ def dish_geometry(D_tank: float, dish_type: str = "") -> tuple[float, float]:
     dish = str(dish_type).lower().strip() if dish_type else ""
 
     if "conic" in dish:
-        h_dish = D_tank / 2
+        h_dish = cone_depth(D_tank, dish)
         V_dish = np.pi / 12 * D_tank**2 * h_dish
     elif "torisph" in dish or "din" in dish or "dished" in dish:
         h_dish = 0.1935 * D_tank

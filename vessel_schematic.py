@@ -18,6 +18,8 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: render to a buffer, never a GUI window
 
+import re
+
 import matplotlib.patches as patches
 import numpy as np
 import pandas as pd
@@ -26,6 +28,19 @@ import matplotlib.pyplot as plt
 
 _IMP_COLORS = ["#1976D2", "#F57C00", "#388E3C"]
 _IMP_SOLIDITY = 0.20  # fraction of the swept impeller disc that is solid metal
+
+
+def _parse_cone_angle_deg(dish_type: str, default: float = 45.0) -> float:
+    """Cone wall angle from the horizontal (deg), parsed from a dish label."""
+    s = str(dish_type).lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", s)
+    if m is None:
+        m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if m is not None:
+        ang = float(m.group(1))
+        if 5.0 <= ang <= 85.0:
+            return ang
+    return default
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +67,7 @@ def _dish_depth(dish_type: str, radius: float) -> float:
     if not dt or "flat" in dt or "none" in dt:
         return 0.0
     if "cone" in dt or "conical" in dt:
-        return radius
+        return radius * float(np.tan(np.radians(_parse_cone_angle_deg(dt))))
     if "hemi" in dt or "round" in dt:
         return radius
     if "korbbogen" in dt or "28013" in dt:

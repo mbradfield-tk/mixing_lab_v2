@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -145,6 +146,26 @@ def load_csvs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dic
     return reactors, fluids, htm_db
 
 
+def _parse_cone_angle_deg(dish_type: str, default: float = 45.0) -> float:
+    """Cone wall angle from the horizontal (deg), parsed from a dish label."""
+    s = str(dish_type).lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", s)
+    if m is None:
+        m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if m is not None:
+        ang = float(m.group(1))
+        if 5.0 <= ang <= 85.0:
+            return ang
+    return default
+
+
+def _cone_depth(D_tank: float, dish_type: str = "", default_angle_deg: float = 45.0) -> float:
+    """Conical bottom depth (m) from the tank ID and its (parsed) cone angle."""
+    if D_tank <= 0:
+        return 0.0
+    return (D_tank / 2.0) * np.tan(np.radians(_parse_cone_angle_deg(dish_type, default_angle_deg)))
+
+
 def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "") -> float:
     if D_tank <= 0 or H <= 0:
         return 0.0
@@ -157,8 +178,9 @@ def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "") -> floa
         h_dish = 0.1935 * D_tank
         A_dish_full = 1.06 * A_flat
     elif "conic" in dish:
-        h_dish = D_tank / 2
-        A_dish_full = 1.20 * A_flat
+        h_dish = _cone_depth(D_tank, dish)
+        r = D_tank / 2.0
+        A_dish_full = A_flat * np.sqrt(1.0 + (h_dish / r) ** 2) if r > 0 else A_flat
     else:
         h_dish = 0.0
         A_dish_full = A_flat

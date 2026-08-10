@@ -46,6 +46,8 @@ import pandas as pd
 from scipy.integrate import solve_ivp
 import pathlib as _pathlib
 
+from .geometry import cone_depth
+
 
 # ---------------------------------------------------------------------------
 # Reaction heat generation
@@ -90,8 +92,10 @@ def estimate_jacket_area(D_tank: float, H: float,
         h_dish = 0.1935 * D_tank
         A_dish_full = 1.06 * A_flat
     elif "conic" in dish:
-        h_dish = D_tank / 2
-        A_dish_full = 1.20 * A_flat
+        h_dish = cone_depth(D_tank, dish)
+        R = D_tank / 2.0
+        # Wetted cone = lateral surface area = A_flat * sqrt(1 + (h/R)^2).
+        A_dish_full = A_flat * np.sqrt(1.0 + (h_dish / R) ** 2) if R > 0 else A_flat
     else:
         h_dish = 0.0
         A_dish_full = A_flat

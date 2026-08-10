@@ -14,6 +14,7 @@ from taipy.gui import Markdown, notify
 
 from pages import _db_common as db
 from vessel_media import build_vessel_viewer_html, media_caption
+from vessel_schematic import brim_volume, build_vessel_schematic
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"
@@ -60,9 +61,32 @@ def _reactor_id_for(df: pd.DataFrame, reactor_name: str) -> str:
     return str(row.iloc[0].get("reactor_id", "") or "")
 
 
+def _row_for(df: pd.DataFrame, reactor_name: str) -> pd.Series:
+    row = df[df["reactor_name"].astype(str) == str(reactor_name)]
+    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
+
+
 vessel_detail_df = db.detail_table(vessel_raw_df, "reactor_name", selected_vessel)
 vessel_viewer_html = build_vessel_viewer_html(_reactor_id_for(vessel_raw_df, selected_vessel))
 vessel_media_caption = media_caption(_reactor_id_for(vessel_raw_df, selected_vessel))
+
+# 2D cross-section schematic + liquid fill level
+_row0 = _row_for(vessel_raw_df, selected_vessel)
+vessel_total_vol_L = brim_volume(_row0)
+vessel_fill_L = round(vessel_total_vol_L * 0.7, 2)
+_schem0 = build_vessel_schematic(_row0, vessel_fill_L, title=selected_vessel)
+vessel_schematic_html = _schem0["html"]
+
+
+def _fill_caption(res: dict) -> str:
+    if res.get("level_mm") is None:
+        return f"Brim-full working volume ≈ {res.get('total_L', 0):,.1f} L."
+    return (f"Liquid surface at **{res['level_mm']:+.0f} mm** relative to the bottom "
+            f"tangent line ({res['fill_pct']:.0f}% of the {res['total_L']:,.1f} L "
+            f"brim-full volume).")
+
+
+vessel_fill_caption = _fill_caption(_schem0)
 
 
 # ---------------------------------------------------------------------------
@@ -165,12 +189,32 @@ def on_vessel_add(state, var_name, payload):
     _persist(state)
 
 
+def _refresh_schematic(state):
+    row = _row_for(state.vessel_raw_df, state.selected_vessel)
+    res = build_vessel_schematic(row, state.vessel_fill_L, title=state.selected_vessel)
+    state.vessel_total_vol_L = res["total_L"]
+    state.vessel_schematic_html = res["html"]
+    state.vessel_fill_caption = _fill_caption(res)
+
+
 def on_vessel_select(state):
     name = state.selected_vessel
     state.vessel_detail_df = db.detail_table(state.vessel_raw_df, "reactor_name", name)
     rid = _reactor_id_for(state.vessel_raw_df, name)
     state.vessel_viewer_html = build_vessel_viewer_html(rid)
     state.vessel_media_caption = media_caption(rid)
+    total = brim_volume(_row_for(state.vessel_raw_df, name))
+    state.vessel_fill_L = round(total * 0.7, 2)
+    _refresh_schematic(state)
+
+
+def on_vessel_fill_change(state):
+    total = state.vessel_total_vol_L
+    fill = max(0.0, float(state.vessel_fill_L or 0.0))
+    if total > 0 and fill > total:
+        fill = round(total, 2)
+    state.vessel_fill_L = fill
+    _refresh_schematic(state)
 
 
 def on_vessel_import(state):
@@ -222,6 +266,15 @@ page. Reactor images are added separately.
 <|{vessel_media_caption}|text|>
 
 <|part|content={vessel_viewer_html}|height=380px|>
+
+### 2D Schematic & Liquid Level
+Enter a fill volume to draw the liquid surface on the vessel cross-section.
+
+<|{vessel_fill_L}|number|label=Liquid fill volume (L)|on_change=on_vessel_fill_change|>
+
+<|{vessel_fill_caption}|text|mode=markdown|>
+
+<|part|content={vessel_schematic_html}|height=560px|>
 |>
 
 <|part|class_name=va-card|
@@ -254,7 +307,6 @@ page. Reactor images are added separately.
 
 <|part|class_name=va-card|
 <|Updated: 2026.07.22|text|>
-|>
 |>
 
 """

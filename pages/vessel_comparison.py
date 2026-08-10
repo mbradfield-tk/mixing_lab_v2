@@ -412,8 +412,10 @@ def _corner_and_curves(names, ctx):
         if rpm_max <= 0:
             skipped.append(name)
             continue
-        if rpm_min <= 0:
-            rpm_min = rpm_max
+        # Without a distinct minimum, sweep from 10% of max so the envelope has
+        # horizontal extent (otherwise the curve collapses to a single point).
+        if rpm_min <= 0 or rpm_min >= rpm_max:
+            rpm_min = rpm_max * 0.1
         N_lo, N_hi = rpm_min / 60.0, rpm_max / 60.0
 
         V_geo = np.pi / 4 * D_tank**2 * H_max * 1000.0
@@ -697,9 +699,9 @@ def _build_env_fig(state):
     cols = min(2, n)
     rows = int(np.ceil(n / cols))
     positions = [(i // cols + 1, i % cols + 1) for i in range(n)]
-    vspace = min(0.18, 0.5 / max(rows - 1, 1))
+    vspace = min(0.22, 0.6 / max(rows - 1, 1))
     fig = make_subplots(rows=rows, cols=cols, subplot_titles=[_display(p) for p in params],
-                        vertical_spacing=vspace, horizontal_spacing=0.10)
+                        vertical_spacing=vspace, horizontal_spacing=0.08)
 
     reactor_list = env_df["Reactor"].drop_duplicates().tolist()
     for pi, (param, (r, c)) in enumerate(zip(params, positions)):
@@ -714,11 +716,12 @@ def _build_env_fig(state):
             poly_y = np.concatenate([y_hi, y_lo[::-1], [y_hi[0]]])
             fig.add_trace(go.Scatter(
                 x=poly_x, y=poly_y, fill="toself", fillcolor=color, opacity=0.18,
-                line={"width": 0}, mode="lines", name=name, legendgroup=name,
-                showlegend=first_param, hoverinfo="skip"), row=r, col=c)
+                line={"width": 0}, mode="lines", legendgroup=name,
+                showlegend=False, hoverinfo="skip"), row=r, col=c)
             fig.add_trace(go.Scatter(
                 x=pct, y=y_hi, mode="lines", line={"color": color, "width": 2},
-                legendgroup=name, showlegend=False, hoverinfo="skip"), row=r, col=c)
+                name=name, legendgroup=name, showlegend=first_param,
+                hoverinfo="skip"), row=r, col=c)
             fig.add_trace(go.Scatter(
                 x=pct, y=y_lo, mode="lines",
                 line={"color": color, "width": 2, "dash": "dot"},
@@ -733,10 +736,13 @@ def _build_env_fig(state):
         if param == "Q_gen/Q_cool (%)":
             fig.add_hline(y=100.0, line_dash="dash", line_color="red", row=r, col=c)
 
-    fig_height = max(380, rows * 380)
-    fig.update_layout(height=fig_height, margin={"t": 70, "b": 40},
-                      plot_bgcolor="rgba(225,37,27,0.05)", paper_bgcolor="white",
-                      legend={"title": "Vessel", "orientation": "h", "y": 1.02,
+    fig_height = max(360, rows * 360)
+    _t_margin = 90
+    _plot_area = max(fig_height - _t_margin - 40, 120)
+    _legend_y = 1 + 45 / _plot_area
+    fig.update_layout(height=fig_height, margin={"t": _t_margin, "b": 40},
+                      plot_bgcolor="rgba(225,37,27,0.06)", paper_bgcolor="white",
+                      legend={"title": "Vessel", "orientation": "h", "y": _legend_y,
                               "yanchor": "bottom", "x": 0.5, "xanchor": "center"})
     state.vc_env_fig = fig
     state.vc_env_class = f"env-rows-{min(rows, 8)}"

@@ -904,10 +904,8 @@ macromixing, interphase mass transport, or heat transfer. Work through the steps
 the **Summary** synthesises everything into an overall verdict.
 
 <|part|render={not ms_started}|
-▶️ **Set your inputs in the steps below, then start the assessment.** No results are
-shown until you do.
-
-<|Start assessment|button|on_action=on_ms_init|class_name=compute-btn|>
+▶️ **Set your inputs in the steps below, then click _Start assessment_ at the bottom
+of the page.** No results are shown until you do.
 |>
 
 <|part|render={ms_started}|
@@ -1025,6 +1023,14 @@ and is mixing-sensitive. Micromixing t_E ≈ 17.3·√(ν/ε); macromixing (blen
 
 <|{ms_step5_assess}|text|mode=markdown|>
 |>
+|>
+
+<|part|render={not ms_started}|class_name=va-card|
+### Ready?
+You've worked through the steps above — start the assessment to generate the
+per-step findings and the overall verdict.
+
+<|Start assessment|button|on_action=on_ms_init|class_name=compute-btn|>
 |>
 
 <|part|class_name=va-card|

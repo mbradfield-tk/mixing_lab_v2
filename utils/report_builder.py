@@ -37,6 +37,7 @@ _UNICODE_MAP = str.maketrans({
     "\u2013": "-",    # en dash
     "\u00b7": ".",    # middle dot
     "\u00b0": "deg",  # degree
+    "\u25cf": "*",    # black circle (status dot)
     "\u00b2": "2",    # superscript 2
     "\u00b3": "3",    # superscript 3
     "\u00b5": "u",    # micro sign
@@ -107,6 +108,30 @@ def da_symbol(Da: float) -> str:
     if Da < 1:
         return "AMBER"
     return "RED"
+
+
+# Traffic-light dot: maps a status string's leading emoji (or legacy [COLOR]
+# tag) to a rendered circle glyph colour, returning the cleaned label text.
+_STATUS_DOT = "\u25cf"
+_STATUS_RGB = {
+    "\U0001F534": (200, 30, 30), "\U0001F7E1": (200, 150, 0),
+    "\U0001F7E2": (34, 139, 34), "\u26AA": (130, 130, 130),
+    "[RED]": (200, 30, 30), "[AMBER]": (200, 150, 0), "[YELLOW]": (200, 150, 0),
+    "[GREEN]": (34, 139, 34), "[N/A]": (130, 130, 130),
+}
+
+
+def status_dot(status: str) -> tuple[tuple[int, int, int] | None, str]:
+    """Return ((r,g,b) or None, clean_label) for a traffic-light status string."""
+    s = str(status)
+    rgb = None
+    for tok, col in _STATUS_RGB.items():
+        if tok in s:
+            if rgb is None:
+                rgb = col
+            s = s.replace(tok, "")
+    return rgb, s.strip()
+
 
 
 def fig_to_png_bytes(fig) -> bytes:
@@ -235,13 +260,15 @@ class MixingReport(FPDF):
 
     def data_table(self, headers: list[str], rows: list[list[str]],
                    col_widths: list[float] | None = None,
-                   wrap: bool = True):
+                   wrap: bool = True, cell_colour=None):
         """Render a bordered table with a header row and data rows.
 
         Cell text that is wider than its column is always wrapped onto
         multiple lines and the row grows in height to fit, so no content is
         ever clipped by the column border. The *wrap* argument is retained
         for backward compatibility but wrapping is now always applied.
+        *cell_colour* is an optional ``(row, col, text) -> (r,g,b) | None``
+        callback used to colour individual data cells (e.g. status dots).
         """
         usable = self.w - 20
         n = len(headers)
@@ -254,7 +281,11 @@ class MixingReport(FPDF):
 
         def _cell_lines(text: str, width: float) -> list[str]:
             """Split *text* into lines that fit within *width* mm."""
-            text = self._s(str(text))
+            text = str(text)
+            for _tok in _STATUS_RGB:  # never leak status emoji / [COLOR] tags
+                if _tok in text:
+                    text = text.replace(_tok, "")
+            text = self._s(text.strip())
             avail = max(1.0, width - 2 * pad)
             lines: list[str] = []
             for para in text.split("\n"):
@@ -285,7 +316,7 @@ class MixingReport(FPDF):
                 lines.append(cur)
             return lines or [""]
 
-        def _render_row(cells, fill_rgb, bold):
+        def _render_row(cells, fill_rgb, bold, base_rgb, row_colours=None):
             self.set_font(self._FONT, "B" if bold else "", 8)
             self.set_fill_color(*fill_rgb)
             wrapped = [_cell_lines(c, col_widths[i]) for i, c in enumerate(cells)]
@@ -300,6 +331,7 @@ class MixingReport(FPDF):
             for i, w in enumerate(wrapped):
                 cw = col_widths[i]
                 self.rect(x, y0, cw, cell_h, style="DF")
+                self.set_text_color(*(row_colours[i] if row_colours and row_colours[i] else base_rgb))
                 ty = y0 + pad
                 for ln in w:
                     self.set_xy(x + pad, ty)
@@ -309,15 +341,18 @@ class MixingReport(FPDF):
             self.set_xy(x0, y0 + cell_h)
 
         # Header
-        self.set_text_color(30, 30, 80)
-        _render_row(headers, (230, 230, 240), bold=True)
+        _render_row(headers, (230, 230, 240), bold=True, base_rgb=(30, 30, 80))
         # Data rows
-        self.set_text_color(40, 40, 40)
         _alt = False
-        for row in rows:
+        for r_idx, row in enumerate(rows):
             fill = (245, 245, 250) if _alt else (255, 255, 255)
-            _render_row([str(v) for v in row], fill, bold=False)
+            rcols = None
+            if cell_colour is not None:
+                rcols = [cell_colour(r_idx, ci, str(v)) for ci, v in enumerate(row)]
+            _render_row([str(v) for v in row], fill, bold=False,
+                        base_rgb=(40, 40, 40), row_colours=rcols)
             _alt = not _alt
+        self.set_text_color(0, 0, 0)
         self.ln(4)
 
     def findings_table(self, findings: list[tuple[str, str, str]]):
@@ -335,14 +370,17 @@ class MixingReport(FPDF):
         for mechanism, status, detail in findings:
             # Determine row height based on detail text length
             _detail_clean = self._s(detail)
-            _status_clean = self._s(status)
+            _rgb, _clean = status_dot(status)
+            _status_clean = self._s(f"{_STATUS_DOT} {_clean}" if _rgb else _clean)
             x_before = self.get_x()
             y_before = self.get_y()
             # Estimate lines needed
             _lines = max(1, len(_detail_clean) // int(col_w3 / 1.8) + 1)
             row_h = max(6, _lines * 5)
             self.cell(col_w1, row_h, self._s(mechanism), border=1)
+            self.set_text_color(*(_rgb or (40, 40, 40)))
             self.cell(col_w2, row_h, _status_clean, border=1)
+            self.set_text_color(40, 40, 40)
             # Use multi_cell for detail (wraps text)
             x_mc = self.get_x()
             y_mc = self.get_y()
@@ -1075,12 +1113,19 @@ def build_protocol_pdf(snap: dict) -> bytes:
     if findings:
         pdf.sub_title("Detailed Findings")
         _find_rows = []
+        _status_colours = []
         for mechanism, status, detail in findings:
-            status_clean = status.replace("🔴", "[RED]").replace("🟡", "[AMBER]").replace("🟢", "[GREEN]").replace("⚪", "[N/A]")
-            status_short = status_clean.split(" — ")[0].strip() if " — " in status_clean else status_clean
-            _find_rows.append([mechanism, status_short, detail])
+            rgb, clean = status_dot(status)
+            status_short = clean.split(" — ")[0].strip() if " — " in clean else clean
+            label = f"{_STATUS_DOT} {status_short}" if rgb else status_short
+            _status_colours.append(rgb)
+            _find_rows.append([mechanism, label, detail])
+
+        def _find_colour(r, c, _t):
+            return _status_colours[r] if c == 1 else None
+
         pdf.data_table(["Mechanism", "Status", "Detail"], _find_rows,
-                       col_widths=[35, 40, 95])
+                       col_widths=[35, 40, 95], cell_colour=_find_colour)
         pdf.ln(4)
 
     # ── Recommendations page ─────────────────────────────────────────────

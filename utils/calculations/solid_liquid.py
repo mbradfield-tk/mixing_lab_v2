@@ -10,7 +10,7 @@ NOTE: the Zwietering solids loading X is the percent mass ratio (g solid /
 REFERENCES (per function)
 -------------------------
     settling_velocity (Schiller-Naumann drag)
-        Ref: Schiller & Naumann (1933), VDI Z. 77, 318.  [NOT in context/ - verify]
+        Ref: Schiller & Naumann (1935), VDI-Zeitschrift 77, 318-320.  [NOT in context/]
     particle_reynolds, archimedes_number
         Standard dimensionless groups.  [definition]
     zwietering_njs (N_js = S nu^0.1 d_p^0.2 (g dRho/rho)^0.45 X^0.13 D^-0.85)

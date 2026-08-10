@@ -19,8 +19,8 @@ but MUST be verified against the original literature.
     kla_surface (free-surface kL from surface renewal)
         Ref: Lamont & Scott (1970), AIChE J. 16, 513.  [NOT in context/ - verify]
     gas_holdup_hughmark
-        Ref: Hughmark (1980), Ind. Eng. Chem. Process Des. Dev. 19, 638.
-        [NOT in context/ - verify; coefficient/exponents are a simplified fit]
+        Ref: Hughmark (1967), Ind. Eng. Chem. Process Des. Dev. 6, 218-220.
+        [NOT in context/; coefficient/exponents are a simplified fit]
     sauter_bubble_diameter (d32, Calderbank)
         Ref: Calderbank (1958), Trans. Inst. Chem. Eng. 36, 443.
         [NOT in context/ - verify]

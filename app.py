@@ -4,7 +4,9 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 if sys.version_info >= (3, 13):
     raise RuntimeError("Taipy GUI currently requires Python 3.12 or lower for this app. Please run with Python 3.12.")
@@ -19,6 +21,7 @@ from heat_transfer_core import (
     NUSSELT_CORRELATIONS,
     WALL_CONDUCTIVITY,
     compute_batch,
+    compute_reaction_profile,
     estimate_jacket_area,
     find_best_material_key,
     liquid_height_from_volume,
@@ -43,9 +46,11 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
 reactors_df, fluids_df, htm_db = load_csvs(DATA_DIR)
+reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
 
 reactor_options = sorted(reactors_df["reactor_name"].dropna().unique().tolist())
 fluid_options = sorted(fluids_df["fluid_name"].dropna().unique().tolist())
+reaction_options = sorted(reactions_df["reaction_name"].dropna().unique().tolist())
 htm_options = list(htm_db.keys())
 nusselt_options = list(NUSSELT_CORRELATIONS.keys())
 wall_options = list(WALL_CONDUCTIVITY.keys())
@@ -59,6 +64,11 @@ def _reactor_row(reactor_name: str) -> pd.Series:
 
 def _fluid_row(fluid_name: str) -> pd.Series:
     row = fluids_df.loc[fluids_df["fluid_name"] == fluid_name]
+    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
+
+
+def _reaction_row(reaction_name: str) -> pd.Series:
+    row = reactions_df.loc[reactions_df["reaction_name"] == reaction_name]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
@@ -105,6 +115,45 @@ t_start = 25.0
 t_target = 5.0
 t_jacket = -10.0
 time_unit = "Minutes"
+
+# Tool mode: heat/cool a vessel, or model a reaction's temperature profile.
+HT_MODE_HEAT = "Heat / cool vessel"
+HT_MODE_RXN = "Reaction temperature profile"
+ht_mode = HT_MODE_HEAT
+ht_mode_options = [HT_MODE_HEAT, HT_MODE_RXN]
+
+# Reaction kinetics + heat of reaction (mode 2)
+selected_reaction = reaction_options[0] if reaction_options else ""
+_x = _reaction_row(selected_reaction)
+rxn_order_options = ["1", "2", "pseudo-1", "pseudo-2"]
+rxn_order = str(_x.get("order", "2")) if not _x.empty else "2"
+rxn_k = safe_float(_x.get("k_value"), 0.5)
+rxn_c0 = safe_float(_x.get("C0_mol_L"), 1.0)
+rxn_dH = safe_float(_x.get("delta_H_kJ_mol"), -50.0)
+
+
+def _adiabatic_readout(rho: float, cp: float, c0: float, dH_kJ: float,
+                       t_start: float) -> tuple[float, float]:
+    """Adiabatic rise (signed K) and temperature; volume cancels out."""
+    rise = (-dH_kJ * 1000.0 * c0 * 1000.0) / (rho * cp) if (rho > 0 and cp > 0) else 0.0
+    return rise, t_start + rise
+
+
+def _adiabatic_text(rho: float, cp: float, c0: float, dH_kJ: float,
+                    t_start: float) -> str:
+    rise, t_ad = _adiabatic_readout(rho, cp, c0, dH_kJ, t_start)
+    thermal = "exothermic" if dH_kJ < 0 else ("endothermic" if dH_kJ > 0 else "athermal")
+    return (f"**Adiabatic ({thermal}):** ΔT ≈ {rise:+.1f} °C → T_ad ≈ {t_ad:.1f} °C "
+            f"(no cooling, from T_start = {t_start:.1f} °C).")
+
+
+rxn_adiabatic_text = _adiabatic_text(rho, cp, rxn_c0, rxn_dH, t_start)
+
+rxn_result_ready = False
+rxn_summary_df = pd.DataFrame(columns=["Metric", "Value"])
+rxn_fig = go.Figure()
+rxn_fig.update_layout(title="Reaction Temperature Profile", xaxis_title="Time (min)",
+                      yaxis_title="Temperature (C)")
 
 status_message = "Set inputs and click Compute."
 kpi_df = pd.DataFrame([{"Metric": "U (W/m2.K)", "Value": "-"}])
@@ -199,6 +248,7 @@ def on_fluid_change(state):
     state.mu = safe_float(row.get("mu_Pa_s"), state.mu)
     state.cp = safe_float(row.get("Cp_J_per_kgK"), state.cp)
     state.k_fluid = safe_float(row.get("k_W_per_mK"), state.k_fluid)
+    _refresh_adiabatic(state)
     notify(state, "I", "Fluid properties loaded.")
 
 
@@ -217,7 +267,118 @@ def on_lining_change(state):
     state.lining_thickness_mm = LINING_THICKNESS_DEFAULT.get(state.lining_material, 0.002) * 1000.0
 
 
+def on_reaction_change(state):
+    row = _reaction_row(state.selected_reaction)
+    if row.empty:
+        return
+    state.rxn_order = str(row.get("order", state.rxn_order))
+    state.rxn_k = safe_float(row.get("k_value"), state.rxn_k)
+    state.rxn_c0 = safe_float(row.get("C0_mol_L"), state.rxn_c0)
+    state.rxn_dH = safe_float(row.get("delta_H_kJ_mol"), state.rxn_dH)
+    _refresh_adiabatic(state)
+    notify(state, "I", "Reaction kinetics and heat of reaction loaded.")
+
+
+def _refresh_adiabatic(state):
+    state.rxn_adiabatic_text = _adiabatic_text(
+        state.rho, state.cp, state.rxn_c0, state.rxn_dH, state.t_start)
+
+
+def on_rxn_input_change(state):
+    _refresh_adiabatic(state)
+
+
+def on_ht_mode_change(state):
+    if state.ht_mode == HT_MODE_RXN:
+        state.status_message = "Select a reaction and coolant temperature, then Compute."
+    else:
+        state.status_message = "Set the start / target / jacket temperatures, then Compute."
+
+
+def _shared_ht_data(state) -> dict:
+    """Inputs common to both modes (geometry, materials, fluid, jacket)."""
+    return {
+        "rho": state.rho,
+        "mu": state.mu,
+        "cp": state.cp,
+        "k_fluid": state.k_fluid,
+        "d_tank": state.d_tank,
+        "d_imp": state.d_imp,
+        "n_rpm": state.n_rpm,
+        "np_in": state.np_in,
+        "v_l": state.v_l,
+        "mu_wall": state.mu_wall,
+        "nusselt_correlation": state.nusselt_correlation,
+        "htm_name": state.selected_htm,
+        "v_jacket": state.v_jacket,
+        "d_hyd_jacket": state.d_hyd_jacket,
+        "m_dot_jacket": state.m_dot_jacket,
+        "cp_jacket": state.cp_jacket,
+        "include_agitator": state.include_agitator,
+        "wall_k": state.wall_k,
+        "wall_thickness_mm": state.wall_thickness_mm,
+        "lining_k": state.lining_k,
+        "lining_thickness_mm": state.lining_thickness_mm,
+        "fouling": state.fouling,
+        "a_ht": state.a_ht,
+    }
+
+
+def _compute_reaction(state):
+    if state.rxn_k <= 0 or state.rxn_c0 <= 0:
+        state.status_message = "Reaction needs a rate constant k > 0 and C0 > 0."
+        notify(state, "E", state.status_message)
+        return
+
+    data = _shared_ht_data(state)
+    data.update({
+        "t_start": state.t_start,
+        "t_jacket": state.t_jacket,
+        "rxn_order": state.rxn_order,
+        "rxn_k": state.rxn_k,
+        "rxn_c0": state.rxn_c0,
+        "rxn_dH": state.rxn_dH,
+    })
+    result = compute_reaction_profile(data, htm_db)
+
+    t_factor = _time_factor(state.time_unit)
+    t_label = state.time_unit.lower()
+    t = result.t / t_factor
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=t, y=result.T, mode="lines", name="Batch temperature",
+                             line={"color": "#E1251B", "width": 2}), secondary_y=False)
+    fig.add_trace(go.Scatter(x=t, y=result.conversion * 100.0, mode="lines", name="Conversion",
+                             line={"color": "#1f77b4", "width": 2, "dash": "dash"}), secondary_y=True)
+    fig.add_hline(y=state.t_jacket, line_dash="dot", line_color="#5C6670",
+                  annotation_text=f"Coolant {state.t_jacket:.1f} C")
+    if np.isfinite(result.T_adiabatic_c):
+        fig.add_hline(y=result.T_adiabatic_c, line_dash="dot", line_color="#888888",
+                      annotation_text=f"Adiabatic {result.T_adiabatic_c:.1f} C")
+    fig.update_xaxes(title_text=f"Time ({t_label})")
+    fig.update_yaxes(title_text="Temperature (C)", secondary_y=False)
+    fig.update_yaxes(title_text="Conversion (%)", range=[0, 105], secondary_y=True)
+    fig.update_layout(title="Reaction Temperature Profile", height=460,
+                      legend={"orientation": "h", "y": 1.02, "yanchor": "bottom",
+                              "x": 0.5, "xanchor": "center"})
+    state.rxn_fig = fig
+    state.rxn_summary_df = result.summary
+    state.rxn_result_ready = True
+
+    _complete = ("not reached" if not np_is_finite(result.t_complete_s)
+                 else f"{result.t_complete_s / 60.0:.2f} min")
+    thermal = "exothermic" if state.rxn_dH < 0 else ("endothermic" if state.rxn_dH > 0 else "athermal")
+    state.status_message = (
+        f"Reaction simulated ({thermal}). Peak T = {result.T_peak_c:.1f} C, "
+        f"adiabatic T = {result.T_adiabatic_c:.1f} C, time to 99% conversion = {_complete}."
+    )
+    notify(state, "S", "Reaction temperature profile computed.")
+
+
 def on_compute(state):
+    if state.ht_mode == HT_MODE_RXN:
+        _compute_reaction(state)
+        return
     if state.t_target < state.t_start and state.t_jacket >= state.t_start:
         state.status_message = "Invalid cooling setup: jacket temperature must be below start temperature."
         notify(state, "E", state.status_message)
@@ -337,6 +498,11 @@ heat_transfer_md = """
 
 <|{status_message}|text|>
 
+## Mode
+Choose whether to drive the batch to a target temperature with the jacket, or to
+model the temperature profile produced by a reaction.
+<|{ht_mode}|toggle|lov={ht_mode_options}|label=What to model|on_change=on_ht_mode_change|>
+
 ## 1) Reactor and Fluid Selection
 <|layout|columns=1 1 1 1|
 <|{selected_reactor}|selector|lov={reactor_options}|dropdown|label=Reactor|on_change=on_reactor_change|>
@@ -384,13 +550,13 @@ heat_transfer_md = """
 
 <|{lining_thickness_mm}|number|label=Lining thickness (mm)|>
 
-<|{rho}|number|label=rho (kg/m3)|>
+<|{rho}|number|label=rho (kg/m3)|on_change=on_rxn_input_change|>
 
 <|{mu}|number|label=mu (Pa.s)|>
 |>
 
 <|layout|columns=1 1 1 1|
-<|{cp}|number|label=Cp (J/kg.K)|>
+<|{cp}|number|label=Cp (J/kg.K)|on_change=on_rxn_input_change|>
 
 <|{k_fluid}|number|label=k fluid (W/m.K)|>
 
@@ -404,23 +570,46 @@ heat_transfer_md = """
 
 <|{cp_jacket}|number|label=Jacket Cp (J/kg.K)|>
 
-<|{q_rxn}|number|label=Additional heat input Q_rxn (W)|>
+<|{q_rxn}|number|label=Extra heat input (W)|>
 
 <|{include_agitator}|toggle|label=Include agitator heat|>
 |>
 
 <|layout|columns=1 1 1 1|
-<|{t_start}|number|label=T_start (C)|>
+<|{t_start}|number|label=T_start (C)|on_change=on_rxn_input_change|>
 
-<|{t_target}|number|label=T_target (C)|>
-
-<|{t_jacket}|number|label=T_jacket inlet (C)|>
+<|{t_jacket}|number|label=Jacket / coolant T (C)|>
 
 <|{time_unit}|selector|lov=Seconds;Minutes;Hours|dropdown|label=Plot time unit|>
+
+<|part|render={ht_mode == "Heat / cool vessel"}|
+<|{t_target}|number|label=T_target (C)|>
+|>
 |>
 
-<|Compute Heat Transfer|button|on_action=on_compute|class_name=compute-btn|>
+<|part|render={ht_mode == "Reaction temperature profile"}|
+## Reaction Kinetics and Heat of Reaction
+Pick a reaction to auto-fill its kinetics, or edit the fields directly. The rate
+constant is held fixed (isothermal-kinetics approximation; activation energy is
+not modelled) and the profile runs until 99% conversion.
+<|layout|columns=1 1 1 1 1|
+<|{selected_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction|on_change=on_reaction_change|>
 
+<|{rxn_order}|selector|lov={rxn_order_options}|dropdown|label=Order|>
+
+<|{rxn_k}|number|label=Rate constant k|>
+
+<|{rxn_c0}|number|label=C0 (mol/L)|on_change=on_rxn_input_change|>
+
+<|{rxn_dH}|number|label=dH_rxn (kJ/mol)|on_change=on_rxn_input_change|>
+|>
+
+<|{rxn_adiabatic_text}|text|mode=markdown|>
+|>
+
+<|Compute|button|on_action=on_compute|class_name=compute-btn|>
+
+<|part|render={ht_mode == "Heat / cool vessel"}|
 ## 3) Core KPIs
 <|{kpi_df}|table|width=100%|>
 
@@ -437,6 +626,18 @@ heat_transfer_md = """
 
 ## 6) Summary
 <|{summary_df}|table|width=100%|>
+|>
+
+<|part|render={ht_mode == "Reaction temperature profile" and rxn_result_ready}|
+## Reaction Temperature Profile
+Batch temperature (red) and conversion (blue, right axis) versus time. Dotted
+lines mark the coolant temperature and the adiabatic temperature (the peak the
+batch would reach with no cooling).
+<|chart|figure={rxn_fig}|height=460px|>
+
+## Reaction and Heat-Transfer Summary
+<|{rxn_summary_df}|table|width=100%|>
+|>
 """
 
 

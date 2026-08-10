@@ -90,6 +90,30 @@ class BatchResult:
     summary: pd.DataFrame
 
 
+@dataclass
+class ReactionResult:
+    re: float
+    pr: float
+    nu: float
+    h_i: float
+    h_o: float
+    u: float
+    area: float
+    p_agitator_w: float
+    t: np.ndarray            # time (s)
+    T: np.ndarray            # batch temperature (C)
+    conversion: np.ndarray   # fractional conversion 0..1
+    q_rxn: np.ndarray        # reaction heat rate (W; + exothermic release)
+    q_jacket: np.ndarray     # jacket heat rate (W; + into batch)
+    t_complete_s: float      # time to 99% conversion (inf if not reached)
+    T_peak_c: float
+    t_peak_s: float
+    T_adiabatic_c: float     # T_start + adiabatic rise (signed)
+    q_rxn_max_w: float
+    final_conversion: float
+    summary: pd.DataFrame
+
+
 def safe_float(value: Any, default: float = 0.0) -> float:
     try:
         if pd.isna(value):
@@ -456,4 +480,161 @@ def compute_batch(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> Ba
         corr_comparison=corr_df,
         htm_comparison=htm_df,
         summary=summary,
+    )
+
+
+def _heat_transfer_coeffs(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> dict[str, float]:
+    """Process/jacket-side coefficients and overall U (shared by both modes)."""
+    rho = safe_float(data["rho"])
+    mu = safe_float(data["mu"])
+    cp = safe_float(data["cp"])
+    k_fluid = safe_float(data["k_fluid"])
+    d_tank = safe_float(data["d_tank"])
+    d_imp = safe_float(data["d_imp"])
+    n_rps = safe_float(data["n_rpm"]) / 60.0
+    np_in = safe_float(data["np_in"])
+    mu_wall = safe_float(data["mu_wall"])
+    corr = str(data["nusselt_correlation"])
+    htm = htm_db[str(data["htm_name"])]
+    v_jacket = safe_float(data["v_jacket"])
+    d_hyd_jacket = safe_float(data["d_hyd_jacket"])
+    wall_k = safe_float(data["wall_k"])
+    wall_m = safe_float(data["wall_thickness_mm"]) / 1000.0
+    lining_k = safe_float(data["lining_k"])
+    lining_m = safe_float(data["lining_thickness_mm"]) / 1000.0
+    fouling = safe_float(data["fouling"])
+
+    re = rho * n_rps * d_imp**2 / mu if mu > 0 else 0.0
+    pr = cp * mu / k_fluid if k_fluid > 0 else 0.0
+    mu_ratio = mu / mu_wall if mu_wall > 0 else 1.0
+    nu = nusselt_jacket(re, pr, mu_ratio, corr)
+    h_i = nu * k_fluid / d_tank if d_tank > 0 else 0.0
+    h_o = jacket_side_htc(htm, v_jacket, d_hyd_jacket)
+    u = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m, lining_k, lining_m, fouling)
+    p_agitator_w = impeller_power(np_in, rho, n_rps, d_imp) if bool(data["include_agitator"]) else 0.0
+    return {"re": re, "pr": pr, "nu": nu, "h_i": h_i, "h_o": h_o, "u": u, "p_agitator_w": p_agitator_w}
+
+
+def compute_reaction_profile(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> ReactionResult:
+    """Batch temperature vs time driven by an exo/endothermic reaction.
+
+    The reaction is integrated with the supplied rate constant held fixed
+    (isothermal-kinetics approximation — activation energy is not modelled), so
+    conversion vs time is temperature-independent while the released/absorbed
+    heat drives the batch energy balance against a constant-temperature jacket.
+    The run stops at 99% conversion (or a time cap).
+    """
+    htc = _heat_transfer_coeffs(data, htm_db)
+    re, pr, nu = htc["re"], htc["pr"], htc["nu"]
+    h_i, h_o, u, p_agit = htc["h_i"], htc["h_o"], htc["u"], htc["p_agitator_w"]
+
+    rho = safe_float(data["rho"])
+    cp = safe_float(data["cp"])
+    v_l = safe_float(data["v_l"])
+    v_l_m3 = v_l / 1000.0
+    area = safe_float(data["a_ht"]) or 0.001
+    t_start = safe_float(data["t_start"])
+    t_jacket = safe_float(data["t_jacket"])
+
+    order = str(data["rxn_order"]).strip()
+    k = safe_float(data["rxn_k"])
+    c0 = safe_float(data["rxn_c0"])          # mol/L
+    dh_kj = safe_float(data["rxn_dH"])       # kJ/mol (negative = exothermic)
+
+    first = order in ("1", "pseudo-1")
+    second = order in ("2", "pseudo-2")
+    m_cp = rho * v_l_m3 * cp                  # J/K
+
+    n0 = c0 * v_l                            # mol
+    # Adiabatic rise (signed): exothermic (dH<0) raises T.
+    adiabatic_rise = (-dh_kj * 1000.0 * n0) / m_cp if m_cp > 0 else 0.0
+    t_adiabatic = t_start + adiabatic_rise
+
+    if first:
+        t_char = 1.0 / k if k > 0 else np.inf
+    elif second:
+        t_char = 1.0 / (k * c0) if (k > 0 and c0 > 0) else np.inf
+    else:
+        t_char = np.inf
+
+    def _summary(peak_t, t_peak, t_complete, q_rxn_max, final_x) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {"Metric": "U (W/m2.K)", "Value": round(u, 2)},
+                {"Metric": "h_i (W/m2.K)", "Value": round(h_i, 2)},
+                {"Metric": "h_o (W/m2.K)", "Value": round(h_o, 2)},
+                {"Metric": "A_ht (m2)", "Value": round(area, 4)},
+                {"Metric": "P_agitator (W)", "Value": round(p_agit, 2)},
+                {"Metric": "Adiabatic dT (C)", "Value": round(adiabatic_rise, 2)},
+                {"Metric": "Adiabatic T (C)", "Value": round(t_adiabatic, 2)},
+                {"Metric": "Peak T (C)", "Value": round(peak_t, 2)},
+                {"Metric": "Time to peak T (min)", "Value": round(t_peak / 60.0, 2)},
+                {"Metric": "Max Q_rxn (W)", "Value": round(q_rxn_max, 1)},
+                {"Metric": "Time to 99% conversion (min)",
+                 "Value": np.inf if not np.isfinite(t_complete) else round(t_complete / 60.0, 2)},
+                {"Metric": "Final conversion (%)", "Value": round(final_x * 100.0, 1)},
+            ]
+        )
+
+    if not np.isfinite(t_char) or t_char <= 0 or m_cp <= 0 or c0 <= 0:
+        empty_t = np.array([0.0])
+        return ReactionResult(
+            re, pr, nu, h_i, h_o, u, area, p_agit,
+            empty_t, np.array([t_start]), np.array([0.0]), np.array([0.0]), np.array([0.0]),
+            np.inf, t_start, 0.0, t_adiabatic, 0.0, 0.0,
+            _summary(t_start, 0.0, np.inf, 0.0, 0.0),
+        )
+
+    # Integrate to ~99.5% conversion so the 99% completion check fires with
+    # margin (first order needs ~5.3/k; second order ~199/(k*C0)).
+    if first:
+        t_span = -np.log(1.0 - 0.995) / k
+    else:
+        t_span = 0.995 / (0.005 * k * c0)
+    t_max = min(max(t_span, 60.0), 86400.0)
+    steps = 5000
+    dt = t_max / steps
+    t_arr = np.zeros(steps + 1)
+    T = np.zeros(steps + 1)
+    C = np.zeros(steps + 1)
+    q_rxn = np.zeros(steps + 1)
+    q_jac = np.zeros(steps + 1)
+    T[0] = t_start
+    C[0] = c0
+    q_rxn[0] = -dh_kj * 1000.0 * ((k * c0 if first else k * c0 * c0) * v_l)
+    q_jac[0] = u * area * (t_jacket - t_start)
+
+    c_complete = 0.01 * c0  # 99% conversion
+    end = steps
+    for i in range(1, steps + 1):
+        c_prev = max(C[i - 1], 0.0)
+        t_prev = T[i - 1]
+        rc = k * c_prev if first else k * c_prev * c_prev       # mol/(L.s)
+        r_mol_s = rc * v_l                                       # mol/s
+        qr = -dh_kj * 1000.0 * r_mol_s                          # W (+ exothermic)
+        qj = u * area * (t_jacket - t_prev)                     # W
+        C[i] = max(c_prev - rc * dt, 0.0)
+        T[i] = t_prev + (qr + qj + p_agit) / m_cp * dt
+        q_rxn[i] = qr
+        q_jac[i] = qj
+        t_arr[i] = i * dt
+        if C[i] <= c_complete:
+            end = i
+            break
+
+    sl = slice(0, end + 1)
+    t_arr, T, C, q_rxn, q_jac = t_arr[sl], T[sl], C[sl], q_rxn[sl], q_jac[sl]
+    conversion = 1.0 - C / c0
+    final_x = float(conversion[-1])
+    t_complete = float(t_arr[-1]) if final_x >= 0.99 else np.inf
+    peak_idx = int(np.argmax(T))
+    t_peak_c = float(T[peak_idx])
+    t_peak_s = float(t_arr[peak_idx])
+    q_rxn_max = float(np.max(np.abs(q_rxn)))
+
+    return ReactionResult(
+        re, pr, nu, h_i, h_o, u, area, p_agit,
+        t_arr, T, conversion, q_rxn, q_jac,
+        t_complete, t_peak_c, t_peak_s, t_adiabatic, q_rxn_max, final_x,
+        _summary(t_peak_c, t_peak_s, t_complete, q_rxn_max, final_x),
     )

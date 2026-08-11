@@ -80,10 +80,15 @@ vessel_schematic_html = _schem0["html"]
 
 def _fill_caption(res: dict) -> str:
     if res.get("level_mm") is None:
-        return f"Brim-full working volume ≈ {res.get('total_L', 0):,.1f} L."
-    return (f"Liquid surface at **{res['level_mm']:+.0f} mm** relative to the bottom "
-            f"tangent line ({res['fill_pct']:.0f}% of the {res['total_L']:,.1f} L "
-            f"brim-full volume).")
+        base = f"Brim-full working volume ≈ {res.get('total_L', 0):,.1f} L."
+    else:
+        base = (f"Liquid surface at **{res['level_mm']:+.0f} mm** relative to the bottom "
+                f"tangent line ({res['fill_pct']:.0f}% of the {res['total_L']:,.1f} L "
+                f"brim-full volume).")
+    warns = res.get("warnings") or []
+    if warns:
+        base += "\n\n⚠️ **Impeller–wall interference:** " + " ".join(warns)
+    return base
 
 
 vessel_fill_caption = _fill_caption(_schem0)
@@ -210,10 +215,12 @@ def on_vessel_select(state):
 
 def on_vessel_fill_change(state):
     total = state.vessel_total_vol_L
-    fill = max(0.0, float(state.vessel_fill_L or 0.0))
-    if total > 0 and fill > total:
-        fill = round(total, 2)
-    state.vessel_fill_L = fill
+    raw = float(state.vessel_fill_L or 0.0)
+    fill = min(max(0.0, raw), round(total, 2)) if total > 0 else max(0.0, raw)
+    # Only write back when the value was actually clamped — re-assigning the
+    # variable that triggered this on_change otherwise trips a Taipy warning.
+    if fill != raw:
+        state.vessel_fill_L = fill
     _refresh_schematic(state)
 
 
@@ -262,8 +269,6 @@ page. Reactor images are added separately.
 <|Vessel properties|expandable|expanded=False|
 <|{vessel_detail_df}|table|width=100%|show_all|>
 |>
-
-<|{vessel_media_caption}|text|>
 
 <|part|content={vessel_viewer_html}|height=380px|>
 

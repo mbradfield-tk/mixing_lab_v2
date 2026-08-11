@@ -221,13 +221,37 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
 
     lowest_imp_y = min((c[1] for c in impellers), default=0.0)
 
+    # Flag impellers whose blades cut into the wall / dish, or spill past the
+    # vessel ends (usually a mis-entered diameter, height or clearance).
+    tol = R * 1e-3
+    warnings: list[str] = []
+    wall_hit: set[int] = set()
+    for idx, (d_i, cy_i, h_i, _c_i, _t_i) in enumerate(impellers):
+        r_i = d_i / 2.0
+        zb, zt = cy_i - h_i / 2.0, cy_i + h_i / 2.0
+        local_r = min(radius_at(z) for z in np.linspace(zb, zt, 12))
+        if r_i > R + tol:
+            warnings.append(f"Impeller {idx + 1}: ⌀{d_i * 1000:.0f} mm exceeds the tank ID "
+                            f"⌀{geom['D'] * 1000:.0f} mm.")
+            wall_hit.add(idx)
+        elif r_i > local_r + tol:
+            warnings.append(f"Impeller {idx + 1}: the blade (⌀{d_i * 1000:.0f} mm) cuts into "
+                            "the dish wall at its height.")
+            wall_hit.add(idx)
+        if zb < -bot_depth - tol:
+            warnings.append(f"Impeller {idx + 1}: extends below the vessel bottom.")
+            wall_hit.add(idx)
+        if zt > H + top_depth + tol:
+            warnings.append(f"Impeller {idx + 1}: extends above the vessel top.")
+            wall_hit.add(idx)
+
     # Size-aware padding so labels never crowd the vessel.
     total_h = bot_depth + H + top_depth
     ref = max(R, total_h)
     gap = ref * 0.10
     left_pad = R * 0.95
     right_pad = R * 1.05
-    bot_pad = gap + ref * 0.16
+    bot_pad = gap + ref * 0.16 + (ref * 0.12 if warnings else 0.0)
     top_pad = ref * 0.06
     if level is not None:
         top_pad += ref * 0.10
@@ -280,6 +304,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # Impellers (clearance measured from the dish bottom)
     for idx_imp, (d_imp, cy, h_imp, color, itype) in enumerate(impellers):
         r_imp = d_imp / 2.0
+        edge = "#C62828" if idx_imp in wall_hit else color
+        elw = 2.4 if idx_imp in wall_hit else 1.5
         if "chevron" in itype.lower():
             # Downward chevron follows the conical-bottom angle when present.
             if bot_shape == "cone" and R > 0:
@@ -296,12 +322,12 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                 (-r_imp, cy + half_v - h_imp),
             ]
             ax.add_patch(patches.Polygon(pts, closed=True, facecolor=color,
-                                         edgecolor=color, alpha=0.7, lw=1.5, zorder=4))
+                                         edgecolor=edge, alpha=0.7, lw=elw, zorder=4))
         else:
             ax.add_patch(patches.FancyBboxPatch(
                 (-r_imp, cy - h_imp / 2.0), d_imp, h_imp,
-                boxstyle="round,pad=0.002", facecolor=color, edgecolor=color,
-                alpha=0.7, lw=1.5, zorder=4))
+                boxstyle="round,pad=0.002", facecolor=color, edgecolor=edge,
+                alpha=0.7, lw=elw, zorder=4))
         # Leader line + label
         ax.plot([r_imp, R + right_pad * 0.12], [cy, cy],
                 color=color, lw=0.6, alpha=0.5, zorder=3)
@@ -331,6 +357,24 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.text(hx - R * 0.06, H / 2, f"H {H * 1000:.0f} mm",
             ha="right", va="center", fontsize=dim_fs, color=dim_color, rotation=90)
 
+    # Bottom impeller off-bottom clearance (C): lowest interior point -> centreline.
+    if impellers:
+        cy_low = min(c[1] for c in impellers)
+        clr_mm = (cy_low + bot_depth) * 1000.0
+        cclr = "#00695C"
+        cx = -R - left_pad * 0.22
+        for sy in (-bot_depth, cy_low):
+            ax.plot([-R, cx], [sy, sy], color=cclr, lw=wit_lw, zorder=2)
+        ax.annotate("", xy=(cx, cy_low), xytext=(cx, -bot_depth),
+                    arrowprops=dict(arrowstyle="<->", color=cclr, lw=1))
+        ax.text(cx - R * 0.04, (-bot_depth + cy_low) / 2.0, f"C {clr_mm:.0f} mm",
+                ha="right", va="center", fontsize=dim_fs, color=cclr, rotation=90)
+
+    # Impeller–wall interference flag.
+    if warnings:
+        ax.text(0, -bot_depth - gap - ref * 0.17, "⚠ Impeller cuts into the wall",
+                ha="center", va="top", fontsize=8, color="#C62828", fontweight="bold")
+
     if title:
         ax.set_title(title, fontsize=10, fontweight="bold", pad=10)
     fig.tight_layout()
@@ -340,4 +384,6 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         "total_L": total_L,
         "level_mm": (level * 1000.0) if level is not None else None,
         "fill_pct": fill_pct,
+        "warnings": warnings,
+        "wall_cut": bool(warnings),
     }

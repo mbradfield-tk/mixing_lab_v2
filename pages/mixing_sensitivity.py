@@ -36,9 +36,14 @@ from taipy.gui import Markdown, notify
 
 from utils.solvent_properties import get_properties, is_known_solvent
 from utils.report_builder import build_protocol_pdf, report_filename
+from vessel_media import build_image_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
+
+IMAGES_DIR = Path(__file__).resolve().parent.parent / "images" / "general"
+ms_decision_tree_html = build_image_html(
+    IMAGES_DIR / "mixing_sensitivity_protocol.png", alt="Reaction mixing sensitivity protocol")
 
 
 # ---------------------------------------------------------------------------
@@ -902,6 +907,10 @@ A guided decision tree to determine **whether a reaction is sensitive to mixing*
 and, if so, **which mechanism controls** it — micromixing, mesomixing,
 macromixing, interphase mass transport, or heat transfer. Work through the steps;
 the **Summary** synthesises everything into an overall verdict.
+
+<|Decision-tree flowsheet|expandable|expanded=False|
+<|part|content={ms_decision_tree_html}|height=620px|>
+|>
 
 <|part|render={not ms_started}|
 ▶️ **Set your inputs in the steps below, then click _Start assessment_ at the bottom

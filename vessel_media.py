@@ -117,6 +117,28 @@ def media_caption(reactor_id: str) -> str:
     return f"{label}: {path.name}"
 
 
+def build_image_html(image_path, alt: str = "diagram", background: str = "#ffffff") -> str:
+    """Return a self-contained HTML document embedding a local image (base64).
+
+    Scales to the container width (``height:auto``) so tall diagrams stay
+    readable; shown inside a Taipy ``part`` ``content`` iframe.
+    """
+    p = Path(image_path)
+    if not p.is_file():
+        return _placeholder_html(f"Image not found: {p.name}")
+    suffix = p.suffix.lower().lstrip(".")
+    mime = f"image/{'jpeg' if suffix in ('jpg', 'jpeg') else suffix}"
+    src = _data_uri(str(p), mime)
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
+        f"<body style='margin:0;display:flex;justify-content:center;"
+        f"align-items:flex-start;background:{background};'>"
+        f"<img src=\"{src}\" alt=\"{alt}\" style=\"max-width:100%;height:auto;\"/>"
+        "</body></html>"
+    )
+
+
+
 def _viewer_card_body(name: str, reactor_id: str, height: int) -> str:
     """Return the inner HTML (title + media) for one vessel card."""
     media = find_vessel_media(reactor_id)

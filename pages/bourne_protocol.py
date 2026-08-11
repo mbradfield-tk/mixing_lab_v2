@@ -47,11 +47,15 @@ from utils.solvent_properties import (
 )
 from utils.report_builder import build_bourne_protocol_pdf, report_filename
 from pages import _db_common as db
-from vessel_media import build_vessel_viewer_html, media_caption
+from vessel_media import build_image_html, build_vessel_viewer_html, media_caption
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
 fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
+
+IMAGES_DIR = Path(__file__).resolve().parent.parent / "images" / "general"
+bp_decision_tree_html = build_image_html(
+    IMAGES_DIR / "bourne_protocol_decision_tree.png", alt="Bourne Protocol decision tree")
 
 VIEWER_H = 360
 RESPONSE_METRICS = ["Yield", "Purity", "Conversion", "Selectivity",
@@ -1099,6 +1103,10 @@ page = Markdown(
 A structured mixing-sensitivity screen (Bourne, 2003). Three gated tests reveal
 whether mixing matters and, if so, which scale — **micro**, **meso**, or
 **macro** — controls the outcome.
+
+<|Decision-tree flowsheet|expandable|expanded=False|
+<|part|content={bp_decision_tree_html}|height=620px|>
+|>
 
 <|part|class_name=va-card|
 ## System Definition

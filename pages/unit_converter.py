@@ -249,6 +249,8 @@ page = Markdown(
 
 General unit conversions for physical properties relevant to mixing and reactor engineering.
 
+<|part|class_name=va-card|
+## Convert
 <|layout|columns=1 1 1|
 <|{uc_property}|selector|lov={uc_property_options}|dropdown|label=Physical property|on_change=on_property_change|>
 
@@ -270,9 +272,13 @@ Gas flow conversions use the ideal-gas law. Specify the **actual** gas temperatu
 <|{GAS_REF_DF}|table|width=100%|show_all|>
 |>
 |>
+|>
 
+<|part|class_name=va-card|
+## Results
 ### <|{uc_header}|text|raw|>
 
 <|{uc_result_df}|table|width=100%|page_size=20|>
+|>
 """
 )

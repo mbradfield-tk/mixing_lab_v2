@@ -721,6 +721,8 @@ page = Markdown(
 
 <|{va_status}|text|>
 
+<|part|height=18px|>
+
 <|part|class_name=va-card|
 ## 1. Vessel & System
 <|layout|columns=3 2|

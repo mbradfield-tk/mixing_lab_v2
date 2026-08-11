@@ -908,9 +908,13 @@ and, if so, **which mechanism controls** it — micromixing, mesomixing,
 macromixing, interphase mass transport, or heat transfer. Work through the steps;
 the **Summary** synthesises everything into an overall verdict.
 
+<|part|height=18px|>
+
 <|Decision-tree flowsheet|expandable|expanded=False|
 <|part|content={ms_decision_tree_html}|height=620px|>
 |>
+
+<|part|height=18px|>
 
 <|part|render={not ms_started}|
 ▶️ **Set your inputs in the steps below, then click _Start assessment_ at the bottom
@@ -920,6 +924,8 @@ of the page.** No results are shown until you do.
 <|part|render={ms_started}|
 <|🔄 Reset assessment|button|on_action=on_ms_reset|class_name=compute-btn|>
 |>
+
+<|part|height=18px|>
 
 <|part|class_name=va-card|
 ## Step 0 — Bourne Protocol Pre-Screen

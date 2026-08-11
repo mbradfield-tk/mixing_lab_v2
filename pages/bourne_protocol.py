@@ -1104,9 +1104,13 @@ A structured mixing-sensitivity screen (Bourne, 2003). Three gated tests reveal
 whether mixing matters and, if so, which scale — **micro**, **meso**, or
 **macro** — controls the outcome.
 
+<|part|height=18px|>
+
 <|Decision-tree flowsheet|expandable|expanded=False|
 <|part|content={bp_decision_tree_html}|height=620px|>
 |>
+
+<|part|height=18px|>
 
 <|part|class_name=va-card|
 ## System Definition

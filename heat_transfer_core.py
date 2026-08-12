@@ -173,10 +173,10 @@ def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "") -> floa
     dish = (bottom_dish or "").lower()
     if "ellip" in dish:
         h_dish = D_tank / 4
-        A_dish_full = 1.09 * A_flat
+        A_dish_full = 1.084 * D_tank**2   # 2:1 semi-ellipsoidal head, exact spheroid area
     elif "torisph" in dish or "din" in dish:
         h_dish = 0.1935 * D_tank
-        A_dish_full = 1.06 * A_flat
+        A_dish_full = 0.99 * D_tank**2    # Klöpper head (DIN 28011) surface area
     elif "conic" in dish:
         h_dish = _cone_depth(D_tank, dish)
         r = D_tank / 2.0
@@ -334,7 +334,8 @@ def profile_variable_jacket(
             ntu = U * area / (m_dot_jacket * cp_jacket)
             eff = 1.0 - np.exp(-ntu)
             q_jacket = eff * m_dot_jacket * cp_jacket * (t_jacket_in - t_prev)
-            Tj_out[i] = t_jacket_in + q_jacket / (m_dot_jacket * cp_jacket)
+            # Jacket loses the heat it gives the batch: Tj_out = Tj_in - q/(m_dot*cp)
+            Tj_out[i] = t_jacket_in - q_jacket / (m_dot_jacket * cp_jacket)
         else:
             q_jacket = U * area * (t_jacket_in - t_prev)
             Tj_out[i] = t_jacket_in

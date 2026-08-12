@@ -19,20 +19,19 @@ None of the heat-transfer correlations below appear in the context source
         Ref: DIN 28011 / ASME F&D head geometry.  [NOT in context/ - verify]
     estimate_U (material-based band)
         Heuristic U ranges by wall/lining material.  [SOURCE MISSING - heuristic]
-    estimate_U_detailed, process_side_htc, _compute_hi, nusselt_jacket,
-    NUSSELT_CORRELATIONS table
+    estimate_U_detailed, nusselt_jacket, NUSSELT_CORRELATIONS table
         Jacketed-vessel process-side Nu = C Re^(2/3) Pr^(1/3) (mu/mu_w)^0.14.
         Refs (also in the table 'ref' keys): DIN 28131:1979; Chilton, Drew &
         Jebens (1944), Ind. Eng. Chem. 36, 510; Lehrer (1970); Nagata (1975);
         Brooks & Su (1959); Stein & Schmidt (1993).  [NOT in context/ - verify]
     jacket_side_htc (laminar Hausen; turbulent Dittus-Boelter 0.023 Re^0.8 Pr^0.4)
         Ref: Dittus & Boelter (1930); Hausen (1943).  [NOT in context/ - verify]
-    estimate_U_from_resistances, heat_removal_capacity, cooling_rate,
-    time_to_cool_or_heat (log-mean), batch_temperature_profile[_tdep],
-    batch_temp_profile_variable_jacket[_tdep]
+    estimate_U_from_resistances, heat_removal_capacity,
+    time_to_cool_or_heat (log-mean)
         Series-resistance / lumped-capacitance energy balances.
         Ref: standard process heat-transfer texts (e.g. Coulson & Richardson
         vol. 1; Perry's Handbook).  [NOT in context/ - verify]
+        (Transient batch simulations live in heat_transfer_core.py.)
     WALL_CONDUCTIVITY, LINING_CONDUCTIVITY, *_THICKNESS, JACKET_HTC, FOULING
         Tabulated material/typical values.  [SOURCE MISSING - verify against
         material datasheets / Perry's]
@@ -43,7 +42,6 @@ import warnings as _warnings
 
 import numpy as np
 import pandas as pd
-from scipy.integrate import solve_ivp
 import pathlib as _pathlib
 
 from .geometry import cone_depth
@@ -87,10 +85,10 @@ def estimate_jacket_area(D_tank: float, H: float,
 
     if "ellip" in dish:
         h_dish = D_tank / 4
-        A_dish_full = 1.09 * A_flat
+        A_dish_full = 1.084 * D_tank**2   # 2:1 semi-ellipsoidal head, exact spheroid area
     elif "torisph" in dish or "din" in dish:
         h_dish = 0.1935 * D_tank
-        A_dish_full = 1.06 * A_flat
+        A_dish_full = 0.99 * D_tank**2    # Klöpper head (DIN 28011) surface area
     elif "conic" in dish:
         h_dish = cone_depth(D_tank, dish)
         R = D_tank / 2.0
@@ -356,14 +354,6 @@ def heat_balance_assessment(Q_gen: float, Q_cool: float) -> str:
         return f"🔴 Insufficient cooling (Q_gen/Q_cool = {ratio:.2f})"
 
 
-def cooling_rate(Q_cool: float, P_agitator: float,
-                 rho: float, V_L: float, Cp: float) -> float:
-    """dT/dt = (Q_cool − P_agitator) / (ρ V Cp)."""
-    if rho <= 0 or V_L <= 0 or Cp <= 0:
-        return 0.0
-    return (Q_cool - P_agitator) / (rho * V_L * Cp)
-
-
 def time_to_cool_or_heat(rho: float, V_L: float, Cp: float,
                          U: float, A: float,
                          T_start: float, T_end: float,
@@ -476,20 +466,6 @@ def nusselt_jacket(Re: float, Pr: float, mu_ratio: float = 1.0,
     return C * Re**a * Pr**b * mu_ratio**c
 
 
-def process_side_htc(N_rps: float, D_imp: float, D_tank: float,
-                     rho: float, mu: float, Cp: float, k_fluid: float,
-                     mu_wall: float = 0.0,
-                     correlation: str = "DIN 28131 (standard)") -> float:
-    """Compute process-side heat transfer coefficient h_i (W/m²·K)."""
-    if N_rps <= 0 or D_imp <= 0 or D_tank <= 0 or rho <= 0 or mu <= 0 or Cp <= 0 or k_fluid <= 0:
-        return 0.0
-    Re = rho * N_rps * D_imp**2 / mu
-    Pr = Cp * mu / k_fluid
-    mu_r = mu / mu_wall if mu_wall > 0 else 1.0
-    Nu = nusselt_jacket(Re, Pr, mu_r, correlation)
-    return Nu * k_fluid / D_tank
-
-
 def jacket_side_htc(htm_name: str = "", v_jacket: float = 0.0,
                     D_hyd: float = 0.05) -> float:
     """Estimate jacket-side heat-transfer coefficient h_o (W/m²·K)."""
@@ -530,216 +506,3 @@ def estimate_U_from_resistances(h_i: float, h_o: float,
     if lining_k > 0 and lining_thickness_m > 0:
         R += lining_thickness_m / lining_k
     return 1.0 / R
-
-
-# ---------------------------------------------------------------------------
-# Batch temperature simulations
-# ---------------------------------------------------------------------------
-
-def batch_temperature_profile(
-    rho: float, V_L_m3: float, Cp: float,
-    U: float, A: float,
-    T_start: float, T_target: float, T_jacket: float,
-    P_agitator: float = 0.0, Q_rxn: float = 0.0,
-    dt: float = 1.0, t_max: float = 36000.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate batch temperature vs time (Euler integration)."""
-    if rho <= 0 or V_L_m3 <= 0 or Cp <= 0 or U <= 0 or A <= 0:
-        return np.array([0.0]), np.array([T_start])
-
-    m_Cp = rho * V_L_m3 * Cp
-    cooling = T_target < T_start
-    n_steps = int(t_max / dt) + 1
-    t_arr = np.empty(n_steps)
-    T_arr = np.empty(n_steps)
-    t_arr[0] = 0.0
-    T_arr[0] = T_start
-    for i in range(1, n_steps):
-        T_prev = T_arr[i - 1]
-        Q_jacket = U * A * (T_jacket - T_prev)
-        dTdt = (Q_jacket + P_agitator + Q_rxn) / m_Cp
-        T_new = T_prev + dTdt * dt
-        t_arr[i] = i * dt
-        T_arr[i] = T_new
-        if cooling and T_new <= T_target:
-            return t_arr[: i + 1], T_arr[: i + 1]
-        if not cooling and T_new >= T_target:
-            return t_arr[: i + 1], T_arr[: i + 1]
-    return t_arr, T_arr
-
-
-def batch_temp_profile_variable_jacket(
-    rho: float, V_L_m3: float, Cp: float,
-    U: float, A: float,
-    T_start: float, T_target: float,
-    T_jacket_in: float,
-    m_dot_jacket: float, Cp_jacket: float,
-    P_agitator: float = 0.0, Q_rxn: float = 0.0,
-    dt: float = 1.0, t_max: float = 36000.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Simulate batch temperature with non-isothermal jacket."""
-    if rho <= 0 or V_L_m3 <= 0 or Cp <= 0 or U <= 0 or A <= 0 or m_dot_jacket <= 0 or Cp_jacket <= 0:
-        return np.array([0.0]), np.array([T_start]), np.array([T_jacket_in])
-
-    m_Cp = rho * V_L_m3 * Cp
-    cooling = T_target < T_start
-    NTU = U * A / (m_dot_jacket * Cp_jacket) if m_dot_jacket * Cp_jacket > 0 else 0.0
-    n_steps = int(t_max / dt) + 1
-    t_arr = np.empty(n_steps)
-    T_arr = np.empty(n_steps)
-    Tj_out = np.empty(n_steps)
-    t_arr[0] = 0.0
-    T_arr[0] = T_start
-    Tj_out[0] = T_jacket_in
-    for i in range(1, n_steps):
-        T_prev = T_arr[i - 1]
-        if NTU > 0:
-            effectiveness = 1.0 - np.exp(-NTU)
-            Q_jacket = effectiveness * m_dot_jacket * Cp_jacket * (T_jacket_in - T_prev)
-            Tj_out_i = T_jacket_in + Q_jacket / (m_dot_jacket * Cp_jacket)
-        else:
-            Q_jacket = U * A * (T_jacket_in - T_prev)
-            Tj_out_i = T_jacket_in
-        dTdt = (Q_jacket + P_agitator + Q_rxn) / m_Cp
-        T_new = T_prev + dTdt * dt
-        t_arr[i] = i * dt
-        T_arr[i] = T_new
-        Tj_out[i] = Tj_out_i
-        if cooling and T_new <= T_target:
-            return t_arr[: i + 1], T_arr[: i + 1], Tj_out[: i + 1]
-        if not cooling and T_new >= T_target:
-            return t_arr[: i + 1], T_arr[: i + 1], Tj_out[: i + 1]
-    return t_arr, T_arr, Tj_out
-
-
-# ---------------------------------------------------------------------------
-# Temperature-dependent simulations (scipy solve_ivp)
-# ---------------------------------------------------------------------------
-
-def _compute_hi(rho, mu, Cp, k_fluid, N_rps, D_imp, D_tank, mu_wall, nu_corr):
-    """Helper: compute process-side h_i from fluid properties."""
-    if rho <= 0 or mu <= 0 or Cp <= 0 or k_fluid <= 0 or N_rps <= 0 or D_imp <= 0 or D_tank <= 0:
-        return 0.0
-    Re = rho * N_rps * D_imp**2 / mu
-    Pr = Cp * mu / k_fluid
-    mu_r = mu / mu_wall if mu_wall > 0 else 1.0
-    Nu = nusselt_jacket(Re, Pr, mu_r, nu_corr)
-    return Nu * k_fluid / D_tank
-
-
-def batch_temperature_profile_tdep(
-    props_fn, V_L_m3: float,
-    N_rps: float, D_imp: float, D_tank: float,
-    h_o: float,
-    wall_k: float, wall_m: float,
-    lining_k: float, lining_m: float,
-    fouling_R: float, A: float,
-    T_start: float, T_target: float, T_jacket: float,
-    mu_wall: float = 0.0,
-    nu_corr: str = "DIN 28131 (standard)",
-    P_agitator_fn=None, Q_rxn: float = 0.0,
-    dt: float = 1.0, t_max: float = 36000.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Batch temperature profile with temperature-dependent fluid properties."""
-    if V_L_m3 <= 0 or A <= 0:
-        return np.array([0.0]), np.array([T_start]), np.array([0.0])
-
-    P_agit = P_agitator_fn if isinstance(P_agitator_fn, (int, float)) else 0.0
-
-    def _rhs(_t, y):
-        T = y[0]
-        rho_i, mu_i, Cp_i, k_i = props_fn(T)
-        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
-        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
-                                           lining_k, lining_m, fouling_R)
-        m_Cp = rho_i * V_L_m3 * Cp_i
-        if m_Cp <= 0:
-            m_Cp = 1.0
-        Q_jacket = U_i * A * (T_jacket - T)
-        return [(Q_jacket + P_agit + Q_rxn) / m_Cp]
-
-    def _hit_target(_t, y):
-        return y[0] - T_target
-    _hit_target.terminal = True
-    _hit_target.direction = -1.0 if T_target < T_start else 1.0
-
-    t_eval = np.arange(0.0, t_max + dt, dt)
-    sol = solve_ivp(
-        _rhs, [0.0, t_max], [T_start],
-        method="RK45", t_eval=t_eval, events=_hit_target,
-        rtol=1e-8, atol=1e-10, max_step=dt,
-    )
-
-    t_arr = sol.t
-    T_arr = sol.y[0]
-    U_arr = np.empty_like(t_arr)
-    for i, T in enumerate(T_arr):
-        rho_i, mu_i, Cp_i, k_i = props_fn(T)
-        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
-        U_arr[i] = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
-                                                lining_k, lining_m, fouling_R)
-    return t_arr, T_arr, U_arr
-
-
-def batch_temp_profile_variable_jacket_tdep(
-    props_fn, V_L_m3: float,
-    N_rps: float, D_imp: float, D_tank: float,
-    h_o: float,
-    wall_k: float, wall_m: float,
-    lining_k: float, lining_m: float,
-    fouling_R: float, A: float,
-    T_start: float, T_target: float,
-    T_jacket_in: float,
-    m_dot_jacket: float, Cp_jacket: float,
-    mu_wall: float = 0.0,
-    nu_corr: str = "DIN 28131 (standard)",
-    P_agitator: float = 0.0, Q_rxn: float = 0.0,
-    dt: float = 1.0, t_max: float = 36000.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Variable-jacket simulation with temperature-dependent fluid properties."""
-    if (V_L_m3 <= 0 or A <= 0 or m_dot_jacket <= 0 or Cp_jacket <= 0):
-        return (np.array([0.0]), np.array([T_start]),
-                np.array([T_jacket_in]), np.array([0.0]))
-
-    def _rhs(_t, y):
-        T = y[0]
-        rho_i, mu_i, Cp_i, k_i = props_fn(T)
-        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
-        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
-                                           lining_k, lining_m, fouling_R)
-        m_Cp = rho_i * V_L_m3 * Cp_i
-        if m_Cp <= 0:
-            m_Cp = 1.0
-        NTU = U_i * A / (m_dot_jacket * Cp_jacket)
-        eff = 1.0 - np.exp(-NTU) if NTU > 0 else 0.0
-        Q_jacket = eff * m_dot_jacket * Cp_jacket * (T_jacket_in - T)
-        return [(Q_jacket + P_agitator + Q_rxn) / m_Cp]
-
-    def _hit_target(_t, y):
-        return y[0] - T_target
-    _hit_target.terminal = True
-    _hit_target.direction = -1.0 if T_target < T_start else 1.0
-
-    t_eval = np.arange(0.0, t_max + dt, dt)
-    sol = solve_ivp(
-        _rhs, [0.0, t_max], [T_start],
-        method="RK45", t_eval=t_eval, events=_hit_target,
-        rtol=1e-8, atol=1e-10, max_step=dt,
-    )
-
-    t_arr = sol.t
-    T_arr = sol.y[0]
-    U_arr = np.empty_like(t_arr)
-    Tj_out = np.empty_like(t_arr)
-    for i, T in enumerate(T_arr):
-        rho_i, mu_i, Cp_i, k_i = props_fn(T)
-        h_i = _compute_hi(rho_i, mu_i, Cp_i, k_i, N_rps, D_imp, D_tank, mu_wall, nu_corr)
-        U_i = estimate_U_from_resistances(h_i, h_o, wall_k, wall_m,
-                                           lining_k, lining_m, fouling_R)
-        NTU = U_i * A / (m_dot_jacket * Cp_jacket)
-        eff = 1.0 - np.exp(-NTU) if NTU > 0 else 0.0
-        Q_jacket = eff * m_dot_jacket * Cp_jacket * (T_jacket_in - T)
-        Tj_out[i] = T_jacket_in + Q_jacket / (m_dot_jacket * Cp_jacket)
-        U_arr[i] = U_i
-
-    return t_arr, T_arr, Tj_out, U_arr

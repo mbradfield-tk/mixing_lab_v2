@@ -552,7 +552,6 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
     heat_results = snap.get("heat_results", {})
     particle_results = snap.get("particle_results", {})
     particle_meta = snap.get("particle_meta", {})
-    batchelor_um = snap.get("batchelor_um", 0.0)
     envelope = snap.get("envelope")
 
     title = f"Vessel Assessment \u2014 {reactor_name}"
@@ -584,7 +583,6 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
         ["Micromix t_E (s)", f"{hydro['Micromix time t_E (s)']:.4g}"],
         ["Tip speed (m/s)", f"{hydro['Tip speed (m/s)']:.2f}"],
         ["Kolmogorov eta (um)", f"{hydro['Kolmogorov η (µm)']:.1f}"],
-        ["Batchelor lambda_B (um)", f"{batchelor_um:.2f}"],
         ["Circulation time (s)", f"{hydro['Circulation time (s)']:.2f}"],
         ["Avg shear rate (1/s)", f"{hydro['Avg shear rate (1/s)']:.1f}"],
         ["Max shear rate (1/s)", f"{hydro['Max shear rate (1/s)']:.0f}"],

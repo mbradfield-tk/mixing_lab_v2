@@ -19,8 +19,7 @@ Wiley (1999).
         Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
     mesomixing_time (t_meso = 1.2 (d_feed^2/eps)^(1/3))
         Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
-    kolmogorov_length (eta = (nu^3/eps)^(1/4)),
-    batchelor_length (lambda_B = eta Sc^(-1/2))
+    kolmogorov_length (eta = (nu^3/eps)^(1/4))
         Ref: Myerson (2019) Ch. 8 (Baldyga).  [in context/]
     blend_time_turbulent
         The coefficient 5.2 is the Grenville-Nienow turbulent blend-time
@@ -31,10 +30,15 @@ Wiley (1999).
     epsilon_max_estimate (eps_max ~ C P/(rho D^3), C~3)
         Ref: Kresta & Wood (1993), Chem. Eng. Sci. 48, 1761.
         [NOT in context/ - verify]
-    average_shear_rate (Camp-Stein G = sqrt(P/(mu V))),
-    maximum_shear_rate, shear_stress
+    average_shear_rate (Camp-Stein G = sqrt(P/(mu V)))
         Ref: Camp & Stein (1943), J. Boston Soc. Civ. Eng. 30, 219.
         [NOT in context/ - verify]
+    maximum_shear_rate (gamma_max = sqrt(eps_max/nu))
+        Standard turbulence dissipation identity eps = nu * gamma^2 evaluated
+        at eps_max.  Ref: Tennekes & Lumley (1972), A First Course in
+        Turbulence, Ch. 3.  [textbook]
+    shear_stress (tau = mu * gamma)
+        Newton's law of viscosity.  [definition]
 """
 
 import numpy as np
@@ -96,13 +100,6 @@ def kolmogorov_length(nu: float, epsilon: float) -> float:
     if epsilon <= 0:
         return np.inf
     return (nu**3 / epsilon)**0.25
-
-
-def batchelor_length(nu: float, epsilon: float, D_mol: float) -> float:
-    """λ_B = η · Sc^{-1/2},  Sc = ν / D_mol.  epsilon must be in W/kg."""
-    eta = kolmogorov_length(nu, epsilon)
-    Sc = nu / D_mol if D_mol > 0 else 1e12
-    return eta / np.sqrt(Sc)
 
 
 def epsilon_max_estimate(P: float, rho: float, D: float, N: float) -> float:

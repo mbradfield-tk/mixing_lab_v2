@@ -358,6 +358,37 @@ button.compute-btn-ok:hover {
     border-radius: 6px;
 }
 
+/* Symbol/Description/Units tables on the Equations Reference page: markdown
+   tables parse into bare, unstyled table elements, so give them borders, a
+   shaded header row and zebra striping. Scoped to .eq-sec to avoid touching
+   Taipy's MUI data tables elsewhere. */
+.eq-sec table {
+    border-collapse: collapse;
+    margin: 6px 0 14px 0;
+    font-size: 0.92em;
+}
+.eq-sec th, .eq-sec td {
+    border: 1px solid #d7d9dc;
+    padding: 4px 12px;
+    text-align: left;
+}
+.eq-sec th {
+    background: #f2f3f5;
+    font-weight: 600;
+}
+.eq-sec tbody tr:nth-child(even) td {
+    background: #fafbfc;
+}
+.taipy-dark .eq-sec th, .taipy-dark .eq-sec td {
+    border-color: #4a4f55;
+}
+.taipy-dark .eq-sec th {
+    background: #2e3338;
+}
+.taipy-dark .eq-sec tbody tr:nth-child(even) td {
+    background: rgba(255,255,255,0.04);
+}
+
 /* Neat, level form controls: inside layout grids every input/selector fills its
    column and is top-aligned, and all number/text/selector fields share one
    height so boxes line up cleanly regardless of label length. Tight, uniform

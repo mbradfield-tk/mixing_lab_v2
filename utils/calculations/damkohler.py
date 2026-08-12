@@ -18,8 +18,6 @@ REFERENCES (per function)
     mixing_sensitivity_assessment
         Qualitative Da thresholds (0.01/0.1/1/10) are heuristic interpretation
         bands, not a published classification.  [SOURCE MISSING - heuristic]
-    half_life_first_order, reaction_time_second_order
-        Standard chemical-kinetics definitions.  [textbook]
 """
 
 import numpy as np
@@ -96,17 +94,3 @@ def mixing_sensitivity_assessment(Da_macro: float, Da_micro: float,
         else:
             labels.append(f"S-L: Strongly transfer-limited (Da_SL={Da_SL:.3g})")
     return " | ".join(labels)
-
-
-def half_life_first_order(k: float) -> float:
-    """t_1/2 = ln2 / k"""
-    if k <= 0:
-        return np.inf
-    return np.log(2) / k
-
-
-def reaction_time_second_order(k: float, C0: float) -> float:
-    """Characteristic time = 1 / (k C0)"""
-    if k * C0 <= 0:
-        return np.inf
-    return 1.0 / (k * C0)

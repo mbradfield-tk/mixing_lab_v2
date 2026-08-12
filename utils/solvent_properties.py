@@ -103,6 +103,7 @@ def _add(s: SolventData):
     SOLVENT_DB[s.name] = s
 
 # ─── Water ────────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); IAPWS / Kestin 1978 (μ, Cp, k); NIST WebBook (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Water", cas="7732-18-5", mw=18.015,
     mp_C=0.0, bp_C=100.0,
@@ -118,6 +119,7 @@ _add(SolventData(
 ))
 
 # ─── Methanol ────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Methanol", cas="67-56-1", mw=32.04,
     mp_C=-97.6, bp_C=64.7,
@@ -133,10 +135,11 @@ _add(SolventData(
 ))
 
 # ─── Ethanol ─────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Ethanol", cas="64-17-5", mw=46.07,
     mp_C=-114.1, bp_C=78.4,
-    rho_25=789.0, drho_dT=-0.85,
+    rho_25=785.0, drho_dT=-0.85,
     mu_25=1.09e-3, Ea_mu=14000.0,
     sig_25=0.0220, dsig_dT=-8.3e-5,
     D_ref_25=1.2e-9,
@@ -148,10 +151,11 @@ _add(SolventData(
 ))
 
 # ─── Isopropanol (IPA) ──────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Isopropanol (IPA)", cas="67-63-0", mw=60.10,
     mp_C=-89.5, bp_C=82.6,
-    rho_25=786.0, drho_dT=-0.87,
+    rho_25=781.0, drho_dT=-0.87,
     mu_25=2.04e-3, Ea_mu=18000.0,
     sig_25=0.0210, dsig_dT=-8.0e-5,
     D_ref_25=1.0e-9,
@@ -163,6 +167,7 @@ _add(SolventData(
 ))
 
 # ─── Acetone ─────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Acetone", cas="67-64-1", mw=58.08,
     mp_C=-94.7, bp_C=56.1,
@@ -178,6 +183,7 @@ _add(SolventData(
 ))
 
 # ─── MEK (Methyl Ethyl Ketone / 2-Butanone) ─────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="MEK", cas="78-93-3", mw=72.11,
     mp_C=-86.7, bp_C=79.6,
@@ -193,10 +199,11 @@ _add(SolventData(
 ))
 
 # ─── Acetonitrile ────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ 0.7857²⁰ corrected to 25 °C, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Acetonitrile", cas="75-05-8", mw=41.05,
     mp_C=-43.8, bp_C=82.0,
-    rho_25=786.0, drho_dT=-1.00,
+    rho_25=781.0, drho_dT=-1.00,
     mu_25=3.69e-4, Ea_mu=7500.0,
     sig_25=0.0290, dsig_dT=-1.04e-4,
     D_ref_25=2.4e-9,
@@ -208,10 +215,11 @@ _add(SolventData(
 ))
 
 # ─── DCM (Dichloromethane) ───────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="DCM", cas="75-09-2", mw=84.93,
     mp_C=-96.7, bp_C=39.6,
-    rho_25=1326.0, drho_dT=-1.73,
+    rho_25=1317.0, drho_dT=-1.73,
     mu_25=4.13e-4, Ea_mu=6500.0,
     sig_25=0.0280, dsig_dT=-1.18e-4,
     D_ref_25=2.1e-9,
@@ -223,6 +231,7 @@ _add(SolventData(
 ))
 
 # ─── Chloroform ──────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Chloroform", cas="67-66-3", mw=119.38,
     mp_C=-63.5, bp_C=61.2,
@@ -238,10 +247,11 @@ _add(SolventData(
 ))
 
 # ─── Ethyl Acetate ───────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Ethyl Acetate", cas="141-78-6", mw=88.11,
     mp_C=-83.6, bp_C=77.1,
-    rho_25=902.0, drho_dT=-1.17,
+    rho_25=895.0, drho_dT=-1.17,
     mu_25=4.26e-4, Ea_mu=7500.0,
     sig_25=0.0238, dsig_dT=-1.10e-4,
     D_ref_25=2.2e-9,
@@ -253,10 +263,11 @@ _add(SolventData(
 ))
 
 # ─── THF (Tetrahydrofuran) ──────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="THF", cas="109-99-9", mw=72.11,
     mp_C=-108.4, bp_C=66.0,
-    rho_25=889.0, drho_dT=-1.05,
+    rho_25=883.0, drho_dT=-1.05,
     mu_25=4.63e-4, Ea_mu=7200.0,
     sig_25=0.0268, dsig_dT=-9.5e-5,
     D_ref_25=2.0e-9,
@@ -268,10 +279,11 @@ _add(SolventData(
 ))
 
 # ─── Toluene ─────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Toluene", cas="108-88-3", mw=92.14,
     mp_C=-95.0, bp_C=110.6,
-    rho_25=867.0, drho_dT=-0.87,
+    rho_25=862.0, drho_dT=-0.87,
     mu_25=5.54e-4, Ea_mu=8500.0,
     sig_25=0.0280, dsig_dT=-1.04e-4,
     D_ref_25=2.0e-9,
@@ -283,6 +295,7 @@ _add(SolventData(
 ))
 
 # ─── DMF (Dimethylformamide) ────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="DMF", cas="68-12-2", mw=73.09,
     mp_C=-60.5, bp_C=153.0,
@@ -298,10 +311,11 @@ _add(SolventData(
 ))
 
 # ─── DMSO (Dimethyl sulfoxide) ──────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="DMSO", cas="67-68-5", mw=78.13,
     mp_C=18.5, bp_C=189.0,
-    rho_25=1100.0, drho_dT=-0.73,
+    rho_25=1095.0, drho_dT=-0.73,
     mu_25=1.99e-3, Ea_mu=14500.0,
     sig_25=0.0436, dsig_dT=-1.10e-4,
     D_ref_25=0.9e-9,
@@ -313,10 +327,11 @@ _add(SolventData(
 ))
 
 # ─── Heptane ─────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Heptane", cas="142-82-5", mw=100.20,
     mp_C=-90.6, bp_C=98.4,
-    rho_25=684.0, drho_dT=-0.81,
+    rho_25=680.0, drho_dT=-0.81,
     mu_25=3.87e-4, Ea_mu=7500.0,
     sig_25=0.0200, dsig_dT=-8.8e-5,
     D_ref_25=2.5e-9,
@@ -328,6 +343,7 @@ _add(SolventData(
 ))
 
 # ─── Hexane ──────────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Hexane", cas="110-54-3", mw=86.18,
     mp_C=-95.3, bp_C=68.7,
@@ -343,10 +359,11 @@ _add(SolventData(
 ))
 
 # ─── MTBE (Methyl tert-butyl ether) ─────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="MTBE", cas="1634-04-4", mw=88.15,
     mp_C=-108.6, bp_C=55.2,
-    rho_25=740.0, drho_dT=-1.09,
+    rho_25=735.0, drho_dT=-1.09,
     mu_25=3.40e-4, Ea_mu=7000.0,
     sig_25=0.0190, dsig_dT=-9.8e-5,
     D_ref_25=2.3e-9,
@@ -358,10 +375,11 @@ _add(SolventData(
 ))
 
 # ─── Acetic Acid ────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Acetic Acid", cas="64-19-7", mw=60.05,
     mp_C=16.6, bp_C=117.9,
-    rho_25=1049.0, drho_dT=-0.82,
+    rho_25=1044.0, drho_dT=-0.82,
     mu_25=1.13e-3, Ea_mu=10500.0,
     sig_25=0.0271, dsig_dT=-8.4e-5,
     D_ref_25=1.3e-9,
@@ -373,6 +391,7 @@ _add(SolventData(
 ))
 
 # ─── NMP (N-Methyl-2-pyrrolidone) ───────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="NMP", cas="872-50-4", mw=99.13,
     mp_C=-24.4, bp_C=202.0,
@@ -388,25 +407,27 @@ _add(SolventData(
 ))
 
 # ─── 2-MeTHF (2-Methyltetrahydrofuran) ─────────────────────────────────
+# Refs: Aycock, OPRD 2007, 11, 156 (ρ, mp/bp); CRC 97e; Yaws (μ, Cp, k); Antoine anchored to bp 80.3 °C; Hansen 2007 (HSP)
 _add(SolventData(
     name="2-MeTHF", cas="96-47-9", mw=86.13,
     mp_C=-136.0, bp_C=80.3,
-    rho_25=855.0, drho_dT=-1.00,
+    rho_25=849.0, drho_dT=-1.00,
     mu_25=4.60e-4, Ea_mu=7500.0,
     sig_25=0.0245, dsig_dT=-9.5e-5,
     D_ref_25=1.8e-9,
     Cp_25=1810.0, dCp_dT=3.5,
     k_25=0.118, dk_dT=-0.00015,
-    antoine_A=6.97080, antoine_B=1228.550, antoine_C=221.380,
+    antoine_A=6.97080, antoine_B=1233.870, antoine_C=221.380,
     hsp_d=16.9, hsp_p=5.0, hsp_h=4.3,
     aliases=("2-Methyltetrahydrofuran", "MeTHF", "2-MeOTHF"),
 ))
 
 # ─── 1,4-Dioxane ────────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="1,4-Dioxane", cas="123-91-1", mw=88.11,
     mp_C=11.8, bp_C=101.1,
-    rho_25=1033.0, drho_dT=-0.88,
+    rho_25=1028.0, drho_dT=-0.88,
     mu_25=1.18e-3, Ea_mu=12000.0,
     sig_25=0.0330, dsig_dT=-1.02e-4,
     D_ref_25=1.7e-9,
@@ -418,10 +439,11 @@ _add(SolventData(
 ))
 
 # ─── Diethyl Ether ──────────────────────────────────────────────────────
+# Refs: CRC 97e (ρ, σ, mp/bp); Yaws (μ, Cp, k); Lange's/NIST (Antoine); Hansen 2007 (HSP)
 _add(SolventData(
     name="Diethyl Ether", cas="60-29-7", mw=74.12,
     mp_C=-116.3, bp_C=34.6,
-    rho_25=713.0, drho_dT=-1.25,
+    rho_25=708.0, drho_dT=-1.25,
     mu_25=2.22e-4, Ea_mu=5500.0,
     sig_25=0.0170, dsig_dT=-1.12e-4,
     D_ref_25=2.6e-9,
@@ -655,7 +677,7 @@ def miscibility_assessment(
     if Ra < 15.0:
         return {"Ra": Ra, "miscible": True,
                 "assessment": "Likely miscible",
-                "color": "red"}
+                "color": "green"}
     elif Ra < 25.0:
         return {"Ra": Ra, "miscible": True,
                 "assessment": "Partially miscible / borderline",
@@ -663,7 +685,7 @@ def miscibility_assessment(
     else:
         return {"Ra": Ra, "miscible": False,
                 "assessment": "Likely immiscible",
-                "color": "green"}
+                "color": "red"}
 
 
 def get_hsp(name: str, custom_fluids=None) -> tuple[float, float, float] | None:

@@ -18,8 +18,10 @@ None of these correlations are in the context source (Myerson 2019).
     phase_separation_check (Stokes drop settling -> separation time)
         Ref: Stokes' law; standard sedimentation.  [textbook - verify H_est=D_tank assumption]
     minimum_dispersion_speed
-        Ref: Skelland & Seksaria (1978), Ind. Eng. Chem. Process Des. Dev.
-        17, 56.  [NOT in context/ - verify]
+        Critical impeller Weber number criterion, N_min ~ sqrt(sigma/(rho_c D^3)),
+        with a linear holdup correction.  Simplified heuristic — NOT the
+        published Skelland & Seksaria (1978) correlation (which includes
+        (T/D), viscosity and buoyancy groups).  [heuristic - verify]
     liquid_liquid_mass_transfer (Sh = 2 + 0.6 Re^0.5 Sc^(1/3))
         Ref: Calderbank & Moo-Young (1961), Chem. Eng. Sci. 16, 39;
         Ranz & Marshall (1952).  [NOT in context/ - verify]
@@ -79,7 +81,11 @@ def phase_separation_check(N: float, D_imp: float, D_tank: float,
 
 def minimum_dispersion_speed(D_imp: float, sigma_LL: float,
                               rho_c: float, phi_d: float) -> float:
-    """Minimum impeller speed to maintain a dispersion (Skelland & Seksaria)."""
+    """Minimum impeller speed to maintain a dispersion.
+
+    Critical-Weber heuristic (We_crit ≈ 1/C²) with linear holdup correction;
+    simplified, not the published Skelland & Seksaria correlation.
+    """
     if D_imp <= 0 or sigma_LL <= 0 or rho_c <= 0:
         return 0.0
     C = 1.03

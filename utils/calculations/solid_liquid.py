@@ -11,8 +11,8 @@ REFERENCES (per function)
 -------------------------
     settling_velocity (Schiller-Naumann drag)
         Ref: Schiller & Naumann (1935), VDI-Zeitschrift 77, 318-320.  [NOT in context/]
-    particle_reynolds, archimedes_number
-        Standard dimensionless groups.  [definition]
+    particle_reynolds
+        Standard dimensionless group.  [definition]
     zwietering_njs (N_js = S nu^0.1 d_p^0.2 (g dRho/rho)^0.45 X^0.13 D^-0.85)
         Ref: Zwietering (1958), Chem. Eng. Sci. 8, 244-253.
         Cited in context: Myerson (2019) Ch. 10 (Crystallizer Mixing /
@@ -82,7 +82,7 @@ def gmb_njs(z: float, Np: float, D_imp: float, d_p: float,
     if D_imp <= 0 or rho_L <= 0 or X_v <= 0 or d_p <= 0 or Np <= 0:
         return 0.0
     return (z * Np**(-1.0/3.0) * D_imp**(-2.0/3.0)
-            * (g * delta_rho / rho_L)**0.45
+            * (g * delta_rho / rho_L)**0.5
             * X_v**0.154 * d_p**0.167
             * C_D_ratio**0.1)
 
@@ -97,14 +97,6 @@ def solid_liquid_mass_transfer(d_p: float, v_slip: float, rho_L: float,
     Sc = nu_val / D_mol if D_mol > 0 else 1e12
     Sh = 2.0 + 0.6 * np.sqrt(max(Re_p, 0)) * Sc**(1.0/3.0)
     return Sh * D_mol / d_p
-
-
-def archimedes_number(d_p: float, rho_L: float, delta_rho: float,
-                      mu: float, g: float = 9.81) -> float:
-    """Archimedes number  Ar = g · d_p³ · ρ_L · Δρ / μ²."""
-    if d_p <= 0 or mu <= 0:
-        return 0.0
-    return g * d_p**3 * rho_L * abs(delta_rho) / mu**2
 
 
 def solid_liquid_kla(k_SL: float, d_p: float, phi_s: float) -> float:

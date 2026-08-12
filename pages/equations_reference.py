@@ -47,7 +47,7 @@ def _build_markdown() -> str:
     data = json.loads(_JSON.read_text(encoding="utf-8"))
     for sec in data.get("sections", []):
         title = str(sec.get("title", "Section"))
-        md.append("<|part|class_name=va-card|")
+        md.append("<|part|class_name=va-card eq-sec|")
         md.append(f"<|{title}|expandable|expanded=False|")
         md.append("")
         for item in sec.get("items", []):

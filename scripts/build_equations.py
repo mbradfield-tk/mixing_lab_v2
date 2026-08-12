@@ -70,6 +70,120 @@ _TEXT_METHODS = {"header", "subheader", "markdown", "caption", "write",
                  "info", "warning", "success", "latex"}
 _PREFIX = {"info": "ℹ️ ", "warning": "⚠️ ", "success": "✅ "}
 
+# Equations whose backing functions were removed from utils/calculations
+# (2026-08 unused-code cleanup).  Each entry names a header in the source;
+# the header and everything under it (until the next same-or-higher-level
+# header) is dropped from the generated reference.
+EXCLUDED_HEADERS = {
+    "Batchelor Length Scale",
+    "Gas Holdup (Hughmark)",
+    "Sauter Mean Bubble Diameter (Calderbank)",
+    "Gas Flooding Speed",
+    "Impeller Weber Number (Liquid-Liquid)",
+    "Sauter Mean Drop Diameter (Hinze-Kolmogorov)",
+    "Minimum Dispersion Speed (Skelland & Seksaria)",
+    "Liquid-Liquid Mass-Transfer Coefficient",
+    "Phase Separation Time Estimate",
+    "Archimedes Number",
+    "Cooling Rate",
+    "Common Scale-Up Rules",
+    "Turbulent Dispersion",          # tau_D mesomixing scale not implemented
+}
+
+# Whole sections with no backing implementation in mixing_lab_v2.
+EXCLUDED_SECTIONS = {
+    "Crystallization",
+}
+
+# Corrections applied to the raw source text (audited 2026-08 against the
+# mixing_lab_v2 implementation).  Each (old, new) must match at least once.
+OVERRIDES: list[tuple[str, str]] = [
+    # GMB N_js exponent: dimensional consistency (and gmb_njs code) require 0.5
+    (r"\rho_L}\right)^{0.45} X_v^{0.154}",
+     r"\rho_L}\right)^{0.5} X_v^{0.154}"),
+    # NTU jacket outlet: jacket loses the heat it gives the batch
+    (r"T_{j,\text{out}} = T_{j,\text{in}} + \frac{Q_{\text{jacket}}}",
+     r"T_{j,\text{out}} = T_{j,\text{in}} - \frac{Q_{\text{jacket}}}"),
+    # Instantaneous rate: sign convention matches heat_transfer_core
+    (r"\frac{dT}{dt} = \frac{Q_{\text{jacket}} - P_{\text{agitator}} - Q_{\text{rxn}}}",
+     r"\frac{dT}{dt} = \frac{Q_{\text{jacket}} + P_{\text{agitator}} + Q_{\text{rxn}}}"),
+    ("(positive = cooling)",
+     "(= U A (T_jacket - T); positive when the jacket heats the batch)"),
+    # Dished-head area factors (fixed 2026-08: were applied to pi/4 D^2 by mistake)
+    ("| 2:1 Elliptical | 1.09 |", "| 2:1 Elliptical | 1.38 |"),
+    ("| Torispherical / DIN | 1.06 |", "| Torispherical / DIN | 1.26 |"),
+    ("| Conical (~60\u00b0) | 1.20 |", "| Conical | 1 / cos \u03b8 (1.41 at 45\u00b0) |"),
+    (r"$1.09 \cdot \pi/4 \cdot D_T^2$", r"$1.084 \cdot D_T^2$"),
+    (r"$1.06 \cdot \pi/4 \cdot D_T^2$", r"$0.99 \cdot D_T^2$"),
+    (r"$1.20 \cdot \pi/4 \cdot D_T^2$", r"$\sqrt{2} \cdot \pi/4 \cdot D_T^2$"),
+    (r"A_{\text{cyl}} = \pi \, D_T \, H",
+     r"A_{\text{cyl}} = \pi \, D_T \, (H - h_{\text{dish}})"),
+    # Reference corrections
+    ("Seider, E.N. & Tate", "Sieder, E.N. & Tate"),
+    ("**Reference:** Sieder, E.N. & Tate, G.E. (1936). *Ind. Eng. Chem.* 28(12):1429.",
+     "**Reference:** Hausen, H. (1943). *VDI Z., Beiheft Verfahrenstechnik*, 4, 91\u201398."),
+    # gamma = sqrt(eps/nu) is the standard dissipation identity, not from Kresta & Wood
+    ("**Reference:** Kresta & Wood (1993), as above.",
+     "**Reference:** standard turbulence dissipation relation \u03b5 = \u03bd \u03b3\u0307\u00b2 "
+     "(e.g. Tennekes, H. & Lumley, J.L. (1972). *A First Course in Turbulence*, MIT Press, Ch. 3); "
+     "\u03b5_max estimate from Kresta & Wood (1993), as above."),
+    # Blend time: implemented as the circulation-model form, not the published Grenville form
+    ("Grenville correlation for turbulent blending in a baffled stirred tank.",
+     "Circulation-model blend time \u2014 \u2248 5.2 circulation times, t_c = V/(N_Q N D\u00b3) \u2014 for "
+     "turbulent blending in a baffled stirred tank. The published Grenville correlation is "
+     "N \u03b8\u2089\u2085 = 5.2 Po^(\u22121/3) (T/D)\u00b2; this circulation form approximates it "
+     "(typically conservatively, predicting longer times)."),
+    # Only the inertial-convective mesomixing scale is implemented
+    ("The slower of the two governs feed-plume dispersion.",
+     "Mixing Lab implements the inertial-convective (disintegration) scale below."),
+    # ROM registry is populated in this app
+    ("No reactor-specific correlations have been registered yet.",
+     "Reactor-specific correlations are registered in `utils/rom_registry.py` (demo entries plus "
+     "fitted correlations loaded from `data/fitted_correlations.json`) and become selectable on "
+     "the Vessel Assessment / Vessel Comparison pages."),
+    # --- Link corrections (audited 2026-08 via Crossref / OpenLibrary) ---
+    # Lamont & Scott (1970) AIChE J 16, 513: DOI pointed to an unrelated fuel-cell paper
+    ("https://doi.org/10.1002/aic.690160410", "https://doi.org/10.1002/aic.690160403"),
+    # Grenville, Mak & Brown (2015) ChERD 100, 282: DOI pointed to a catalysis paper
+    ("https://doi.org/10.1016/j.cherd.2015.07.009", "https://doi.org/10.1016/j.cherd.2015.05.026"),
+    # Stoessel 2nd ed (2020): old DOI 404s
+    ("https://doi.org/10.1002/9783527697854", "https://doi.org/10.1002/9783527696918"),
+    # Dead OpenLibrary ISBN-10 records -> working ISBN-13 records
+    ("https://openlibrary.org/isbn/012176950X", "https://openlibrary.org/isbn/9780121769505"),
+    ("https://openlibrary.org/isbn/047125424X", "https://openlibrary.org/isbn/9780471254249"),
+    # Wikipedia articles that do not exist -> plain-text citations
+    ("[*J. Boston Soc. Civil Eng.*](https://en.wikipedia.org/wiki/Camp%E2%80%93Stein_equation)",
+     "*J. Boston Soc. Civil Eng.*"),
+    ("[*Chem. Eng. Prog.*](https://en.wikipedia.org/wiki/Ranz%E2%80%93Marshall_correlation)",
+     "*Chem. Eng. Prog.*"),
+    # Percent-encode parentheses in DOI URLs (unencoded parens break markdown links)
+    ("https://doi.org/10.1016/0009-2509(93)80346-R",
+     "https://doi.org/10.1016/0009-2509%2893%2980346-R"),
+    ("https://doi.org/10.1016/S0009-2509(97)00072-9",
+     "https://doi.org/10.1016/S0009-2509%2897%2900072-9"),
+    ("https://doi.org/10.1016/0009-2509(58)85031-9",
+     "https://doi.org/10.1016/0009-2509%2858%2985031-9"),
+]
+
+
+def filter_excluded(items: list[dict]) -> list[dict]:
+    """Drop excluded headers and their sub-content (level-aware)."""
+    out: list[dict] = []
+    skip_level: int | None = None
+    for it in items:
+        if it["type"] == "header":
+            lvl = int(it.get("level", 3))
+            if skip_level is not None and lvl > skip_level:
+                continue          # sub-header of an excluded block
+            skip_level = None
+            if it.get("text", "").strip() in EXCLUDED_HEADERS:
+                skip_level = lvl
+                continue
+        elif skip_level is not None:
+            continue
+        out.append(it)
+    return out
+
 
 # ---------------------------------------------------------------------------
 # AST extraction
@@ -202,9 +316,17 @@ def main() -> None:
     sections = _parse_sections(SRC)
     n_eq = 0
     out_sections = []
+    override_hits = {old: 0 for old, _ in OVERRIDES}
     for sec in sections:
+        if sec["title"] in EXCLUDED_SECTIONS:
+            print(f"  section '{sec['title']}': EXCLUDED (no backing implementation)")
+            continue
         items_out = []
         for meth, text in sec["items"]:
+            for old, new in OVERRIDES:
+                if old in text:
+                    text = text.replace(old, new)
+                    override_hits[old] += 1
             if meth == "latex":
                 img = _render_latex(text)
                 n_eq += 1
@@ -215,10 +337,16 @@ def main() -> None:
             else:
                 items_out.append({"type": "md",
                                   "text": _PREFIX.get(meth, "") + _convert_inline(text)})
+        items_out = filter_excluded(items_out)
         out_sections.append({"title": sec["title"], "items": items_out})
         print(f"  section '{sec['title']}': {len(items_out)} items")
 
     OUT.write_text(json.dumps({"sections": out_sections}, ensure_ascii=False), encoding="utf-8")
+    unmatched = [old for old, n in override_hits.items() if n == 0]
+    if unmatched:
+        print("\nWARNING - overrides that matched nothing (source may have changed):")
+        for old in unmatched:
+            print(f"  {old[:80]!r}")
     rendered = sum(1 for s in out_sections for it in s["items"]
                    if it["type"] == "latex" and it.get("img"))
     print(f"\n{len(out_sections)} sections, {n_eq} equations ({rendered} rendered) -> {OUT}")

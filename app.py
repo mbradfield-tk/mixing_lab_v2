@@ -13,6 +13,7 @@ from pages import (
     equations_reference,
     fluid_database,
     heat_transfer,
+    home,
     mixing_sensitivity,
     particle_database,
     reaction_database,
@@ -31,6 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # Taipy's `menu` is a flat list. Emoji icons are injected via CSS (see root_md)
 # because the auto letter-badge mangles emoji, so labels stay plain text here.
 menu_options = [
+    ("Home", "Home"),
     ("Vessel_Database", "Vessels"),
     ("Fluid_Database", "Fluids"),
     ("Reaction_Database", "Reactions"),
@@ -80,27 +82,10 @@ TAKEDA_LOGO_URI = _takeda_logo_uri()
 
 root_md = """
 <style>
-/* Replace the native hamburger (triple-bar) toggle icon of the Taipy menu
-   with the app logo. The first list item in the menu Drawer is the open/close
-   toggle; its avatar holds the MenuIcon SVG we hide and swap for the logo. */
-.htt-menu .MuiList-root .MuiButtonBase-root:first-of-type .MuiAvatar-root {
-    background-color: #ffffff !important;
-    background-image: url("__LOGO_URI__");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    width: 44px !important;
-    height: 44px !important;
-    border-radius: 6px;
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:first-of-type .MuiAvatar-root svg {
-    display: none !important;
-}
-
 /* The menu draws a round icon badge per item whose auto-generated letter mangles
    emoji into "?". Blank out that letter and inject a per-page emoji via ::after,
    so it shows in both the collapsed (icon-only) and expanded menu states. The
-   first item's avatar is the logo (styled above) and is left untouched. */
+   first item is the native open/close drawer toggle and is left untouched. */
 .htt-menu .MuiList-root .MuiButtonBase-root:not(:first-of-type) .MuiAvatar-root {
     color: transparent !important;
     font-size: 0 !important;
@@ -111,42 +96,55 @@ root_md = """
     font-size: 1.3rem;
     line-height: 1;
 }
+/* Home menu item (menu position 1, i.e. nth-of-type(2); nth-of-type(1) is the
+   drawer toggle): show the app logo so clicking the logo navigates home. */
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root {
+    background-color: #ffffff !important;
+    background-image: url("__LOGO_URI__");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 6px;
+}
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
-   N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
-   Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
-   7=Vessel Comparison, 8=Bourne Protocol, 9=Reaction Sensitivity, 10=Heat Transfer,
-   11=Unit Converter, 12=Equations Reference. */
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
+   N-1 (position 1 is the drawer toggle). Update these if you reorder the menu.
+   Order: 2=Home (logo, above), 3=Vessels, 4=Fluids, 5=Reactions, 6=Particles,
+   7=Vessel Assessment, 8=Vessel Comparison, 9=Bourne Protocol,
+   10=Reaction Sensitivity, 11=Heat Transfer, 12=Unit Converter,
+   13=Equations Reference. */
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(3) .MuiAvatar-root::after {
     content: "⚗️";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(3) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(4) .MuiAvatar-root::after {
     content: "💧";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(4) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(5) .MuiAvatar-root::after {
     content: "🧪";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(5) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(6) .MuiAvatar-root::after {
     content: "🟤";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(6) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
     content: "🌀";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
     content: "⚖️";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
     content: "🅱️";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(10) .MuiAvatar-root::after {
     content: "🧭";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(10) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
     content: "🔥";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(12) .MuiAvatar-root::after {
     content: "🔄";
 }
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(12) .MuiAvatar-root::after {
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(13) .MuiAvatar-root::after {
     content: "📐";
 }
 
@@ -451,6 +449,7 @@ root_md = root_md.replace("__LOGO_URI__", LOGO_DATA_URI).replace("__TAKEDA_URI__
 
 pages = {
     "/": root_md,
+    "Home": home.page,
     "Vessel_Database": vessel_database.page,
     "Fluid_Database": fluid_database.page,
     "Reaction_Database": reaction_database.page,

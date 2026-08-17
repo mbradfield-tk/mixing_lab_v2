@@ -10,6 +10,7 @@ from taipy.gui import Gui, navigate
 
 from pages import (
     bourne_protocol,
+    crystallization_sensitivity,
     equations_reference,
     fluid_database,
     heat_transfer,
@@ -41,6 +42,7 @@ menu_options = [
     ("Vessel_Comparison", "Vessel Comparison"),
     ("Bourne_Protocol", "Bourne Protocol"),
     ("Mixing_Sensitivity", "Reaction Sensitivity Protocol"),
+    ("Crystallization_Sensitivity", "Crystallization Sensitivity Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
     ("Equations_Reference", "Equations Reference"),
@@ -112,8 +114,8 @@ root_md = """
    N-1 (position 1 is the drawer toggle). Update these if you reorder the menu.
    Order: 2=Home (logo, above), 3=Vessels, 4=Fluids, 5=Reactions, 6=Particles,
    7=Vessel Assessment, 8=Vessel Comparison, 9=Bourne Protocol,
-   10=Reaction Sensitivity, 11=Heat Transfer, 12=Unit Converter,
-   13=Equations Reference. */
+   10=Reaction Sensitivity, 11=Crystallization Sensitivity, 12=Heat Transfer,
+   13=Unit Converter, 14=Equations Reference. */
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(3) .MuiAvatar-root::after {
     content: "⚗️";
 }
@@ -139,12 +141,15 @@ root_md = """
     content: "🧭";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
-    content: "🔥";
+    content: "💎";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(12) .MuiAvatar-root::after {
-    content: "🔄";
+    content: "🔥";
 }
 .htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(13) .MuiAvatar-root::after {
+    content: "🔄";
+}
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(14) .MuiAvatar-root::after {
     content: "📐";
 }
 
@@ -458,6 +463,7 @@ pages = {
     "Vessel_Comparison": vessel_comparison.page,
     "Bourne_Protocol": bourne_protocol.page,
     "Mixing_Sensitivity": mixing_sensitivity.page,
+    "Crystallization_Sensitivity": crystallization_sensitivity.page,
     "Heat_Transfer": heat_transfer.page,
     "Unit_Converter": unit_converter.page,
     "Equations_Reference": equations_reference.page,

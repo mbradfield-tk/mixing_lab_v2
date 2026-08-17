@@ -917,7 +917,7 @@ the **Summary** synthesises everything into an overall verdict.
 <|part|height=18px|>
 
 <|part|render={not ms_started}|
-▶️ **Set your inputs in the steps below, then click _Start assessment_ at the bottom
+**Set your inputs in the steps below, then click _Start assessment_ at the bottom
 of the page.** No results are shown until you do.
 |>
 

@@ -30,27 +30,29 @@ Use the menu on the left to navigate between sections.
 <|part|class_name=va-card|
 ## Databases
 
-- **⚗️ Vessels** — library of vessel geometries (tank, impeller, jacket,
+- **⚗️ [Vessels](/Vessel_Database)** — library of vessel geometries (tank, impeller, jacket,
   materials, operating ranges) used by all assessment tools.
-- **💧 Fluids** — solvent physical properties with temperature correlations and
+- **💧 [Fluids](/Fluid_Database)** — solvent physical properties with temperature correlations and
   a solvent-miscibility screening tool.
-- **🧪 Reactions** — reaction kinetics, schemes, heats of reaction and
+- **🧪 [Reactions](/Reaction_Database)** — reaction kinetics, schemes, heats of reaction and
   operating conditions.
-- **🟤 Particles** — particle size and density data for solid-suspension
+- **🟤 [Particles](/Particle_Database)** — particle size and density data for solid-suspension
   calculations.
 |>
 <|part|class_name=va-card|
 ## Assessment tools
 
-- **🌀 Vessel Assessment** — full single-vessel analysis: hydrodynamics,
+- **🌀 [Vessel Assessment](/Vessel_Assessment)** — full single-vessel analysis: hydrodynamics,
   Damköhler numbers, solid suspension, heat balance and an operating-envelope
   chart, with PDF export.
-- **⚖️ Vessel Comparison** — side-by-side envelopes for several vessels plus
+- **⚖️ [Vessel Comparison](/Vessel_Comparison)** — side-by-side envelopes for several vessels plus
   scale-up matching between scales.
-- **🅱️ Bourne Protocol** — experimental screen for mixing sensitivity
+- **🅱️ [Bourne Protocol](/Bourne_Protocol)** — experimental screen for mixing sensitivity
   (impeller speed, feed rate and feed location tests).
-- **🧭 Reaction Sensitivity Protocol** — step-by-step decision tree combining
+- **🧭 [Reaction Sensitivity Protocol](/Mixing_Sensitivity)** — step-by-step decision tree combining
   kinetics, phases and heat effects into a mixing-sensitivity verdict.
+- **💎 [Crystallization Sensitivity Protocol](/Crystallization_Sensitivity)** — mixing-sensitivity
+  workflow for crystallization process development (work in progress).
 |>
 |>
 
@@ -58,11 +60,11 @@ Use the menu on the left to navigate between sections.
 <|part|class_name=va-card|
 ## Utilities
 
-- **🔥 Heat Transfer Tool** — batch heating/cooling temperature and duty
+- **🔥 [Heat Transfer Tool](/Heat_Transfer)** — batch heating/cooling temperature and duty
   profiles, and heat-transfer-coefficient estimation.
-- **🔄 Unit Converter** — engineering unit conversions (pressure, viscosity,
+- **🔄 [Unit Converter](/Unit_Converter)** — engineering unit conversions (pressure, viscosity,
   energy, agitation, and more).
-- **📐 Equations Reference** — every correlation used in the app, with symbols,
+- **📐 [Equations Reference](/Equations_Reference)** — every correlation used in the app, with symbols,
   units and literature references.
 |>
 <|part|class_name=va-card|

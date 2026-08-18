@@ -644,7 +644,7 @@ Missing reactor IDs and search names are filled in automatically.
 |>
 
 <|part|class_name=va-card|
-<|Updated: 2026.07.22|text|>
+<|Updated: 2026.08.18|text|>
 |>
 
 """

@@ -439,6 +439,7 @@ def compute_batch(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> Ba
                 "Nu": round(nu_c, 1),
                 "h_i (W/m2.K)": round(hi_c, 1),
                 "U (W/m2.K)": round(u_c, 1),
+                "UA (W/K)": round(u_c * area, 2),
                 "Time (min)": np.inf if not np.isfinite(t_c) else round(t_c / 60.0, 1),
             }
         )
@@ -455,6 +456,7 @@ def compute_batch(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> Ba
                 "Medium": h_name,
                 "h_o (W/m2.K)": round(ho_c, 0),
                 "U (W/m2.K)": round(u_c, 1),
+                "UA (W/K)": round(u_c * area, 2),
                 "Time (min)": np.inf if not np.isfinite(t_c) else round(t_c / 60.0, 1),
                 "In range": "Yes" if in_range else "No",
             }
@@ -469,6 +471,7 @@ def compute_batch(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> Ba
             {"Metric": "h_i (W/m2.K)", "Value": round(h_i, 2)},
             {"Metric": "h_o (W/m2.K)", "Value": round(h_o, 2)},
             {"Metric": "U (W/m2.K)", "Value": round(u, 2)},
+            {"Metric": "UA (W/K)", "Value": round(u * area, 2)},
             {"Metric": "A_ht (m2)", "Value": round(area, 4)},
             {"Metric": "P_agitator (W)", "Value": round(p_agitator_w, 2)},
             {"Metric": "Q_max initial (W)", "Value": round(q_max, 2)},
@@ -584,6 +587,7 @@ def compute_reaction_profile(data: dict[str, Any], htm_db: dict[str, dict[str, A
         return pd.DataFrame(
             [
                 {"Metric": "U (W/m2.K)", "Value": round(u, 2)},
+                {"Metric": "UA (W/K)", "Value": round(u * area, 2)},
                 {"Metric": "h_i (W/m2.K)", "Value": round(h_i, 2)},
                 {"Metric": "h_o (W/m2.K)", "Value": round(h_o, 2)},
                 {"Metric": "A_ht (m2)", "Value": round(area, 4)},

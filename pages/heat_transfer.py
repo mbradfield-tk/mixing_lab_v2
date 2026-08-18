@@ -21,6 +21,7 @@ from heat_transfer_core import (
     LINING_THICKNESS_DEFAULT,
     NUSSELT_CORRELATIONS,
     WALL_CONDUCTIVITY,
+    _heat_transfer_coeffs,
     compute_batch,
     compute_reaction_profile,
     estimate_jacket_area,
@@ -29,14 +30,21 @@ from heat_transfer_core import (
     load_csvs,
     safe_float,
 )
+from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+# Temperature at which built-in solvent properties are evaluated for the initial
+# dropdown selection (handlers re-evaluate at the user's start temperature).
+FLUID_REF_T_C = 25.0
 
 reactors_df, fluids_df, htm_db = load_csvs(DATA_DIR)
 reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
 
 reactor_options = sorted(reactors_df["reactor_name"].dropna().unique().tolist())
-fluid_options = sorted(fluids_df["fluid_name"].dropna().unique().tolist())
+# Built-in solvent library plus user custom fluids from fluids.csv.
+_custom_fluid_names = fluids_df["fluid_name"].dropna().astype(str).tolist()
+fluid_options = sorted(set(list_solvents()) | set(_custom_fluid_names))
 reaction_options = sorted(reactions_df["reaction_name"].dropna().unique().tolist())
 htm_options = list(htm_db.keys())
 nusselt_options = list(NUSSELT_CORRELATIONS.keys())
@@ -54,6 +62,24 @@ def _fluid_row(fluid_name: str) -> pd.Series:
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
+def _fluid_properties(fluid_name: str, T_C: float) -> dict:
+    """Props for a custom fluid (fixed) or a built-in solvent (evaluated at T_C)."""
+    row = _fluid_row(fluid_name)
+    if not row.empty:
+        return {
+            "rho": safe_float(row.get("rho_kg_m3"), 1000.0),
+            "mu": safe_float(row.get("mu_Pa_s"), 0.001),
+            "cp": safe_float(row.get("Cp_J_per_kgK"), 4182.0),
+            "k": safe_float(row.get("k_W_per_mK"), 0.607),
+        }
+    canonical = resolve_solvent_name(fluid_name)
+    if canonical:
+        p = get_properties(canonical, T_C)
+        return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
+                "cp": p["Cp_J_per_kgK"], "k": p["k_W_per_mK"]}
+    return {"rho": 1000.0, "mu": 0.001, "cp": 4182.0, "k": 0.607}
+
+
 def _reaction_row(reaction_name: str) -> pd.Series:
     row = reactions_df.loc[reactions_df["reaction_name"] == reaction_name]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
@@ -65,7 +91,6 @@ selected_htm = htm_options[0]
 nusselt_correlation = nusselt_options[0]
 
 _r = _reactor_row(selected_reactor)
-_f = _fluid_row(selected_fluid)
 
 d_tank = safe_float(_r.get("D_tank_m"), 0.1)
 d_imp = safe_float(_r.get("D_imp_m"), 0.05)
@@ -76,10 +101,11 @@ h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(v_l, d_tank, h_max)
 a_ht = estimate_jacket_area(d_tank, h_liquid, str(_r.get("bottom_dish", "")))
 
-rho = safe_float(_f.get("rho_kg_m3"), 1000.0)
-mu = safe_float(_f.get("mu_Pa_s"), 0.001)
-cp = safe_float(_f.get("Cp_J_per_kgK"), 4182.0)
-k_fluid = safe_float(_f.get("k_W_per_mK"), 0.607)
+_f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
+rho = _f0["rho"]
+mu = _f0["mu"]
+cp = _f0["cp"]
+k_fluid = _f0["k"]
 
 wall_material = find_best_material_key(str(_r.get("shell_material", "stainless steel")), wall_options)
 wall_k = WALL_CONDUCTIVITY.get(wall_material, 16.0)
@@ -144,8 +170,8 @@ rxn_fig.update_layout(title="Reaction Temperature Profile", xaxis_title="Time (m
 
 status_message = "Set inputs and click Compute."
 kpi_df = pd.DataFrame([{"Metric": "U (W/m2.K)", "Value": "-"}])
-corr_df = pd.DataFrame(columns=["Correlation", "Nu", "h_i (W/m2.K)", "U (W/m2.K)", "Time (min)"])
-htm_compare_df = pd.DataFrame(columns=["Medium", "h_o (W/m2.K)", "U (W/m2.K)", "Time (min)", "In range"])
+corr_df = pd.DataFrame(columns=["Correlation", "Nu", "h_i (W/m2.K)", "U (W/m2.K)", "UA (W/K)", "Time (min)"])
+htm_compare_df = pd.DataFrame(columns=["Medium", "h_o (W/m2.K)", "U (W/m2.K)", "UA (W/K)", "Time (min)", "In range"])
 summary_df = pd.DataFrame(columns=["Metric", "Value"])
 result_ready = False
 
@@ -153,6 +179,16 @@ temp_fig = go.Figure()
 temp_fig.update_layout(title="Batch Temperature Profile", xaxis_title="Time (min)", yaxis_title="Temperature (C)")
 duty_fig = go.Figure()
 duty_fig.update_layout(title="Heat Duty over Time", xaxis_title="Time (min)", yaxis_title="|Q| (W)")
+
+res_fig = go.Figure()
+res_fig.update_layout(title="Heat Transfer Resistance Contributions",
+                      xaxis_title="Contribution to total resistance (%)")
+agitator_text = ""
+
+ua_rpm_fig = go.Figure()
+ua_rpm_fig.update_layout(title="UA vs Stir Speed", xaxis_title="Stir speed (rpm)", yaxis_title="UA (W/K)")
+ua_vol_fig = go.Figure()
+ua_vol_fig.update_layout(title="UA vs Volume", xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)")
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +205,7 @@ def on_reactor_change(state):
     state.n_rpm = safe_float(row.get("N_rpm_max"), state.n_rpm)
     state.np_in = safe_float(row.get("Np"), state.np_in)
     state.v_l = safe_float(row.get("V_L"), state.v_l)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
-    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val)
-    state.a_ht = estimate_jacket_area(state.d_tank, h, str(row.get("bottom_dish", "")))
+    _refresh_area(state)
     shell = find_best_material_key(str(row.get("shell_material", "stainless steel")), wall_options)
     state.wall_material = shell
     state.wall_k = WALL_CONDUCTIVITY.get(shell, 16.0)
@@ -179,12 +213,28 @@ def on_reactor_change(state):
     notify(state, "I", "Reactor defaults loaded.")
 
 
+def _refresh_area(state):
+    """Recompute the jacket heat-transfer area from the current liquid volume."""
+    row = _reactor_row(state.selected_reactor)
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val)
+    state.a_ht = estimate_jacket_area(state.d_tank, h, str(row.get("bottom_dish", "")))
+
+
+def on_v_l_change(state):
+    _refresh_area(state)
+
+
+def on_wall_material_change(state):
+    state.wall_k = WALL_CONDUCTIVITY.get(state.wall_material, state.wall_k)
+
+
 def on_fluid_change(state):
-    row = _fluid_row(state.selected_fluid)
-    state.rho = safe_float(row.get("rho_kg_m3"), state.rho)
-    state.mu = safe_float(row.get("mu_Pa_s"), state.mu)
-    state.cp = safe_float(row.get("Cp_J_per_kgK"), state.cp)
-    state.k_fluid = safe_float(row.get("k_W_per_mK"), state.k_fluid)
+    props = _fluid_properties(state.selected_fluid, state.t_start)
+    state.rho = props["rho"]
+    state.mu = props["mu"]
+    state.cp = props["cp"]
+    state.k_fluid = props["k"]
     _refresh_adiabatic(state)
     notify(state, "I", "Fluid properties loaded.")
 
@@ -369,6 +419,7 @@ def on_compute(state):
             {"Metric": "h_i (W/m2.K)", "Value": round(result.h_i, 2)},
             {"Metric": "h_o (W/m2.K)", "Value": round(result.h_o, 2)},
             {"Metric": "U (W/m2.K)", "Value": round(result.u, 2)},
+            {"Metric": "UA (W/K)", "Value": round(result.u * state.a_ht, 2)},
             {"Metric": "Nu", "Value": round(result.nu, 2)},
             {"Metric": "Re", "Value": round(result.re, 0)},
             {"Metric": "Pr", "Value": round(result.pr, 2)},
@@ -408,6 +459,9 @@ def on_compute(state):
     )
     state.duty_fig = duty_fig_local
 
+    _build_resistance_breakdown(state, result)
+    _build_ua_sweeps(state)
+
     analytical_txt = "Infinity" if not pd.notna(result.time_analytical_s) or not np_is_finite(result.time_analytical_s) else f"{result.time_analytical_s/60.0:.2f} min"
     state.status_message = (
         f"Computed successfully. U = {result.u:.1f} W/(m2.K), "
@@ -424,6 +478,96 @@ def np_abs(arr):
 
 def np_is_finite(value: float) -> bool:
     return np.isfinite(value)
+
+
+def _build_resistance_breakdown(state, result) -> None:
+    """Resistance-contribution bar chart + agitator heat share (heat/cool mode)."""
+    items: list[tuple[str, float]] = []
+    if result.h_i > 0:
+        items.append(("Inside film (process)", 1.0 / result.h_i))
+    if state.wall_k > 0 and state.wall_thickness_mm > 0:
+        items.append(("Wall", (state.wall_thickness_mm / 1000.0) / state.wall_k))
+    if state.lining_k > 0 and state.lining_thickness_mm > 0:
+        items.append(("Lining", (state.lining_thickness_mm / 1000.0) / state.lining_k))
+    if state.fouling > 0:
+        items.append(("Fouling", state.fouling))
+    if result.h_o > 0:
+        items.append(("Outside film (jacket)", 1.0 / result.h_o))
+
+    r_total = sum(r for _, r in items) or 1.0
+    labels = [n for n, _ in items]
+    pct = [r / r_total * 100.0 for _, r in items]
+
+    fig = go.Figure(go.Bar(
+        x=pct, y=labels, orientation="h", marker_color="#E1251B",
+        text=[f"{p:.1f}%" for p in pct], textposition="auto",
+        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Heat Transfer Resistance Contributions",
+        xaxis_title="Contribution to total resistance (%)",
+        yaxis={"autorange": "reversed"},
+        height=360,
+    )
+    state.res_fig = fig
+
+    p_ag = result.p_agitator_w
+    q_duty = abs(result.q_max_w)
+    if p_ag > 0:
+        ag_pct = (p_ag / q_duty * 100.0) if q_duty > 0 else float("inf")
+        pct_txt = "∞" if not np.isfinite(ag_pct) else f"{ag_pct:.1f}%"
+        state.agitator_text = (
+            f"**Agitator heat:** {p_ag:.2f} W — about **{pct_txt}** of the initial "
+            f"jacket duty (Q_max = {q_duty:.1f} W)."
+        )
+    else:
+        state.agitator_text = "**Agitator heat:** not included (toggle *Include agitator heat* to add it)."
+
+
+def _build_ua_sweeps(state) -> None:
+    """UA vs stir speed (area fixed) and UA vs volume (U fixed) around the op-point."""
+    row = _reactor_row(state.selected_reactor)
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    bottom = str(row.get("bottom_dish", ""))
+    base = _shared_ht_data(state)
+
+    # (1) UA vs stir speed at the current volume (A held constant).
+    cur_rpm = max(state.n_rpm, 1.0)
+    rmin = safe_float(row.get("N_rpm_min"), 0.0)
+    rmax = safe_float(row.get("N_rpm_max"), 0.0)
+    if not (rmax > rmin > 0):
+        rmin, rmax = max(1.0, 0.1 * cur_rpm), 2.0 * cur_rpm
+    rpm_range = np.linspace(rmin, rmax, 40)
+    ua_rpm = [_heat_transfer_coeffs({**base, "n_rpm": rpm}, htm_db)["u"] * state.a_ht
+              for rpm in rpm_range]
+    fig1 = go.Figure(go.Scatter(x=rpm_range, y=ua_rpm, mode="lines",
+                                line={"color": "#E1251B", "width": 2}, name="UA"))
+    fig1.add_vline(x=state.n_rpm, line_dash="dot", line_color="#5C6670",
+                   annotation_text=f"{state.n_rpm:.0f} rpm")
+    fig1.update_layout(title=f"UA vs Stir Speed (at {state.v_l:.3g} L)",
+                       xaxis_title="Stir speed (rpm)", yaxis_title="UA (W/K)", height=360)
+    state.ua_rpm_fig = fig1
+
+    # (2) UA vs volume at the current stir speed (U independent of volume).
+    u_fixed = _heat_transfer_coeffs(base, htm_db)["u"]
+    cur_vol = max(state.v_l, 1e-6)
+    vmin = safe_float(row.get("V_L_min"), 0.0)
+    vmax = safe_float(row.get("V_L_max"), 0.0)
+    if not (vmax > vmin > 0):
+        vmin, vmax = 0.1 * cur_vol, 2.0 * cur_vol
+    vmin = max(vmin, 1e-6)
+    vol_range = np.linspace(vmin, vmax, 40)
+    ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
+                                             liquid_height_from_volume(vol, state.d_tank, h_max_val),
+                                             bottom)
+              for vol in vol_range]
+    fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
+                                line={"color": "#1f77b4", "width": 2}, name="UA"))
+    fig2.add_vline(x=state.v_l, line_dash="dot", line_color="#5C6670",
+                   annotation_text=f"{state.v_l:.3g} L")
+    fig2.update_layout(title=f"UA vs Volume (at {state.n_rpm:.0f} rpm)",
+                       xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)", height=360)
+    state.ua_vol_fig = fig2
 
 
 heat_transfer_md = """
@@ -464,7 +608,7 @@ model the temperature profile produced by a reaction.
 |>
 
 <|layout|columns=1 1 1 1|
-<|{v_l}|number|label=Liquid volume (L)|>
+<|{v_l}|number|label=Liquid volume (L)|on_change=on_v_l_change|>
 
 <|{a_ht}|number|label=Heat-transfer area A_ht (m2)|>
 
@@ -474,7 +618,7 @@ model the temperature profile produced by a reaction.
 |>
 
 <|layout|columns=1 1 1 1|
-<|{wall_material}|selector|lov={wall_options}|dropdown|label=Wall material|>
+<|{wall_material}|selector|lov={wall_options}|dropdown|label=Wall material|on_change=on_wall_material_change|>
 
 <|{wall_k}|number|label=Wall k (W/m.K)|>
 
@@ -555,6 +699,24 @@ not modelled) and the profile runs until 99% conversion.
 |>
 
 <|part|class_name=va-card|
+## Heat Transfer Resistances & Agitator Heat
+Relative contribution of each series thermal resistance to the overall U.
+<|chart|figure={res_fig}|height=360px|>
+
+<|{agitator_text}|text|mode=markdown|>
+|>
+
+<|part|class_name=va-card|
+## UA Sensitivity
+UA versus stir speed at the selected volume, and versus volume at the selected stir speed.
+<|layout|columns=1 1|
+<|chart|figure={ua_rpm_fig}|height=360px|>
+
+<|chart|figure={ua_vol_fig}|height=360px|>
+|>
+|>
+
+<|part|class_name=va-card|
 ## 4) Temperature and Heat-Duty Profiles
 <|chart|figure={temp_fig}|height=460px|>
 <|chart|figure={duty_fig}|height=380px|>
@@ -563,10 +725,10 @@ not modelled) and the profile runs until 99% conversion.
 <|part|class_name=va-card|
 ## 5) Correlation and HTM Comparisons
 ### Nusselt correlation comparison
-<|{corr_df}|table|width=100%|>
+<|{corr_df}|table|width=100%|rebuild|>
 
 ### Heat transfer medium comparison
-<|{htm_compare_df}|table|width=100%|>
+<|{htm_compare_df}|table|width=100%|rebuild|>
 |>
 
 <|part|class_name=va-card|

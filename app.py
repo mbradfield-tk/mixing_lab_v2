@@ -265,6 +265,14 @@ button.compute-btn-ok:hover {
     background: #ffffff;
 }
 
+/* Keep the expanded "Vessel properties" accordion flush with the adjacent 3D
+   viewer (MUI adds a 16px top margin to expanded accordions). */
+.vp-exp.MuiAccordion-root.Mui-expanded,
+.vp-exp .MuiAccordion-root.Mui-expanded {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
 /* Reaction-scheme highlight box. */
 .scheme-box {
     display: block;

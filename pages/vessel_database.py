@@ -578,11 +578,13 @@ page. Reactor images are added separately.
 ## Explore Vessel
 <|{selected_vessel}|selector|lov={vessel_options}|dropdown|label=Select vessel|on_change=on_vessel_select|>
 
-<|Vessel properties|expandable|expanded=False|
-<|{vessel_detail_df}|table|width=100%|show_all|>
-|>
-
+<|layout|columns=1 1|
 <|part|content={vessel_viewer_html}|height=380px|>
+
+<|Vessel properties|expandable|expanded=True|class_name=vp-exp|
+<|{vessel_detail_df}|table|width=100%|show_all|height=276px|>
+|>
+|>
 
 ### 2D Schematic & Liquid Level
 Enter a fill volume to draw the liquid surface on the vessel cross-section.

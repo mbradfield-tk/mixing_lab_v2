@@ -122,7 +122,8 @@ def _geometry(row: pd.Series) -> dict | None:
             return R * (z + bot_depth) / bot_depth
         return R * float(np.sqrt(max(0.0, 1.0 - (d / bot_depth) ** 2)))
 
-    # Impellers: absolute centre height cy measured from the lowest interior point.
+    # Impellers: clearance is the gap from the lowest interior point to the
+    # impeller underside; cy is the resulting blade centre height.
     imp_data = [
         ("D_imp_m", "imp1_clearance_m", "imp1_height_m", "impeller_type"),
         ("D_imp2_m", "imp2_clearance_m", "imp2_height_m", "impeller_type2"),
@@ -140,7 +141,7 @@ def _geometry(row: pd.Series) -> dict | None:
         h_imp = _f(row, h_col)
         if h_imp <= 0:
             h_imp = d_imp * 0.15
-        cy = -bot_depth + clr
+        cy = -bot_depth + clr + h_imp / 2.0
         impellers.append((d_imp, cy, h_imp, _IMP_COLORS[i % len(_IMP_COLORS)], _s(row, t_col)))
 
     # Cumulative interior volume vs height, less an estimated impeller displacement.
@@ -301,7 +302,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.text(0, H + top_depth + ref * 0.02, f"{fill_L:,.1f} L",
                 ha="center", va="bottom", fontsize=7, color="#0277BD", zorder=2)
 
-    # Impellers (clearance measured from the dish bottom)
+    # Impellers (clearance = dish bottom to blade underside)
     for idx_imp, (d_imp, cy, h_imp, color, itype) in enumerate(impellers):
         r_imp = d_imp / 2.0
         edge = "#C62828" if idx_imp in wall_hit else color
@@ -357,17 +358,17 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.text(hx - R * 0.06, H / 2, f"H {H * 1000:.0f} mm",
             ha="right", va="center", fontsize=dim_fs, color=dim_color, rotation=90)
 
-    # Bottom impeller off-bottom clearance (C): lowest interior point -> centreline.
+    # Bottom impeller off-bottom clearance (C): vessel bottom -> impeller underside.
     if impellers:
-        cy_low = min(c[1] for c in impellers)
-        clr_mm = (cy_low + bot_depth) * 1000.0
+        y_bot = min(cy_i - h_i / 2.0 for (_d, cy_i, h_i, _c, _t) in impellers)
+        clr_mm = (y_bot + bot_depth) * 1000.0
         cclr = "#00695C"
         cx = -R - left_pad * 0.22
-        for sy in (-bot_depth, cy_low):
+        for sy in (-bot_depth, y_bot):
             ax.plot([-R, cx], [sy, sy], color=cclr, lw=wit_lw, zorder=2)
-        ax.annotate("", xy=(cx, cy_low), xytext=(cx, -bot_depth),
+        ax.annotate("", xy=(cx, y_bot), xytext=(cx, -bot_depth),
                     arrowprops=dict(arrowstyle="<->", color=cclr, lw=1))
-        ax.text(cx - R * 0.04, (-bot_depth + cy_low) / 2.0, f"C {clr_mm:.0f} mm",
+        ax.text(cx - R * 0.04, (-bot_depth + y_bot) / 2.0, f"C {clr_mm:.0f} mm",
                 ha="right", va="center", fontsize=dim_fs, color=cclr, rotation=90)
 
     # Impeller–wall interference flag.

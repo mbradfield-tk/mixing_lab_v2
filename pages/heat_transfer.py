@@ -583,7 +583,7 @@ model the temperature profile produced by a reaction.
 |>
 
 <|part|class_name=va-card|
-## 1) Reactor and Fluid Selection
+## 1. Reactor and Fluid Selection
 <|layout|columns=1 1 1 1|
 <|{selected_reactor}|selector|lov={reactor_options}|dropdown|label=Reactor|on_change=on_reactor_change|>
 
@@ -596,7 +596,7 @@ model the temperature profile produced by a reaction.
 |>
 
 <|part|class_name=va-card|
-## 2) Geometry, Materials, and Operating Inputs
+## 2. Geometry, Materials, and Operating Inputs
 <|layout|columns=1 1 1 1|
 <|{d_tank}|number|label=D_tank (m)|>
 
@@ -694,12 +694,12 @@ not modelled) and the profile runs until 99% conversion.
 
 <|part|render={ht_mode == "Heat / cool vessel"}|
 <|part|class_name=va-card|
-## 3) Core KPIs
+## 3. Core KPIs
 <|{kpi_df}|table|width=100%|>
 |>
 
 <|part|class_name=va-card|
-## Heat Transfer Resistances & Agitator Heat
+## 4. Heat Transfer Resistances & Agitator Heat
 Relative contribution of each series thermal resistance to the overall U.
 <|chart|figure={res_fig}|height=360px|>
 
@@ -707,7 +707,7 @@ Relative contribution of each series thermal resistance to the overall U.
 |>
 
 <|part|class_name=va-card|
-## UA Sensitivity
+## 5. UA Sensitivity
 UA versus stir speed at the selected volume, and versus volume at the selected stir speed.
 <|layout|columns=1 1|
 <|chart|figure={ua_rpm_fig}|height=360px|>
@@ -717,13 +717,13 @@ UA versus stir speed at the selected volume, and versus volume at the selected s
 |>
 
 <|part|class_name=va-card|
-## 4) Temperature and Heat-Duty Profiles
+## 6. Temperature and Heat-Duty Profiles
 <|chart|figure={temp_fig}|height=460px|>
 <|chart|figure={duty_fig}|height=380px|>
 |>
 
 <|part|class_name=va-card|
-## 5) Correlation and HTM Comparisons
+## 7. Correlation and HTM Comparisons
 ### Nusselt correlation comparison
 <|{corr_df}|table|width=100%|rebuild|>
 
@@ -732,7 +732,7 @@ UA versus stir speed at the selected volume, and versus volume at the selected s
 |>
 
 <|part|class_name=va-card|
-## 6) Summary
+## 8. Summary
 <|{summary_df}|table|width=100%|>
 |>
 |>

@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from utils.solvent_properties import get_properties, is_known_solvent
 from utils.report_builder import build_protocol_pdf, report_filename
 from vessel_media import build_image_html
@@ -900,8 +901,8 @@ def on_ms_reset(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🧭 Reaction Sensitivity Protocol
+    inject_icons("""
+# __ICON:Mixing_Sensitivity__Reaction Sensitivity Protocol
 
 A guided decision tree to determine **whether a reaction is sensitive to mixing**
 and, if so, **which mechanism controls** it — micromixing, mesomixing,
@@ -922,7 +923,7 @@ of the page.** No results are shown until you do.
 |>
 
 <|part|render={ms_started}|
-<|🔄 Reset assessment|button|on_action=on_ms_reset|class_name=compute-btn|>
+<|Reset assessment|button|on_action=on_ms_reset|class_name=compute-btn|>
 |>
 
 <|part|height=18px|>
@@ -1079,5 +1080,5 @@ Generate a PDF capturing the inputs, findings, overall verdict, and next steps.
 <|Download PDF|file_download|content={ms_pdf_bytes}|name={ms_pdf_name}|label=Download PDF|>
 |>
 |>
-"""
+""")
 )

@@ -13,6 +13,7 @@ import pandas as pd
 from taipy.gui import Markdown, notify
 
 from pages import _db_common as db
+from utils.menu_icons import inject_icons
 from vessel_media import build_vessel_viewer_html, media_caption
 from vessel_schematic import brim_volume, build_vessel_schematic
 
@@ -300,7 +301,36 @@ def _row_for(df: pd.DataFrame, reactor_name: str) -> pd.Series:
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
-vessel_detail_df = db.detail_table(vessel_raw_df, "reactor_name", selected_vessel)
+# Property filter for the "Explore Vessel" detail table.
+_DEFAULT_PROPS = [
+    "Reactor ID", "Reactor Name", "Owner", "Scale", "Tank Diameter",
+    "Min Volume", "Max Volume", "Impeller Count", "Min Speed", "Max Speed",
+    "Shell Material",
+]
+
+
+def _all_property_names(columns: list[str]) -> list[str]:
+    """Friendly property names (unit stripped) for every column, in order."""
+    names: list[str] = []
+    for col in columns:
+        prop = db.split_label(db.friendly(col))[0]
+        if prop and prop not in names:
+            names.append(prop)
+    return names
+
+
+def _detail_view(raw_df: pd.DataFrame, name: str, selected: list) -> pd.DataFrame:
+    """Property/Value/Units table for ``name`` limited to the selected properties."""
+    full = db.detail_table(raw_df, "reactor_name", name)
+    if selected:
+        full = db.reset(full[full["Property"].isin(selected)])
+    return full
+
+
+vessel_prop_options = _all_property_names(vessel_columns)
+vessel_prop_selected = [p for p in _DEFAULT_PROPS if p in vessel_prop_options]
+
+vessel_detail_df = _detail_view(vessel_raw_df, selected_vessel, vessel_prop_selected)
 vessel_viewer_html = build_vessel_viewer_html(_reactor_id_for(vessel_raw_df, selected_vessel))
 vessel_media_caption = media_caption(_reactor_id_for(vessel_raw_df, selected_vessel))
 
@@ -441,13 +471,18 @@ def _refresh_schematic(state):
 
 def on_vessel_select(state):
     name = state.selected_vessel
-    state.vessel_detail_df = db.detail_table(state.vessel_raw_df, "reactor_name", name)
+    state.vessel_detail_df = _detail_view(state.vessel_raw_df, name, state.vessel_prop_selected)
     rid = _reactor_id_for(state.vessel_raw_df, name)
     state.vessel_viewer_html = build_vessel_viewer_html(rid)
     state.vessel_media_caption = media_caption(rid)
     total = brim_volume(_row_for(state.vessel_raw_df, name))
     state.vessel_fill_L = round(total * 0.7, 2)
     _refresh_schematic(state)
+
+
+def on_vessel_props_change(state):
+    state.vessel_detail_df = _detail_view(
+        state.vessel_raw_df, state.selected_vessel, state.vessel_prop_selected)
 
 
 def on_vessel_fill_change(state):
@@ -557,8 +592,8 @@ def _finalize_import(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# ⚗️ Vessel Database
+    inject_icons("""
+# __ICON:Vessel_Database__Vessel Database
 
 <|{vessel_msg}|text|>
 
@@ -581,7 +616,11 @@ page. Reactor images are added separately.
 <|layout|columns=1 1|
 <|part|content={vessel_viewer_html}|height=380px|>
 
-<|{vessel_detail_df}|table|width=100%|show_all|height=380px|>
+<|part|class_name=vessel-props|
+<|{vessel_prop_selected}|selector|lov={vessel_prop_options}|multiple|dropdown|label=Properties to show|on_change=on_vessel_props_change|>
+
+<|{vessel_detail_df}|table|width=100%|show_all|class_name=vp-table|>
+|>
 |>
 
 ### 2D Schematic & Liquid Level
@@ -651,5 +690,5 @@ Missing reactor IDs and search names are filled in automatically.
 <|Updated: 2026.08.18|text|>
 |>
 
-"""
+""")
 )

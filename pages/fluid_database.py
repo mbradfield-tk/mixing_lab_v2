@@ -26,6 +26,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from pages import _db_common as db
 from utils.solvent_properties import (
     SOLVENT_DB,
@@ -421,8 +422,8 @@ def on_blend_compute(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 💧 Fluid Database
+    inject_icons("""
+# __ICON:Fluid_Database__Fluid Database
 
 <|{fluid_msg}|text|>
 
@@ -572,5 +573,5 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 |>
 |>
 |>
-"""
+""")
 )

@@ -30,6 +30,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from utils.calculations import (
     blend_time_turbulent,
     impeller_power,
@@ -790,12 +791,12 @@ def on_bp_t3_assess(state):
     prefix = _kpi_prefix(res)
     if res["sensitive"]:
         state.bp_t3_verdict = (
-            prefix + " 📐 **Mesomixing-controlled.** Scale-up: match P/V, **extend "
+            prefix + " **Mesomixing-controlled.** Scale-up: match P/V, **extend "
             "the feed time** and **add feed points** to keep the feed plume in a "
             "high-dissipation zone.")
     else:
         state.bp_t3_verdict = (
-            prefix + " 🌀 **Macromixing-controlled.** Scale-up: keep **blend/"
+            prefix + " **Macromixing-controlled.** Scale-up: keep **blend/"
             "circulation times short** (bulk homogeneity governs the outcome).")
     _build_summary(state)
     notify(state, "S", "Test 3 assessed.")
@@ -834,7 +835,7 @@ def _build_summary(state):
             "- **Test 2:** sensitive to feed rate.",
             "- **Test 3:** sensitive to feed location.",
             "",
-            "**📐 Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
+            "**Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
             "time, and add feed points** to control feed-plume dispersion.",
         ]
     elif state.bp_t3_assessed:
@@ -844,7 +845,7 @@ def _build_summary(state):
             "- **Test 2:** sensitive to feed rate.",
             "- **Test 3:** insensitive to feed location.",
             "",
-            "**🌀 Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
+            "**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
             "times short** — bulk homogeneity governs the outcome.",
         ]
     else:
@@ -1095,8 +1096,8 @@ def on_bp_export_sens_csv(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🅱️ Bourne Protocol
+    inject_icons("""
+# __ICON:Bourne_Protocol__Bourne Protocol
 
 <|{bp_status}|text|>
 
@@ -1277,7 +1278,7 @@ responses, and the decision-tree conclusion.
 |>
 
 ### Export for the Reaction Sensitivity Protocol
-Export the outcome as a CSV that can be imported into the **🧭 Reaction
+Export the outcome as a CSV that can be imported into the **Reaction
 Sensitivity Protocol** (Step 0 pre-screen) to feed the experimental result into
 the overall sensitivity assessment.
 
@@ -1287,5 +1288,5 @@ the overall sensitivity assessment.
 <|Download CSV|file_download|content={bp_sens_csv_bytes}|name={bp_sens_csv_name}|label=Download Sensitivity CSV|>
 |>
 |>
-"""
+""")
 )

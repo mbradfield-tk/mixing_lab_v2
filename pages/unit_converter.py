@@ -10,6 +10,7 @@ from __future__ import annotations
 import pandas as pd
 from taipy.gui import Markdown
 
+from utils.menu_icons import inject_icons
 from utils.validation import TEMP_MIN_C, TEMP_MAX_C, PRESSURE_MAX_ATM
 
 # ---------------------------------------------------------------------------
@@ -244,8 +245,8 @@ def on_input_change(state):
 
 
 page = Markdown(
-    """
-# 🔄 Unit Converter
+    inject_icons("""
+# __ICON:Unit_Converter__Unit Converter
 
 General unit conversions for physical properties relevant to mixing and reactor engineering.
 
@@ -280,5 +281,5 @@ Gas flow conversions use the ideal-gas law. Specify the **actual** gas temperatu
 
 <|{uc_result_df}|table|width=100%|page_size=20|>
 |>
-"""
+""")
 )

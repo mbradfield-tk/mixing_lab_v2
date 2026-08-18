@@ -18,6 +18,8 @@ from pathlib import Path
 
 from taipy.gui import Markdown
 
+from utils.menu_icons import inject_icons
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _JSON = DATA_DIR / "equations_reference.json"
 
@@ -33,7 +35,7 @@ def _esc(s: str) -> str:
 
 def _build_markdown() -> str:
     md = [
-        "# 📐 Equations Reference",
+        "# __ICON:Equations_Reference__Equations Reference",
         "",
         "Reference correlations and equations used throughout Mixing Lab. Each "
         "equation is rendered as an image (Taipy cannot display LaTeX directly); "
@@ -74,4 +76,4 @@ def _build_markdown() -> str:
     return "\n".join(md)
 
 
-page = Markdown(_build_markdown())
+page = Markdown(inject_icons(_build_markdown()))

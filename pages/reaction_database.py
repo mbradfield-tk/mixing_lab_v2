@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from pages import _db_common as db
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -170,8 +171,8 @@ def on_reaction_import(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🧪 Reaction Database
+    inject_icons("""
+# __ICON:Reaction_Database__Reaction Database
 
 <|{reaction_msg}|text|>
 
@@ -240,5 +241,5 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 <|{reaction_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_reaction_import|extensions=.csv|>
 |>
 |>
-"""
+""")
 )

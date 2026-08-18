@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from utils.calculations import (
     compute_damkohler_numbers,
     estimate_U_detailed,
@@ -716,8 +717,8 @@ def _build_envelope(state, t_rxn: float):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🌀 Vessel Assessment
+    inject_icons("""
+# __ICON:Vessel_Assessment__Vessel Assessment
 
 <|{va_status}|text|>
 
@@ -778,7 +779,7 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|part|class_name=va-card|
 ## 2. Phases
 
-### 💧 Liquid / Solvent
+### __ICON:Fluid_Database__Liquid / Solvent
 <|layout|columns=1 1 1 1 1|
 <|{va_fluid}|selector|lov={fluid_options}|dropdown|label=Solvent / fluid|on_change=on_va_fluid_change|>
 
@@ -791,7 +792,7 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|{va_sigma}|number|label=σ (N/m)|on_change=on_va_input_change|>
 |>
 
-### 🟤 Solid
+### __ICON:Particle_Database__Solid
 <|{va_sl_mode}|toggle|lov={va_sl_mode_options}|label=Include solid particles|class_name=onoff-toggle|on_change=on_va_input_change|>
 
 <|part|render={va_sl_mode == "On"}|
@@ -911,5 +912,5 @@ envelope chart.
 |>
 |>
 |>
-"""
+""")
 )

@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from pages import _db_common as db
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -137,8 +138,8 @@ def on_particle_import(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🟤 Particle Database
+    inject_icons("""
+# __ICON:Particle_Database__Particle Database
 
 <|{particle_msg}|text|>
 
@@ -190,5 +191,5 @@ form below for a validated entry.
 <|{particle_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_particle_import|extensions=.csv|>
 |>
 |>
-"""
+""")
 )

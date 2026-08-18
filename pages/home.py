@@ -7,10 +7,13 @@ from __future__ import annotations
 
 from taipy.gui import Markdown
 
+from utils.menu_icons import inject_icons
+
 APP_VERSION = "2.0.1"
 RELEASE_DATE = "August 2026"
 
 page = Markdown(
+    inject_icons(
     """
 # Welcome to Mixing Lab
 
@@ -30,28 +33,28 @@ Use the menu on the left to navigate between sections.
 <|part|class_name=va-card|
 ## Databases
 
-- **⚗️ [Vessels](/Vessel_Database)** — library of vessel geometries (tank, impeller, jacket,
+- **__ICON:Vessel_Database__[Vessels](/Vessel_Database)** — library of vessel geometries (tank, impeller, jacket,
   materials, operating ranges) used by all assessment tools.
-- **💧 [Fluids](/Fluid_Database)** — solvent physical properties with temperature correlations and
+- **__ICON:Fluid_Database__[Fluids](/Fluid_Database)** — solvent physical properties with temperature correlations and
   a solvent-miscibility screening tool.
-- **🧪 [Reactions](/Reaction_Database)** — reaction kinetics, schemes, heats of reaction and
+- **__ICON:Reaction_Database__[Reactions](/Reaction_Database)** — reaction kinetics, schemes, heats of reaction and
   operating conditions.
-- **🟤 [Particles](/Particle_Database)** — particle size and density data for solid-suspension
+- **__ICON:Particle_Database__[Particles](/Particle_Database)** — particle size and density data for solid-suspension
   calculations.
 |>
 <|part|class_name=va-card|
 ## Assessment tools
 
-- **🌀 [Vessel Assessment](/Vessel_Assessment)** — full single-vessel analysis: hydrodynamics,
+- **__ICON:Vessel_Assessment__[Vessel Assessment](/Vessel_Assessment)** — full single-vessel analysis: hydrodynamics,
   Damköhler numbers, solid suspension, heat balance and an operating-envelope
   chart, with PDF export.
-- **⚖️ [Vessel Comparison](/Vessel_Comparison)** — side-by-side envelopes for several vessels plus
+- **__ICON:Vessel_Comparison__[Vessel Comparison](/Vessel_Comparison)** — side-by-side envelopes for several vessels plus
   scale-up matching between scales.
-- **🅱️ [Bourne Protocol](/Bourne_Protocol)** — experimental screen for mixing sensitivity
+- **__ICON:Bourne_Protocol__[Bourne Protocol](/Bourne_Protocol)** — experimental screen for mixing sensitivity
   (impeller speed, feed rate and feed location tests).
-- **🧭 [Reaction Sensitivity Protocol](/Mixing_Sensitivity)** — step-by-step decision tree combining
+- **__ICON:Mixing_Sensitivity__[Reaction Sensitivity Protocol](/Mixing_Sensitivity)** — step-by-step decision tree combining
   kinetics, phases and heat effects into a mixing-sensitivity verdict.
-- **💎 [Crystallization Sensitivity Protocol](/Crystallization_Sensitivity)** — mixing-sensitivity
+- **__ICON:Crystallization_Sensitivity__[Crystallization Sensitivity Protocol](/Crystallization_Sensitivity)** — mixing-sensitivity
   workflow for crystallization process development (work in progress).
 |>
 |>
@@ -60,11 +63,11 @@ Use the menu on the left to navigate between sections.
 <|part|class_name=va-card|
 ## Utilities
 
-- **🔥 [Heat Transfer Tool](/Heat_Transfer)** — batch heating/cooling temperature and duty
+- **__ICON:Heat_Transfer__[Heat Transfer Tool](/Heat_Transfer)** — batch heating/cooling temperature and duty
   profiles, and heat-transfer-coefficient estimation.
-- **🔄 [Unit Converter](/Unit_Converter)** — engineering unit conversions (pressure, viscosity,
+- **__ICON:Unit_Converter__[Unit Converter](/Unit_Converter)** — engineering unit conversions (pressure, viscosity,
   energy, agitation, and more).
-- **📐 [Equations Reference](/Equations_Reference)** — every correlation used in the app, with symbols,
+- **__ICON:Equations_Reference__[Equations Reference](/Equations_Reference)** — every correlation used in the app, with symbols,
   units and literature references.
 |>
 <|part|class_name=va-card|
@@ -78,4 +81,5 @@ For questions, feedback or new-feature requests, contact Michael Bradfield.
 |>
 |>
 """
+    )
 )

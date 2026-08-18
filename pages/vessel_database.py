@@ -581,9 +581,7 @@ page. Reactor images are added separately.
 <|layout|columns=1 1|
 <|part|content={vessel_viewer_html}|height=380px|>
 
-<|Vessel properties|expandable|expanded=True|class_name=vp-exp|
-<|{vessel_detail_df}|table|width=100%|show_all|height=276px|>
-|>
+<|{vessel_detail_df}|table|width=100%|show_all|height=380px|>
 |>
 
 ### 2D Schematic & Liquid Level

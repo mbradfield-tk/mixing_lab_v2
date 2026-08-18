@@ -585,13 +585,17 @@ page. Reactor images are added separately.
 |>
 
 ### 2D Schematic & Liquid Level
+<|layout|columns=1 1|
+<|part|content={vessel_schematic_html}|height=380px|class_name=vessel-schem|>
+
+<|part|
 Enter a fill volume to draw the liquid surface on the vessel cross-section.
 
 <|{vessel_fill_L}|number|label=Liquid fill volume (L)|on_change=on_vessel_fill_change|>
 
 <|{vessel_fill_caption}|text|mode=markdown|>
-
-<|part|content={vessel_schematic_html}|height=560px|>
+|>
+|>
 |>
 
 <|part|class_name=va-card|

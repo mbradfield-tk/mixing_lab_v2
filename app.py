@@ -265,6 +265,15 @@ button.compute-btn-ok:hover {
     background: #ffffff;
 }
 
+/* Clean, fully-bounded frame around the 2D vessel schematic iframe (the browser
+   default inset border clips its right edge without box-sizing). */
+.vessel-schem iframe {
+    box-sizing: border-box;
+    width: 100% !important;
+    border: 1px solid #D0D0D0 !important;
+    border-radius: 4px;
+}
+
 /* Reaction-scheme highlight box. */
 .scheme-box {
     display: block;

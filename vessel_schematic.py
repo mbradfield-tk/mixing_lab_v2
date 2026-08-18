@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import io
+import struct
 
 import matplotlib
 
@@ -180,19 +181,20 @@ def brim_volume(row: pd.Series) -> float:
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
-def _png_html(fig) -> str:
+def _png_html(fig) -> tuple[str, float]:
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=140, bbox_inches="tight",
-                facecolor="white")
+    fig.savefig(buf, format="png", dpi=140, facecolor="white")
     plt.close(fig)
-    data = base64.b64encode(buf.getvalue()).decode("ascii")
-    return (
+    png = buf.getvalue()
+    w, h = struct.unpack(">II", png[16:24])  # PNG IHDR carries width/height
+    data = base64.b64encode(png).decode("ascii")
+    html = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<style>html,body{margin:0;padding:0;background:#fff;"
-        "display:flex;justify-content:center;align-items:flex-start;}"
-        "img{max-width:100%;height:auto;}</style></head>"
+        "<style>html,body{margin:0;padding:0;height:100%;background:#fff;}"
+        "img{display:block;width:100%;height:100%;object-fit:contain;}</style></head>"
         f"<body><img src='data:image/png;base64,{data}'/></body></html>"
     )
+    return html, (w / h if h else 1.0)
 
 
 def build_vessel_schematic(row: pd.Series, fill_L: float | None,
@@ -203,7 +205,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         msg = ("<!DOCTYPE html><html><body style='font-family:sans-serif;"
                "color:#8a6d3b;padding:12px;'>Insufficient geometry data "
                "(needs tank ID and height) to draw a schematic.</body></html>")
-        return {"html": msg, "total_L": 0.0, "level_mm": None, "fill_pct": None}
+        return {"html": msg, "aspect": 1.4, "total_L": 0.0, "level_mm": None, "fill_pct": None}
 
     R, H = geom["R"], geom["H"]
     bot_depth, top_depth = geom["bot_depth"], geom["top_depth"]
@@ -249,19 +251,27 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # Size-aware padding so labels never crowd the vessel.
     total_h = bot_depth + H + top_depth
     ref = max(R, total_h)
-    gap = ref * 0.10
-    left_pad = R * 0.95
-    right_pad = R * 1.05
-    bot_pad = gap + ref * 0.16 + (ref * 0.12 if warnings else 0.0)
-    top_pad = ref * 0.06
+    gap = ref * 0.06
+    left_pad = R * 0.85
+    right_pad = R * 0.95
+    bot_pad = gap + ref * 0.12 + (ref * 0.10 if warnings else 0.0)
+    top_pad = ref * 0.03
     if level is not None:
-        top_pad += ref * 0.10
+        top_pad += ref * 0.06
 
-    fig, ax = plt.subplots(1, 1, figsize=(3.4, 4.8))
+    fig, ax = plt.subplots(1, 1, figsize=(4.6, 4.6))
     ax.set_aspect("equal")
-    ax.set_xlim(-R - left_pad, R + right_pad)
-    ax.set_ylim(-bot_depth - bot_pad, H + top_depth + top_pad)
+    # Square frame centred on the vessel centre-point: every reactor renders at
+    # the same pixel size and centred, so the panel scale is consistent and the
+    # reactor centre lands at the panel centre.
+    cy_c = (H + top_depth - bot_depth) / 2.0
+    ex = R + max(left_pad, right_pad)
+    ey = max(cy_c + bot_depth + bot_pad, (H + top_depth + top_pad) - cy_c)
+    half = max(ex, ey)
+    ax.set_xlim(-half, half)
+    ax.set_ylim(cy_c - half, cy_c + half)
     ax.set_axis_off()
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     wall_lw, wall_color = 2.0, "#333333"
 
@@ -300,7 +310,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.plot([-r_surf, r_surf], [level, level],
                 color="#0288D1", lw=1.6, zorder=2)
         ax.text(0, H + top_depth + ref * 0.02, f"{fill_L:,.1f} L",
-                ha="center", va="bottom", fontsize=7, color="#0277BD", zorder=2)
+                ha="center", va="bottom", fontsize=10, fontweight="bold",
+                color="#0277BD", zorder=2)
 
     # Impellers (clearance = dish bottom to blade underside)
     for idx_imp, (d_imp, cy, h_imp, color, itype) in enumerate(impellers):
@@ -333,7 +344,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.plot([r_imp, R + right_pad * 0.12], [cy, cy],
                 color=color, lw=0.6, alpha=0.5, zorder=3)
         ax.text(R + right_pad * 0.15, cy, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
-                fontsize=7, va="center", ha="left", color=color)
+                fontsize=10, fontweight="bold", va="center", ha="left", color=color)
 
     # Shaft
     shaft_top = H + top_depth * 0.9
@@ -341,14 +352,14 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.plot([0, 0], [shaft_bot, shaft_top], color="#555555", lw=1.5, zorder=3)
 
     # Dimension annotations (diameter below, height to the left)
-    dim_color, dim_fs, wit_lw = "#888888", 7, 0.6
+    dim_color, dim_fs, wit_lw = "#555555", 10, 0.6
     arr_y = -bot_depth - gap
     for sx in (-R, R):
         ax.plot([sx, sx], [0, arr_y], color=dim_color, lw=wit_lw, zorder=2)
     ax.annotate("", xy=(R, arr_y), xytext=(-R, arr_y),
                 arrowprops=dict(arrowstyle="<->", color=dim_color, lw=1))
     ax.text(0, arr_y - ref * 0.04, f"⌀ {geom['D'] * 1000:.0f} mm",
-            ha="center", va="top", fontsize=dim_fs, color=dim_color)
+            ha="center", va="top", fontsize=dim_fs, fontweight="bold", color=dim_color)
 
     hx = -R - left_pad * 0.5
     for sy in (0.0, H):
@@ -356,7 +367,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.annotate("", xy=(hx, H), xytext=(hx, 0),
                 arrowprops=dict(arrowstyle="<->", color=dim_color, lw=1))
     ax.text(hx - R * 0.06, H / 2, f"H {H * 1000:.0f} mm",
-            ha="right", va="center", fontsize=dim_fs, color=dim_color, rotation=90)
+            ha="right", va="center", fontsize=dim_fs, fontweight="bold",
+            color=dim_color, rotation=90)
 
     # Bottom impeller off-bottom clearance (C): vessel bottom -> impeller underside.
     if impellers:
@@ -369,19 +381,20 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.annotate("", xy=(cx, y_bot), xytext=(cx, -bot_depth),
                     arrowprops=dict(arrowstyle="<->", color=cclr, lw=1))
         ax.text(cx - R * 0.04, (-bot_depth + y_bot) / 2.0, f"C {clr_mm:.0f} mm",
-                ha="right", va="center", fontsize=dim_fs, color=cclr, rotation=90)
+                ha="right", va="center", fontsize=dim_fs, fontweight="bold",
+                color=cclr, rotation=90)
 
     # Impeller–wall interference flag.
     if warnings:
         ax.text(0, -bot_depth - gap - ref * 0.17, "⚠ Impeller cuts into the wall",
-                ha="center", va="top", fontsize=8, color="#C62828", fontweight="bold")
+                ha="center", va="top", fontsize=10, color="#C62828", fontweight="bold")
 
-    if title:
-        ax.set_title(title, fontsize=10, fontweight="bold", pad=10)
-    fig.tight_layout()
-
+    # Title is intentionally not drawn on the canvas (it would offset the vessel
+    # from centre); the vessel name is shown in the page selector instead.
+    html, aspect = _png_html(fig)
     return {
-        "html": _png_html(fig),
+        "html": html,
+        "aspect": aspect,
         "total_L": total_L,
         "level_mm": (level * 1000.0) if level is not None else None,
         "fill_pct": fill_pct,

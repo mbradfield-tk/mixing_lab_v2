@@ -241,6 +241,22 @@ def _prep_mathtext(latex: str) -> list[str]:
     return parts or [s]
 
 
+def _optimize_png(data: bytes) -> bytes:
+    """Palette-quantize an RGBA equation PNG (~65% smaller, keeps alpha).
+
+    Falls back to the original bytes if Pillow is unavailable or fails.
+    """
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data)).quantize(colors=64, method=Image.FASTOCTREE)
+        buf = io.BytesIO()
+        img.save(buf, "PNG", optimize=True)
+        return buf.getvalue() if buf.tell() < len(data) else data
+    except Exception:  # noqa: BLE001
+        return data
+
+
 def _render_latex(latex: str) -> str | None:
     """Render *latex* to a transparent PNG and return a base64 data URI."""
     lines = _prep_mathtext(latex)
@@ -259,6 +275,7 @@ def _render_latex(latex: str) -> str | None:
         data = buf.getvalue()
         if not data or data[:4] != b"\x89PNG":
             return None
+        data = _optimize_png(data)
         return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
     except Exception as exc:  # noqa: BLE001
         print(f"  ! could not render: {latex[:60]}  ({exc})")

@@ -389,6 +389,21 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.text(0, -bot_depth - gap - ref * 0.17, "⚠ Impeller cuts into the wall",
                 ha="center", va="top", fontsize=10, color="#C62828", fontweight="bold")
 
+    # Labels are fixed pixel-size text, so their data-space extent depends on the
+    # vessel proportions and can spill past the geometry-derived frame. Measure
+    # the rendered text boxes and widen the square frame to contain them (the
+    # expansion shrinks the text's data footprint, so one pass is sufficient).
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    for artist in ax.texts:
+        bb = artist.get_window_extent(renderer=renderer)
+        (x0, y0), (x1, y1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
+        half = max(half, abs(x0), abs(x1), abs(y0 - cy_c), abs(y1 - cy_c))
+    half *= 1.02  # small breathing margin
+    ax.set_xlim(-half, half)
+    ax.set_ylim(cy_c - half, cy_c + half)
+
     # Title is intentionally not drawn on the canvas (it would offset the vessel
     # from centre); the vessel name is shown in the page selector instead.
     html, aspect = _png_html(fig)

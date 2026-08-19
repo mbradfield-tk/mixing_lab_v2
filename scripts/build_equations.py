@@ -78,7 +78,6 @@ EXCLUDED_HEADERS = {
     "Batchelor Length Scale",
     "Gas Holdup (Hughmark)",
     "Sauter Mean Bubble Diameter (Calderbank)",
-    "Gas Flooding Speed",
     "Impeller Weber Number (Liquid-Liquid)",
     "Sauter Mean Drop Diameter (Hinze-Kolmogorov)",
     "Minimum Dispersion Speed (Skelland & Seksaria)",

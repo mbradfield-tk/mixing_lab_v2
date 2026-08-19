@@ -34,6 +34,7 @@ from utils.calculations import (
     blend_time_turbulent,
     impeller_power,
     kolmogorov_length,
+    liquid_height_from_volume,
     micromixing_time_engulfment,
     power_per_volume,
     reynolds_number,
@@ -96,6 +97,18 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
 def _reactor_row(name: str) -> pd.Series:
     row = reactors_df[reactors_df["reactor_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
+
+
+def _blend_geometry(state) -> tuple[float, float]:
+    """Return tank diameter and current liquid height in metres."""
+    row = _reactor_row(state.bp_reactor)
+    tank_diameter = _sf(row.get("D_tank_m"))
+    max_height = _sf(row.get("H_max_m"), _sf(row.get("H_m")))
+    dish = str(row.get("bottom_dish", "") or "")
+    liquid_height = liquid_height_from_volume(
+        state.bp_v_l, tank_diameter, max_height, dish,
+    )
+    return tank_diameter, liquid_height
 
 
 def _reactor_id(name: str) -> str:
@@ -435,7 +448,7 @@ def on_bp_sys_change(state):
 # ---------------------------------------------------------------------------
 def _build_t1(state):
     D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
-    Nq = state.bp_nq
+    T, H = _blend_geometry(state)
     nu = mu / rho if rho > 0 else 0.0
     V_m3 = state.bp_v_l / 1000.0
     pm_c, info = _resolve_center_pm(state)
@@ -463,7 +476,7 @@ def _build_t1(state):
             "P/V (W/L)": f"{eps / 1000.0:.4g}",
             "Tip speed (m/s)": f"{tip_speed(n_rps, D):.3g}",
             "Re": f"{reynolds_number(n_rps, D, rho, mu):,.0f}",
-            "Blend time (s)": f"{blend_time_turbulent(Nq, V_m3, D, n_rps):.3g}",
+            "Blend time (s)": f"{blend_time_turbulent(Np, n_rps, D, T, H):.3g}",
             "t_E micro (s)": f"{micromixing_time_engulfment(eps_kg, nu):.3g}",
             "η (µm)": f"{kolmogorov_length(nu, eps_kg) * 1e6:.3g}",
         })
@@ -916,6 +929,7 @@ def _t1_conditions_snap(state) -> list:
 
 def _centerpoint_metrics(state) -> dict:
     D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
+    T, H = _blend_geometry(state)
     nu = mu / rho if rho > 0 else 0.0
     V_m3 = state.bp_v_l / 1000.0
     n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
@@ -927,7 +941,7 @@ def _centerpoint_metrics(state) -> dict:
         "P/m (W/kg)": eps_kg,
         "Re": reynolds_number(n_rps, D, rho, mu),
         "Tip speed (m/s)": tip_speed(n_rps, D),
-        "Blend time (s)": blend_time_turbulent(state.bp_nq, V_m3, D, n_rps),
+        "Blend time (s)": blend_time_turbulent(Np, n_rps, D, T, H),
         "Micromix t_E (s)": micromixing_time_engulfment(eps_kg, nu),
         "Kolmogorov eta (um)": kolmogorov_length(nu, eps_kg) * 1e6,
     }

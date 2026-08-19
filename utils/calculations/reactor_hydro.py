@@ -50,10 +50,10 @@ def compute_reactor_hydro(
     eps_kg = eps / rho if rho > 0 else 0.0
     u_tip = tip_speed(N, D_imp)
     Q = pumping_rate(Nq, N, D_imp)
-    t_blend = blend_time_turbulent(Nq, V, D_imp, N)
+    t_blend = blend_time_turbulent(Np, N, D_imp, D_tank, H)
     t_micro = micromixing_time_engulfment(eps_kg, nu)
     eta = kolmogorov_length(nu, eps_kg)
-    eps_max = epsilon_max_estimate(P, rho, D_imp, N)
+    eps_max = epsilon_max_estimate(Np, N, D_imp)
     t_micro_local = micromixing_time_local(eps_max, nu)
     gamma_avg = average_shear_rate(P, mu, V)
     gamma_max = maximum_shear_rate(eps_max, nu)

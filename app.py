@@ -8,11 +8,15 @@ if sys.version_info >= (3, 13):
 
 from taipy.gui import Gui, navigate
 
+from utils.menu_icons import image_thumb_uri, menu_icon_uri
+
 from pages import (
     bourne_protocol,
+    crystallization_sensitivity,
     equations_reference,
     fluid_database,
     heat_transfer,
+    home,
     mixing_sensitivity,
     particle_database,
     reaction_database,
@@ -31,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # Taipy's `menu` is a flat list. Emoji icons are injected via CSS (see root_md)
 # because the auto letter-badge mangles emoji, so labels stay plain text here.
 menu_options = [
+    ("Home", "Home"),
     ("Vessel_Database", "Vessels"),
     ("Fluid_Database", "Fluids"),
     ("Reaction_Database", "Reactions"),
@@ -39,6 +44,7 @@ menu_options = [
     ("Vessel_Comparison", "Vessel Comparison"),
     ("Bourne_Protocol", "Bourne Protocol"),
     ("Mixing_Sensitivity", "Reaction Sensitivity Protocol"),
+    ("Crystallization_Sensitivity", "Crystallization Sensitivity Protocol"),
     ("Heat_Transfer", "Heat Transfer Tool"),
     ("Unit_Converter", "Unit Converter"),
     ("Equations_Reference", "Equations Reference"),
@@ -51,14 +57,8 @@ def on_menu_action(state, action, info):
 
 
 def _logo_data_uri() -> str:
-    """Return the sidebar logo as a base64 ``data:`` URI (empty string if missing)."""
-    import base64
-
-    path = BASE_DIR / "images" / "general" / "logo.png"
-    if not path.exists():
-        return ""
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    """Return the sidebar logo as a small base64 ``data:`` URI ('' if missing)."""
+    return image_thumb_uri(BASE_DIR / "images" / "general" / "logo.png", px=96)
 
 
 LOGO_DATA_URI = _logo_data_uri()
@@ -78,29 +78,66 @@ def _takeda_logo_uri() -> str:
 TAKEDA_LOGO_URI = _takeda_logo_uri()
 
 
-root_md = """
-<style>
-/* Replace the native hamburger (triple-bar) toggle icon of the Taipy menu
-   with the app logo. The first list item in the menu Drawer is the open/close
-   toggle; its avatar holds the MenuIcon SVG we hide and swap for the logo. */
-.htt-menu .MuiList-root .MuiButtonBase-root:first-of-type .MuiAvatar-root {
+# Per-item menu icons. Each menu key may supply a PNG at images/menu/[key].png
+# (lowercase); when present a small cached thumbnail (utils/menu_icons.py)
+# replaces the emoji fallback below.
+MENU_ICON_EMOJI = {
+    "Vessel_Database": "⚗️",
+    "Fluid_Database": "💧",
+    "Reaction_Database": "🧪",
+    "Particle_Database": "🟤",
+    "Vessel_Assessment": "🌀",
+    "Vessel_Comparison": "⚖️",
+    "Bourne_Protocol": "🅱️",
+    "Mixing_Sensitivity": "🧭",
+    "Crystallization_Sensitivity": "💎",
+    "Heat_Transfer": "🔥",
+    "Unit_Converter": "🔄",
+    "Equations_Reference": "📐",
+}
+
+_MENU_IMG_RULE = """.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(NTH) .MuiAvatar-root {
     background-color: #ffffff !important;
-    background-image: url("__LOGO_URI__");
+    background-image: url("IMG_URI");
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
     width: 44px !important;
     height: 44px !important;
     border-radius: 6px;
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:first-of-type .MuiAvatar-root svg {
-    display: none !important;
-}
+}"""
 
+_MENU_EMOJI_RULE = """.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(NTH) .MuiAvatar-root::after {
+    content: "EMOJI";
+}"""
+
+
+def _menu_icons_css() -> str:
+    """Build the per-item icon CSS, preferring a PNG over the emoji fallback.
+
+    nth-of-type(N) = menu position N-1 (position 1 is the drawer toggle), so a
+    menu item at list index ``i`` maps to nth-of-type(i + 2). Home (index 0) is
+    handled separately as the app logo.
+    """
+    blocks = []
+    for i, (key, _label) in enumerate(menu_options):
+        if key == "Home":
+            continue
+        nth = str(i + 2)
+        img = menu_icon_uri(key)
+        if img:
+            blocks.append(_MENU_IMG_RULE.replace("NTH", nth).replace("IMG_URI", img))
+        elif key in MENU_ICON_EMOJI:
+            blocks.append(_MENU_EMOJI_RULE.replace("NTH", nth).replace("EMOJI", MENU_ICON_EMOJI[key]))
+    return "\n".join(blocks)
+
+
+root_md = """
+<style>
 /* The menu draws a round icon badge per item whose auto-generated letter mangles
    emoji into "?". Blank out that letter and inject a per-page emoji via ::after,
    so it shows in both the collapsed (icon-only) and expanded menu states. The
-   first item's avatar is the logo (styled above) and is left untouched. */
+   first item is the native open/close drawer toggle and is left untouched. */
 .htt-menu .MuiList-root .MuiButtonBase-root:not(:first-of-type) .MuiAvatar-root {
     color: transparent !important;
     font-size: 0 !important;
@@ -111,48 +148,53 @@ root_md = """
     font-size: 1.3rem;
     line-height: 1;
 }
+/* Home menu item (menu position 1, i.e. nth-of-type(2); nth-of-type(1) is the
+   drawer toggle): show the app logo so clicking the logo navigates home. */
+.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root {
+    background-color: #ffffff !important;
+    background-image: url("__LOGO_URI__");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 6px;
+}
 /* Icon order follows the `menu_options` list: nth-of-type(N) = menu position
-   N-1 (position 1 is the logo/toggle). Update these if you reorder the menu.
-   Order: 2=Vessels, 3=Fluids, 4=Reactions, 5=Particles, 6=Vessel Assessment,
-   7=Vessel Comparison, 8=Bourne Protocol, 9=Reaction Sensitivity, 10=Heat Transfer,
-   11=Unit Converter, 12=Equations Reference. */
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(2) .MuiAvatar-root::after {
-    content: "⚗️";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(3) .MuiAvatar-root::after {
-    content: "💧";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(4) .MuiAvatar-root::after {
-    content: "🧪";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(5) .MuiAvatar-root::after {
-    content: "🟤";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(6) .MuiAvatar-root::after {
-    content: "🌀";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(7) .MuiAvatar-root::after {
-    content: "⚖️";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(8) .MuiAvatar-root::after {
-    content: "🅱️";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(9) .MuiAvatar-root::after {
-    content: "🧭";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(10) .MuiAvatar-root::after {
-    content: "🔥";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(11) .MuiAvatar-root::after {
-    content: "🔄";
-}
-.htt-menu .MuiList-root .MuiButtonBase-root:nth-of-type(12) .MuiAvatar-root::after {
-    content: "📐";
-}
+   N-1 (position 1 is the drawer toggle). Update these if you reorder the menu.
+   Order: 2=Home (logo, above), 3=Vessels, 4=Fluids, 5=Reactions, 6=Particles,
+   7=Vessel Assessment, 8=Vessel Comparison, 9=Bourne Protocol,
+   10=Reaction Sensitivity, 11=Crystallization Sensitivity, 12=Heat Transfer,
+   13=Unit Converter, 14=Equations Reference. Each item uses images/menu/[key].png
+   when present, otherwise an emoji fallback (generated by _menu_icons_css). */
+__MENU_ICONS__
 
 /* Hide the "Mode" text label on the theme toggle; the sun/moon icons suffice. */
 .theme-toggle .MuiTypography-root {
     display: none !important;
+}
+
+/* Inline menu-icon images embedded in page headings and Home links (see
+   utils/menu_icons.py). Sized in em so the icon scales with its heading/text. */
+img[alt="menu-icon"] {
+    height: 1.1em;
+    width: auto;
+    vertical-align: -0.18em;
+    margin-right: 0.3em;
+    border-radius: 3px;
+}
+
+/* Page titles: centre every H1 and lift its inline menu icon above the text,
+   matching the Home page's logo-over-heading layout. Section headings (h2+)
+   and their inline icons are unaffected. */
+h1 {
+    text-align: center;
+}
+h1 img[alt="menu-icon"] {
+    display: block;
+    height: 72px;
+    margin: 4px auto 6px;
+    border-radius: 8px;
 }
 
 /* ---- Takeda corporate palette (red / gray / white) --------------------- */
@@ -262,6 +304,33 @@ button.compute-btn-ok:hover {
     background: #ffffff;
 }
 
+/* Explore-vessel properties column: cap at the 3D viewer height (380px) so the
+   filter selector + table can never extend past the model panel. The table's
+   wrapper flexes to fill the space left by the selector and scrolls internally. */
+.vessel-props {
+    height: 380px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.vessel-props .md-para:last-child {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+.vessel-props .vp-table {
+    height: 100%;
+}
+
+/* Clean, fully-bounded frame around the 2D vessel schematic iframe (the browser
+   default inset border clips its right edge without box-sizing). */
+.vessel-schem iframe {
+    box-sizing: border-box;
+    width: 100% !important;
+    border: 1px solid #D0D0D0 !important;
+    border-radius: 4px;
+}
+
 /* Reaction-scheme highlight box. */
 .scheme-box {
     display: block;
@@ -335,6 +404,26 @@ button.compute-btn-ok:hover {
 .page-logo img {
     height: 40px;
     width: auto;
+}
+
+/* Home page: centred app logo above the welcome heading, and equal-height
+   cards inside each two-column row (cells stretch to the tallest card). */
+.home-logo {
+    text-align: center;
+    margin: 4px 0 8px;
+}
+.home-logo img {
+    height: 180px;
+    width: auto;
+}
+.home-grid {
+    align-items: stretch;
+    margin-bottom: 20px;
+}
+.home-grid .va-card {
+    height: 100%;
+    margin-bottom: 0;
+    box-sizing: border-box;
 }
 
 /* Pre-rendered equation images on the Equations Reference page. Capped to a
@@ -447,10 +536,12 @@ button.compute-btn-ok:hover {
 """
 
 root_md = root_md.replace("__LOGO_URI__", LOGO_DATA_URI).replace("__TAKEDA_URI__", TAKEDA_LOGO_URI)
+root_md = root_md.replace("__MENU_ICONS__", _menu_icons_css())
 
 
 pages = {
     "/": root_md,
+    "Home": home.page,
     "Vessel_Database": vessel_database.page,
     "Fluid_Database": fluid_database.page,
     "Reaction_Database": reaction_database.page,
@@ -459,6 +550,7 @@ pages = {
     "Vessel_Comparison": vessel_comparison.page,
     "Bourne_Protocol": bourne_protocol.page,
     "Mixing_Sensitivity": mixing_sensitivity.page,
+    "Crystallization_Sensitivity": crystallization_sensitivity.page,
     "Heat_Transfer": heat_transfer.page,
     "Unit_Converter": unit_converter.page,
     "Equations_Reference": equations_reference.page,

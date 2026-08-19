@@ -30,6 +30,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from utils.calculations import (
     blend_time_turbulent,
     impeller_power,
@@ -803,12 +804,12 @@ def on_bp_t3_assess(state):
     prefix = _kpi_prefix(res)
     if res["sensitive"]:
         state.bp_t3_verdict = (
-            prefix + " 📐 **Mesomixing-controlled.** Scale-up: match P/V, **extend "
+            prefix + " **Mesomixing-controlled.** Scale-up: match P/V, **extend "
             "the feed time** and **add feed points** to keep the feed plume in a "
             "high-dissipation zone.")
     else:
         state.bp_t3_verdict = (
-            prefix + " 🌀 **Macromixing-controlled.** Scale-up: keep **blend/"
+            prefix + " **Macromixing-controlled.** Scale-up: keep **blend/"
             "circulation times short** (bulk homogeneity governs the outcome).")
     _build_summary(state)
     notify(state, "S", "Test 3 assessed.")
@@ -847,7 +848,7 @@ def _build_summary(state):
             "- **Test 2:** sensitive to feed rate.",
             "- **Test 3:** sensitive to feed location.",
             "",
-            "**📐 Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
+            "**Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
             "time, and add feed points** to control feed-plume dispersion.",
         ]
     elif state.bp_t3_assessed:
@@ -857,7 +858,7 @@ def _build_summary(state):
             "- **Test 2:** sensitive to feed rate.",
             "- **Test 3:** insensitive to feed location.",
             "",
-            "**🌀 Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
+            "**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
             "times short** — bulk homogeneity governs the outcome.",
         ]
     else:
@@ -1109,8 +1110,8 @@ def on_bp_export_sens_csv(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# 🅱️ Bourne Protocol
+    inject_icons("""
+# __ICON:Bourne_Protocol__Bourne Protocol
 
 <|{bp_status}|text|>
 
@@ -1159,6 +1160,8 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 Vary the specific power **P/m** over a 100× range (0.1× → 10× the centre) at fixed
 volume. If the response barely moves, mixing is not rate-limiting.
 
+<|part|height=18px|>
+
 **Centre-point selection**
 <|layout|columns=1 1 1|
 <|{bp_t1_ctr_mode}|selector|lov={bp_t1_ctr_mode_options}|dropdown|label=Centre-point method|on_change=on_bp_t1_recalc|>
@@ -1206,6 +1209,8 @@ RPM limits.
 ### Enter measured responses
 Track one or more KPIs — add a row per metric. Each is judged sensitive at a
 **≥ 5%** change from its centre value; the overall verdict uses a majority vote.
+
+<|part|height=18px|>
 
 <|{bp_t1_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|>
 
@@ -1291,7 +1296,7 @@ responses, and the decision-tree conclusion.
 |>
 
 ### Export for the Reaction Sensitivity Protocol
-Export the outcome as a CSV that can be imported into the **🧭 Reaction
+Export the outcome as a CSV that can be imported into the **Reaction
 Sensitivity Protocol** (Step 0 pre-screen) to feed the experimental result into
 the overall sensitivity assessment.
 
@@ -1301,5 +1306,5 @@ the overall sensitivity assessment.
 <|Download CSV|file_download|content={bp_sens_csv_bytes}|name={bp_sens_csv_name}|label=Download Sensitivity CSV|>
 |>
 |>
-"""
+""")
 )

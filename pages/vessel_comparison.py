@@ -34,6 +34,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
+from utils.menu_icons import inject_icons
 from utils.calculations import (
     compute_damkohler_numbers,
     estimate_U_detailed,
@@ -1007,8 +1008,8 @@ def on_vc_save_results(state):
 # Page
 # ---------------------------------------------------------------------------
 page = Markdown(
-    """
-# ⚖️ Vessel Comparison
+    inject_icons("""
+# __ICON:Vessel_Comparison__Vessel Comparison
 
 Compare the mixing performance of several vessels side-by-side. Each vessel's
 operating envelope is mapped from its RPM range and fill-volume band for a shared
@@ -1044,7 +1045,7 @@ Drag to rotate a 3D model; scroll to zoom. The row scrolls sideways when several
 
 <|part|class_name=va-card|
 ## 2. Options
-### 🟤 Solid particles
+### __ICON:Particle_Database__Solid particles
 <|{vc_incl_particles}|toggle|lov={vc_onoff_options}|label=Include solid particles|class_name=onoff-toggle|on_change=on_vc_input_change|>
 
 <|part|render={vc_incl_particles == "On"}|
@@ -1206,7 +1207,7 @@ Ratios use the midpoint (average of the 4 corners) for each parameter, relative 
 |>
 |>
 |>
-"""
+""")
 )
 
 # Expose the scalable-parameter list to the page markdown.

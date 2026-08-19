@@ -602,6 +602,8 @@ page = Markdown(
 Editing is enabled only when unlocked in the **Admin** panel at the bottom of the
 page. Reactor images are added separately.
 
+<|part|height=18px|>
+
 <|Vessel database|expandable|expanded=False|
 <|{vessel_search}|input|label=Search by name or owner|on_change=on_vessel_search|class_name=db-search|>
 

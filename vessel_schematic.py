@@ -391,18 +391,23 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
 
     # Labels are fixed pixel-size text, so their data-space extent depends on the
     # vessel proportions and can spill past the geometry-derived frame. Measure
-    # the rendered text boxes and widen the square frame to contain them (the
-    # expansion shrinks the text's data footprint, so one pass is sufficient).
+    # the rendered text boxes and widen the square frame until everything fits —
+    # expanding rescales the axes while the text keeps its pixel size, so the
+    # required extent must be found iteratively (converges geometrically).
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    inv = ax.transData.inverted()
-    for artist in ax.texts:
-        bb = artist.get_window_extent(renderer=renderer)
-        (x0, y0), (x1, y1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
-        half = max(half, abs(x0), abs(x1), abs(y0 - cy_c), abs(y1 - cy_c))
-    half *= 1.02  # small breathing margin
-    ax.set_xlim(-half, half)
-    ax.set_ylim(cy_c - half, cy_c + half)
+    for _ in range(10):
+        inv = ax.transData.inverted()
+        needed = half
+        for artist in ax.texts:
+            bb = artist.get_window_extent(renderer=renderer)
+            (x0, y0), (x1, y1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
+            needed = max(needed, abs(x0), abs(x1), abs(y0 - cy_c), abs(y1 - cy_c))
+        if needed <= half * 1.001:
+            break
+        half = needed * 1.02  # small breathing margin
+        ax.set_xlim(-half, half)
+        ax.set_ylim(cy_c - half, cy_c + half)
 
     # Title is intentionally not drawn on the canvas (it would offset the vessel
     # from centre); the vessel name is shown in the page selector instead.

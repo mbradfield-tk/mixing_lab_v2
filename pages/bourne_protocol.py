@@ -1146,6 +1146,8 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 Vary the specific power **P/m** over a 100× range (0.1× → 10× the centre) at fixed
 volume. If the response barely moves, mixing is not rate-limiting.
 
+<|part|height=18px|>
+
 **Centre-point selection**
 <|layout|columns=1 1 1|
 <|{bp_t1_ctr_mode}|selector|lov={bp_t1_ctr_mode_options}|dropdown|label=Centre-point method|on_change=on_bp_t1_recalc|>
@@ -1193,6 +1195,8 @@ RPM limits.
 ### Enter measured responses
 Track one or more KPIs — add a row per metric. Each is judged sensitive at a
 **≥ 5%** change from its centre value; the overall verdict uses a majority vote.
+
+<|part|height=18px|>
 
 <|{bp_t1_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|>
 

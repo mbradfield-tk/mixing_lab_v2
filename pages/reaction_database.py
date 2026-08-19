@@ -182,6 +182,8 @@ Edit kinetic data inline — **every change is saved automatically**. Use the
 search box or column filters to narrow the table, the row actions to add or
 delete rows, or the **Add Reaction** form below for a validated entry.
 
+<|part|height=18px|>
+
 <|Reaction database|expandable|expanded=False|
 <|{reaction_search}|input|label=Search reactions|on_change=on_reaction_search|class_name=db-search|>
 

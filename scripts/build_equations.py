@@ -69,7 +69,9 @@ def _optimize_png(data: bytes) -> bytes:
     try:
         from PIL import Image
 
-        img = Image.open(io.BytesIO(data)).quantize(colors=64, method=Image.FASTOCTREE)
+        img = Image.open(io.BytesIO(data)).quantize(
+            colors=64, method=Image.Quantize.FASTOCTREE
+        )
         buf = io.BytesIO()
         img.save(buf, "PNG", optimize=True)
         return buf.getvalue() if buf.tell() < len(data) else data

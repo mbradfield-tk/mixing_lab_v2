@@ -184,6 +184,19 @@ img[alt="menu-icon"] {
     border-radius: 3px;
 }
 
+/* Page titles: centre every H1 and lift its inline menu icon above the text,
+   matching the Home page's logo-over-heading layout. Section headings (h2+)
+   and their inline icons are unaffected. */
+h1 {
+    text-align: center;
+}
+h1 img[alt="menu-icon"] {
+    display: block;
+    height: 72px;
+    margin: 4px auto 6px;
+    border-radius: 8px;
+}
+
 /* ---- Takeda corporate palette (red / gray / white) --------------------- */
 /* Section headings in Takeda red; sub-headings in a neutral gray. */
 h1, h2 {
@@ -391,6 +404,26 @@ button.compute-btn-ok:hover {
 .page-logo img {
     height: 40px;
     width: auto;
+}
+
+/* Home page: centred app logo above the welcome heading, and equal-height
+   cards inside each two-column row (cells stretch to the tallest card). */
+.home-logo {
+    text-align: center;
+    margin: 4px 0 8px;
+}
+.home-logo img {
+    height: 180px;
+    width: auto;
+}
+.home-grid {
+    align-items: stretch;
+    margin-bottom: 20px;
+}
+.home-grid .va-card {
+    height: 100%;
+    margin-bottom: 0;
+    box-sizing: border-box;
 }
 
 /* Pre-rendered equation images on the Equations Reference page. Capped to a

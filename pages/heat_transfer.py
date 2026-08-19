@@ -30,6 +30,7 @@ from heat_transfer_core import (
     load_csvs,
     safe_float,
 )
+from utils.menu_icons import inject_icons
 from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -571,7 +572,7 @@ def _build_ua_sweeps(state) -> None:
 
 
 heat_transfer_md = """
-# Heat Transfer Tool
+# __ICON:Heat_Transfer__Heat Transfer Tool
 
 <|{status_message}|text|>
 
@@ -749,4 +750,4 @@ batch would reach with no cooling).
 |>
 """
 
-page = Markdown(heat_transfer_md)
+page = Markdown(inject_icons(heat_transfer_md))

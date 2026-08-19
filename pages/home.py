@@ -5,16 +5,26 @@ selected. Gives a short summary of the app, each section, and version info.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from taipy.gui import Markdown
 
-from utils.menu_icons import inject_icons
+from utils.menu_icons import image_thumb_uri, inject_icons
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.1.0"
 RELEASE_DATE = "August 2026"
+
+# App logo, downscaled + cached (displayed ~180px; 360px thumb stays crisp on retina).
+_LOGO_URI = image_thumb_uri(
+    Path(__file__).resolve().parent.parent / "images" / "general" / "logo.png", px=360)
 
 page = Markdown(
     inject_icons(
     """
+<|part|class_name=home-logo|
+![Mixing Lab](""" + _LOGO_URI + """)
+|>
+
 # Welcome to Mixing Lab
 
 <|part|class_name=va-card|
@@ -29,7 +39,7 @@ and document the results as PDF reports.
 Use the menu on the left to navigate between sections.
 |>
 
-<|layout|columns=1 1|
+<|layout|columns=1 1|class_name=home-grid|
 <|part|class_name=va-card|
 ## Databases
 
@@ -59,7 +69,7 @@ Use the menu on the left to navigate between sections.
 |>
 |>
 
-<|layout|columns=1 1|
+<|layout|columns=1 1|class_name=home-grid|
 <|part|class_name=va-card|
 ## Utilities
 

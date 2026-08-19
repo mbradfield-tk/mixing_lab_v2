@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from taipy.gui import Markdown
 
+from utils.menu_icons import inject_icons
+
 page = Markdown(
-    """
-# Crystallization Sensitivity Protocol
+    inject_icons("""
+# __ICON:Crystallization_Sensitivity__Crystallization Sensitivity Protocol
 
 <|part|class_name=va-card|
 ## 🚧 Work in Progress
@@ -18,5 +20,5 @@ This page will provide a step-by-step decision tree for assessing the mixing
 sensitivity of crystallization processes, similar to the
 [Reaction Sensitivity Protocol](/Mixing_Sensitivity).
 |>
-"""
+""")
 )

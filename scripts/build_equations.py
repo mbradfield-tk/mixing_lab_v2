@@ -127,20 +127,31 @@ def _math_to_text(m: str) -> str:
     s = m
     s = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)", s)
     s = re.sub(r"\\sqrt\{([^{}]*)\}", r"√(\1)", s)
-    s = re.sub(r"\\(?:left|right|,|;|quad|qquad)", "", s)
+    s = re.sub(r"\\(?:left|right|,|;|!|quad|qquad|[Bb]igl|[Bb]igr|[Bb]ig)\b", "", s)
+    s = re.sub(r"\\(?:left|right|,|;|!)", "", s)
+    # bar delimiters: use U+2223 so a literal "|" never breaks markdown tables
+    s = s.replace(r"\lvert", "∣").replace(r"\rvert", "∣")
+    s = s.replace(r"\lVert", "∥").replace(r"\rVert", "∥")
     s = re.sub(r"\\mathrm\{([^{}]*)\}", r"\1", s)
     s = re.sub(r"\\text\{([^{}]*)\}", r"\1", s)
+    s = s.replace(r"\max", "max").replace(r"\min", "min")
     for k, v in _GREEK.items():
         s = s.replace(k, v)
-    # simple ^2 / ^{2} superscripts
-    s = re.sub(r"\^\{([^{}]+)\}", lambda mm: "".join(_SUP.get(c, "^" + c) for c in mm.group(1)), s)
-    s = re.sub(r"\^([0-9n\-+])", lambda mm: _SUP.get(mm.group(1), "^" + mm.group(1)), s)
-    s = s.replace("_{", "_").replace("{", "").replace("}", "")
+    # superscripts -> real HTML superscripts (handles decimals like ^{0.687})
+    s = re.sub(r"\^\{([^{}]+)\}", r"<sup>\1</sup>", s)
+    s = re.sub(r"\^([0-9A-Za-z\-+])", r"<sup>\1</sup>", s)
+    # subscripts -> real HTML subscripts (survive _esc() on the page)
+    s = re.sub(r"_\{([^{}]+)\}", r"<sub>\1</sub>", s)
+    s = re.sub(r"_([A-Za-z0-9]+)", r"<sub>\1</sub>", s)
+    s = s.replace("{", "").replace("}", "")
     s = re.sub(r"\\[a-zA-Z]+", lambda mm: mm.group(0)[1:], s)  # strip remaining commands' backslash
     return s
 
 
 def _convert_inline(text: str) -> str:
+    # display math $$...$$ first so its doubled delimiters can't derail the
+    # single-$ pairing, then inline $...$
+    text = re.sub(r"\$\$([^$]+)\$\$", lambda mm: _math_to_text(mm.group(1)), text)
     return re.sub(r"\$([^$]+)\$", lambda mm: _math_to_text(mm.group(1)), text)
 
 

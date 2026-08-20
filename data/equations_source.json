@@ -14,7 +14,7 @@
     },
     {
      "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller rotational speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n\n**Regime classification:** Re < 10 laminar; 10 < Re < 10 000 transitional; Re > 10 000 turbulent.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller rotational speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n\n**Regime classification:** Re < 10 laminar; 10 < Re < 10,000 transitional; Re > 10,000 turbulent.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
     },
     {
      "type": "header",
@@ -88,11 +88,11 @@
     },
     {
      "type": "latex",
-     "latex": "\\varepsilon_{max} \\approx C \\cdot \\frac{P}{\\rho \\, D^3}, \\quad C \\approx 1 - 5"
+     "latex": "\\varepsilon_{max} \\approx 15.6 \\cdot {Po}^{3/4} \\ N^3 \\ D^2 "
     },
     {
      "type": "md",
-     "text": "\nThe energy dissipation rate near the impeller can be 1–2 orders of magnitude\nhigher than the mean.  We use $C = 3$ as a representative estimate.\n\n**Reference:** Kresta, S.M. & Wood, P.E. (1993). The flow field produced by a pitched blade turbine: Characterization of the turbulence and estimation of the dissipation rate. [*Chem. Eng. Sci.*](https://doi.org/10.1016/0009-2509%2893%2980346-R), 48(10), 1761–1774.\n"
+     "text": "\nThe energy dissipation rate near the impeller can be 1–2 orders of magnitude\nhigher than the mean. \n\n**Reference:** Grenville, Richard & Giacomelli, Jason & Brown, David & Padron, Gustavo. (2017). Mixing: Impeller performance in stirred tanks. [*Chemical Engineering*](https://www.researchgate.net/publication/319042061_Mixing_Impeller_performance_in_stirred_tanks). 124. 42.\n"
     },
     {
      "type": "header",
@@ -105,7 +105,19 @@
     },
     {
      "type": "md",
-     "text": "\nDerived from equating the volume-averaged viscous dissipation to the power input:\n\n$$\\mu \\, \\dot{\\gamma}^2 = \\frac{P}{V}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $\\dot{\\gamma}_{avg}$ | RMS average shear rate | 1/s |\n\n**Reference:** Camp, T.R. & Stein, P.C. (1943). Velocity gradients and internal work in fluid motion. *J. Boston Soc. Civil Eng.*, 30, 219–237.\n"
+     "text": "\nDerived from equating the volume-averaged viscous dissipation to the power input:"
+    },
+    {
+     "type": "latex",
+     "latex": "\\mu \\, \\dot{\\gamma}^2 = \\frac{P}{V}"
+    },
+    {
+     "type": "md",
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $γ̇_{avg}$ | RMS average shear rate | 1/s |\n"
+    },
+    {
+     "type": "md",
+     "text": "\n**Reference:** Camp, T.R. & Stein, P.C. (1943). Velocity gradients and internal work in fluid motion. *J. Boston Soc. Civil Eng.*, 30, 219–237.\n"
     },
     {
      "type": "header",
@@ -118,7 +130,7 @@
     },
     {
      "type": "md",
-     "text": "\nEvaluated using $\\varepsilon_{max}$ from the Maximum Local Energy Dissipation Rate equation above.  This gives the peak\nshear rate in the impeller discharge zone.\n\n**Reference:** standard turbulence dissipation relation ε = ν γ̇² (e.g. Tennekes, H. & Lumley, J.L. (1972). *A First Course in Turbulence*, MIT Press, Ch. 3); ε_max estimate from Kresta & Wood (1993), as above.\n"
+     "text": "\nEvaluated using $\\varepsilon_{max}$ from the Maximum Local Energy Dissipation Rate equation above.  This gives the peak\nshear rate in the impeller discharge zone.\n\n**Reference:** standard turbulence dissipation relation ε = ν γ̇² (e.g. Tennekes, H. & Lumley, J.L. (1972). *A First Course in Turbulence*, MIT Press, Ch. 3); $\\varepsilon_{max}$ estimate from Kresta & Wood (1993), as above.\n"
     },
     {
      "type": "header",
@@ -197,11 +209,11 @@
     },
     {
      "type": "latex",
-     "latex": "\\theta_{95} = \\frac{5.2 \\, V}{N_Q \\, N \\, D^3}"
+     "latex": "\\theta_{95} = \\frac{5.20 \\, T^{1.5} \\, H^{0.5}}{Po^{1/3} N D^2}"
     },
     {
      "type": "md",
-     "text": "\nCirculation-model blend time — ≈ 5.2 circulation times, t_c = V/(N_Q N D³) — for turbulent blending in a baffled stirred tank. The published Grenville correlation is N θ₉₅ = 5.2 Po^(−1/3) (T/D)²; this circulation form approximates it (typically conservatively, predicting longer times).\nThis represents the time to achieve 95 % uniformity on the bulk (macro) scale.\n\n**Reference:** Grenville, R.K. (1992). *Blending of Viscous Newtonian and Non-Newtonian Fluids.* Ph.D. thesis, Cranfield University. Also: Grenville, R.K. & Nienow, A.W. (2004). Blending of miscible liquids. In [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
+     "text": "This represents the time to achieve 95 % uniformity on the bulk (macro) scale.\n\n**Reference**: [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
     },
     {
      "type": "header",
@@ -368,7 +380,7 @@
     },
     {
      "type": "md",
-     "text": "\nLamont & Scott (1970) small-eddy surface-renewal model.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $D_{mol}$ | Molecular diffusivity of dissolved gas | m²/s |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/kg (= m²/s³) |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $D_T$ | Tank inside diameter | m |\n| $V$ | Liquid volume | m³ |\n| $a_{\\text{surface}}$ | Specific interfacial area (free surface) | 1/m |\n\n**Typical D_mol values for common gases in water at 25 °C:**\n\n| Gas | $D_{mol}$ (m²/s) |\n|-----|------------------|\n| O₂  | 2.1 × 10⁻⁹ |\n| CO₂ | 1.9 × 10⁻⁹ |\n| N₂  | 1.9 × 10⁻⁹ |\n| H₂  | 4.5 × 10⁻⁹ |\n\n**Reference:** Lamont, J.C. & Scott, D.S. (1970). An eddy cell model of mass transfer into the surface of a turbulent liquid. [*AIChE J.*](https://doi.org/10.1002/aic.690160403), 16(4), 513–519.\n"
+     "text": "\nLamont & Scott (1970) small-eddy surface-renewal model.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $D_{mol}$ | Molecular diffusivity of dissolved gas | m²/s |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/kg (= m²/s³) |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $D_T$ | Tank inside diameter | m |\n| $V$ | Liquid volume | m³ |\n| $a_{\\text{surface}}$ | Specific interfacial area (free surface) | 1/m |\n\n**Typical $D_{mol}$ values for common gases in water at 25 °C:**\n\n| Gas | $D_{mol}$ (m²/s) |\n|-----|------------------|\n| O₂  | 2.1 × 10⁻⁹ |\n| CO₂ | 1.9 × 10⁻⁹ |\n| N₂  | 1.9 × 10⁻⁹ |\n| H₂  | 4.5 × 10⁻⁹ |\n\n**Reference:** Lamont, J.C. & Scott, D.S. (1970). An eddy cell model of mass transfer into the surface of a turbulent liquid. [*AIChE J.*](https://doi.org/10.1002/aic.690160403), 16(4), 513–519.\n"
     },
     {
      "type": "header",
@@ -447,7 +459,7 @@
     },
     {
      "type": "md",
-     "text": "\nThe temperature the batch would reach if **all** reaction heat were retained\n(no cooling).  Unlike the molar enthalpy alone, $\\Delta T_{ad}$ accounts for\nreagent concentration and the thermal mass of the mixture, and is the basis of\nthe Stoessel criticality classification used to rank thermal-runaway risk.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction | J/mol (or kJ/mol × 1000) |\n| $C_0$ | Limiting-reagent concentration | mol/m³ (= mol/L × 1000) |\n| $\\rho \\, C_p$ | Volumetric heat capacity of the mixture | J/(m³·K) |\n| $\\Delta T_{ad}$ | Adiabatic temperature rise | K |\n\n**Indicative severity bands:** ΔT_ad < 20 K low · 20–50 K moderate ·\n50–200 K high · > 200 K very high (assess MTSR and secondary decomposition).\n\n**Reference:** Stoessel, F. (2020). [*Thermal Safety of Chemical Processes: Risk Assessment and Process Design*](https://doi.org/10.1002/9783527696918), 2nd ed. Wiley-VCH, Ch. 2–3.\n"
+     "text": "\nThe temperature the batch would reach if **all** reaction heat were retained\n(no cooling).  Unlike the molar enthalpy alone, $\\Delta T_{ad}$ accounts for\nreagent concentration and the thermal mass of the mixture, and is the basis of\nthe Stoessel criticality classification used to rank thermal-runaway risk.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction | J/mol (or kJ/mol × 1000) |\n| $C_0$ | Limiting-reagent concentration | mol/m³ (= mol/L × 1000) |\n| $\\rho \\, C_p$ | Volumetric heat capacity of the mixture | J/(m³·K) |\n| $\\Delta T_{ad}$ | Adiabatic temperature rise | K |\n\n**Indicative severity bands:** $\\Delta T_{ad}$ < 20 K low · 20–50 K moderate ·\n50–200 K high · > 200 K very high (assess MTSR and secondary decomposition).\n\n**Reference:** Stoessel, F. (2020). [*Thermal Safety of Chemical Processes: Risk Assessment and Process Design*](https://doi.org/10.1002/9783527696918), 2nd ed. Wiley-VCH, Ch. 2–3.\n"
     },
     {
      "type": "header",
@@ -923,7 +935,7 @@
     },
     {
      "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Q_{\\text{jacket}}$ | Heat transfer through jacket (= U A (T_jacket - T); positive when the jacket heats the batch) | W |\n| $P_{\\text{agitator}}$ | Impeller power dissipation (always heats) | W |\n| $Q_{\\text{rxn}}$ | Reaction heat (positive = exothermic, heats) | W |\n| $\\rho \\, V \\, C_p$ | Thermal mass of batch | J/K |\n"
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Q_{\\text{jacket}}$ | Heat transfer through jacket (= $U A (T_{jacket} - T)$; positive when the jacket heats the batch) | W |\n| $P_{\\text{agitator}}$ | Impeller power dissipation (always heats) | W |\n| $Q_{\\text{rxn}}$ | Reaction heat (positive = exothermic, heats) | W |\n| $\\rho \\, V \\, C_p$ | Thermal mass of batch | J/K |\n"
     },
     {
      "type": "header",

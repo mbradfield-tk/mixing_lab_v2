@@ -28,9 +28,16 @@ def _esc(s: str) -> str:
     """Escape characters that break Taipy's markdown -> JSX conversion.
 
     Literal ``<`` / ``>`` (e.g. "Re < 10 000") and ``{`` / ``}`` are otherwise
-    interpreted as JSX tags/expressions and raise a SyntaxError."""
-    return (s.replace("<", "&lt;").replace(">", "&gt;")
-             .replace("{", "&#123;").replace("}", "&#125;"))
+    interpreted as JSX tags/expressions and raise a SyntaxError.
+
+    ``<sub>``/``<sup>`` tags emitted by the equation builder are restored so
+    subscripts/superscripts render properly."""
+    s = (s.replace("<", "&lt;").replace(">", "&gt;")
+          .replace("{", "&#123;").replace("}", "&#125;"))
+    for tag in ("sub", "sup"):
+        s = (s.replace(f"&lt;{tag}&gt;", f"<{tag}>")
+              .replace(f"&lt;/{tag}&gt;", f"</{tag}>"))
+    return s
 
 
 def _build_markdown() -> str:

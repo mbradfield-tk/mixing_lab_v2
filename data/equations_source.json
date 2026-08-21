@@ -113,7 +113,7 @@
     },
     {
      "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $γ̇_{avg}$ | RMS average shear rate | 1/s |\n"
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $\\dot{\\gamma}_{avg}$ | RMS average shear rate | 1/s |\n"
     },
     {
      "type": "md",
@@ -169,7 +169,7 @@
     },
     {
      "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $N$ | Impeller speed | rev/s |\n| $\\Lambda$ | Torque | N·m |\n\n**Torque per unit volume** $\\Lambda/V$ provides a scale-independent measure\nof mechanical stress on the fluid.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $N$ | Impeller speed | rev/s |\n| $\\Lambda$ | Torque | N·m |\n\n**Torque per unit volume** $\\frac{\\Lambda}{V}$ provides a scale-independent measure\nof mechanical stress on the fluid.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
     },
     {
      "type": "header",
@@ -341,7 +341,15 @@
     },
     {
      "type": "md",
-     "text": "\nBreak-up of the feed plume by inertial-convective disintegration of the large\neddies. $\\Lambda_C$ is the integral scale of the velocity fluctuations, set by\nthe feed-pipe / plume size. **Mixing Lab implements this scale** using the\nfeed-pipe diameter $d_{\\text{feed}}$ as the length scale with $A = 1.2$:\n\n$$t_{\\text{meso}} = 1.2 \\left( \\frac{d_{\\text{feed}}^2}{\\varepsilon} \\right)^{1/3}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Lambda_C$ | Integral scale of velocity fluctuations | m |\n| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |\n| $\\varepsilon$ | Local energy dissipation at the feed point | W/kg (= m²/s³) |\n"
+     "text": "\nBreak-up of the feed plume by inertial-convective disintegration of the large\neddies. $\\Lambda_C$ is the integral scale of the velocity fluctuations, set by\nthe feed-pipe / plume size. **Mixing Lab implements this scale** using the\nfeed-pipe diameter $d_{\\text{feed}}$ as the length scale with $A = 1.2$:"
+    },
+    {
+     "type": "latex",
+     "latex": "t_{\\text{meso}} = 1.2 \\left( \\frac{d_{\\text{feed}}^2}{\\varepsilon} \\right)^{1/3}"
+    },
+    {
+     "type": "md",
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Lambda_C$ | Integral scale of velocity fluctuations | m |\n| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |\n| $\\varepsilon$ | Local energy dissipation at the feed point | W/kg (= m²/s³) |\n"
     }
    ]
   },
@@ -608,7 +616,19 @@
     },
     {
      "type": "md",
-     "text": "\n**Stokes regime** ($Re_p < 0.1$): valid for small or slow-settling particles.\n$\\phi$ is the sphericity (shape factor, 0–1).\n\nFor intermediate Reynolds numbers ($0.1 < Re_p < 1000$) the\n**Schiller-Naumann** drag correction is applied iteratively:\n\n$$C_D = \\frac{24}{Re_p}\\left(1 + 0.15\\,Re_p^{0.687}\\right)$$\n\n$$v_t = \\sqrt{\\frac{4\\,g\\,d_p\\,\\Delta\\rho}{3\\,C_D\\,\\rho_L}} \\cdot \\phi$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $d_p$ | Particle diameter (typically D50) | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $\\phi$ | Sphericity / shape factor | – |\n\n**Reference:** Clift, R., Grace, J.R. & Weber, M.E. (1978). [*Bubbles, Drops, and Particles*](https://openlibrary.org/isbn/9780121769505), Academic Press; Schiller, L. & Naumann, A. (1935). *Z. Ver. Dtsch. Ing.*, 77, 318–320.\n"
+     "text": "\n**Stokes regime** ($Re_p < 0.1$): valid for small or slow-settling particles.\n$\\phi$ is the sphericity (shape factor, 0–1).\n\nFor intermediate Reynolds numbers ($0.1 < Re_p < 1000$) the\n**Schiller-Naumann** drag correction is applied iteratively:"
+    },
+    {
+     "type": "latex",
+     "latex": "C_D = \\frac{24}{Re_p}\\left(1 + 0.15\\,Re_p^{0.687}\\right)"
+    },
+    {
+     "type": "latex",
+     "latex": "v_t = \\sqrt{\\frac{4\\,g\\,d_p\\,\\Delta\\rho}{3\\,C_D\\,\\rho_L}} \\cdot \\phi"
+    },
+    {
+     "type": "md",
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $d_p$ | Particle diameter (typically D50) | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $\\phi$ | Sphericity / shape factor | – |\n\n**Reference:** Clift, R., Grace, J.R. & Weber, M.E. (1978). [*Bubbles, Drops, and Particles*](https://openlibrary.org/isbn/9780121769505), Academic Press; Schiller, L. & Naumann, A. (1935). *Z. Ver. Dtsch. Ing.*, 77, 318–320.\n"
     },
     {
      "type": "header",
@@ -835,7 +855,15 @@
     },
     {
      "type": "md",
-     "text": "\n| Correlation | $C$ | $a$ | $b$ | $c$ | Application | Reference |\n|-------------|-----|-----|-----|-----|-------------|-----------|\n| DIN 28131 (standard) | 0.36 | 2/3 | 1/3 | 0.14 | General-purpose, baffled vessels with turbine impellers | DIN 28131:1979 |\n| Chilton–Drew–Jebens | 0.36 | 2/3 | 1/3 | 0.14 | Classic correlation for jacketed stirred vessels | Chilton, Drew, Jebens (1944) *Ind. Eng. Chem.* 36(6):510 |\n| Lehrer (anchor/helical) | 0.54 | 2/3 | 1/3 | 0.14 | Anchor and helical ribbon impellers | Lehrer (1970) *Chem. Eng. Sci.* 25:1397 |\n| Stein–Schmidt (high Re) | 0.50 | 2/3 | 1/3 | 0.14 | High-Re turbulent regimes (Re > 40 000) | Stein & Schmidt (1993) *Chem. Eng. Process.* 32:305 |\n| Brooks–Su (Retreat Blade) | 0.33 | 2/3 | 1/3 | 0.14 | Retreat-blade impellers in glass-lined vessels | Brooks & Su (1959) |\n| Nagata (paddle) | 0.36 | 2/3 | 1/3 | 0.18 | Paddle impellers with stronger wall viscosity correction | Nagata (1975) *Mixing: Principles and Applications* |\n\nWhere:\n\n$$\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $C, a, b, c$ | Correlation constants | — |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $\\mu$ | Bulk viscosity | Pa·s |\n| $\\mu_w$ | Viscosity at wall temperature | Pa·s |\n"
+     "text": "\n| Correlation | $C$ | $a$ | $b$ | $c$ | Application | Reference |\n|-------------|-----|-----|-----|-----|-------------|-----------|\n| DIN 28131 (standard) | 0.36 | 2/3 | 1/3 | 0.14 | General-purpose, baffled vessels with turbine impellers | DIN 28131:1979 |\n| Chilton–Drew–Jebens | 0.36 | 2/3 | 1/3 | 0.14 | Classic correlation for jacketed stirred vessels | Chilton, Drew, Jebens (1944) *Ind. Eng. Chem.* 36(6):510 |\n| Lehrer (anchor/helical) | 0.54 | 2/3 | 1/3 | 0.14 | Anchor and helical ribbon impellers | Lehrer (1970) *Chem. Eng. Sci.* 25:1397 |\n| Stein–Schmidt (high Re) | 0.50 | 2/3 | 1/3 | 0.14 | High-Re turbulent regimes (Re > 40 000) | Stein & Schmidt (1993) *Chem. Eng. Process.* 32:305 |\n| Brooks–Su (Retreat Blade) | 0.33 | 2/3 | 1/3 | 0.14 | Retreat-blade impellers in glass-lined vessels | Brooks & Su (1959) |\n| Nagata (paddle) | 0.36 | 2/3 | 1/3 | 0.18 | Paddle impellers with stronger wall viscosity correction | Nagata (1975) *Mixing: Principles and Applications* |\n\nWhere:"
+    },
+    {
+     "type": "latex",
+     "latex": "\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}"
+    },
+    {
+     "type": "md",
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $C, a, b, c$ | Correlation constants | — |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $\\mu$ | Bulk viscosity | Pa·s |\n| $\\mu_w$ | Viscosity at wall temperature | Pa·s |\n"
     },
     {
      "type": "header",

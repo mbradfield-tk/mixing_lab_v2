@@ -104,15 +104,22 @@ def on_particle_add_row(state):
     if db.name_taken(state.particle_df, "particle_name", name):
         notify(state, "E", f"A particle named '{name}' already exists.")
         return
-    d10, d50, d90 = float(state.part_new_d10), float(state.part_new_d50), float(state.part_new_d90)
+    try:
+        d10, d50, d90 = (float(state.part_new_d10), float(state.part_new_d50),
+                         float(state.part_new_d90))
+        rho_p = float(state.part_new_rho)
+        factor = float(state.part_new_factor)
+    except (TypeError, ValueError):
+        notify(state, "E", "Density, sizes and shape factor must be numeric.")
+        return
     if not (d10 <= d50 <= d90):
         notify(state, "E", "Particle sizes must satisfy d10 ≤ d50 ≤ d90.")
         return
     new = pd.DataFrame([{
-        "particle_name": name, "rho_p_kg_m3": float(state.part_new_rho),
+        "particle_name": name, "rho_p_kg_m3": rho_p,
         "d10_um": d10, "d50_um": d50, "d90_um": d90,
         "shape_description": state.part_new_shape,
-        "shape_factor": float(state.part_new_factor), "notes": state.part_new_notes,
+        "shape_factor": factor, "notes": state.part_new_notes,
     }])
     state.particle_df = db.reset(pd.concat([state.particle_df, new], ignore_index=True))
     _persist(state)

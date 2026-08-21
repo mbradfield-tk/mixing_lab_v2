@@ -129,22 +129,28 @@ def on_reaction_add_row(state):
     if db.name_taken(state.reaction_df, "reaction_name", name):
         notify(state, "E", f"A reaction named '{name}' already exists.")
         return
-    t_rxn = float(state.rxn_new_trxn)
-    k_val = float(state.rxn_new_k)
+    try:
+        t_rxn = float(state.rxn_new_trxn)
+        k_val = float(state.rxn_new_k)
+        c0_val = float(state.rxn_new_C0)
+        dh_val = float(state.rxn_new_dH)
+    except (TypeError, ValueError):
+        notify(state, "E", "k, C0, t_rxn and ΔH must be numeric.")
+        return
     order = state.rxn_new_order
     if t_rxn == 0 and k_val > 0:
         if order in ("1", "pseudo-1"):
             t_rxn = 1.0 / k_val
-        elif order in ("2", "pseudo-2") and state.rxn_new_C0 > 0:
-            t_rxn = 1.0 / (k_val * float(state.rxn_new_C0))
+        elif order in ("2", "pseudo-2") and c0_val > 0:
+            t_rxn = 1.0 / (k_val * c0_val)
     if k_val <= 0 and t_rxn <= 0:
         notify(state, "E", "Enter a rate constant k (> 0) or a reaction time (> 0).")
         return
     new = pd.DataFrame([{
         "reaction_name": name, "type": state.rxn_new_type, "order": order,
-        "k_value": k_val, "k_units": state.rxn_new_k_units, "C0_mol_L": float(state.rxn_new_C0),
+        "k_value": k_val, "k_units": state.rxn_new_k_units, "C0_mol_L": c0_val,
         "t_rxn_s": t_rxn, "T_C": state.rxn_new_T, "solvent": state.rxn_new_solvent,
-        "delta_H_kJ_mol": float(state.rxn_new_dH), "notes": state.rxn_new_notes,
+        "delta_H_kJ_mol": dh_val, "notes": state.rxn_new_notes,
         "reaction_scheme": state.rxn_new_scheme,
     }])
     state.reaction_df = db.reset(pd.concat([state.reaction_df, new], ignore_index=True))

@@ -37,6 +37,7 @@ from taipy.gui import Markdown, notify
 from utils.menu_icons import inject_icons
 from utils.solvent_properties import get_properties, is_known_solvent
 from utils.report_builder import build_protocol_pdf, report_filename
+from pages import _db_common as db
 from vessel_media import build_image_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -59,7 +60,8 @@ def _sf(val, default=0.0) -> float:
 
 
 def _reaction_row(name: str) -> pd.Series:
-    row = reactions_df[reactions_df["reaction_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
+    row = df[df["reaction_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 

@@ -95,15 +95,14 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
 
 
 def _reactor_row(name: str) -> pd.Series:
-    row = reactors_df[reactors_df["reactor_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
+    row = df[df["reactor_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _reactor_id(name: str) -> str:
     row = _reactor_row(name)
-    if row.empty or "reactor_id" not in reactors_df.columns:
-        return ""
-    return str(row.get("reactor_id", "") or "")
+    return "" if row.empty else str(row.get("reactor_id", "") or "")
 
 
 def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> tuple[float, float]:
@@ -111,7 +110,8 @@ def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> tuple[float, floa
     if is_known_solvent(name):
         p = get_properties(resolve_solvent_name(name) or name, T_C, P_atm)
         return p["rho_kg_m3"], p["mu_Pa_s"]
-    row = fluids_df[fluids_df["fluid_name"].astype(str) == str(name)]
+    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
+    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
     if not row.empty:
         r = row.iloc[0]
         return _sf(r.get("rho_kg_m3"), 1000.0), _sf(r.get("mu_Pa_s"), 0.001)
@@ -298,7 +298,8 @@ fluid_options = sorted(list_solvents() + fluids_df["fluid_name"].dropna().astype
 # ---------------------------------------------------------------------------
 # State — system definition
 # ---------------------------------------------------------------------------
-bp_reactor = "TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options else reactor_options[0]
+bp_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
+              else (reactor_options[0] if reactor_options else ""))
 bp_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
 bp_T = 25.0
 bp_P = 1.0

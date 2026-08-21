@@ -32,6 +32,7 @@ from heat_transfer_core import (
 )
 from utils.menu_icons import inject_icons
 from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
+from pages import _db_common as db
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -54,12 +55,14 @@ lining_options = ["None"] + list(LINING_CONDUCTIVITY.keys())
 
 
 def _reactor_row(reactor_name: str) -> pd.Series:
-    row = reactors_df.loc[reactors_df["reactor_name"] == reactor_name]
+    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
+    row = df.loc[df["reactor_name"] == reactor_name]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _fluid_row(fluid_name: str) -> pd.Series:
-    row = fluids_df.loc[fluids_df["fluid_name"] == fluid_name]
+    df = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
+    row = df.loc[df["fluid_name"] == fluid_name]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
@@ -82,7 +85,8 @@ def _fluid_properties(fluid_name: str, T_C: float) -> dict:
 
 
 def _reaction_row(reaction_name: str) -> pd.Series:
-    row = reactions_df.loc[reactions_df["reaction_name"] == reaction_name]
+    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
+    row = df.loc[df["reaction_name"] == reaction_name]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
@@ -96,7 +100,7 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
 
 
 selected_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
-                    else reactor_options[0])
+                    else (reactor_options[0] if reactor_options else ""))
 selected_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
 selected_htm = htm_options[0]
 nusselt_correlation = nusselt_options[0]

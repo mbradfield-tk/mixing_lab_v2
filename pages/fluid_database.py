@@ -169,14 +169,17 @@ def _fluid_props(fname: str, df: pd.DataFrame, T: float = 25.0) -> dict | None:
             "Cp_J_per_kgK", "k_W_per_mK")}
     if not df.empty and fname in df["fluid_name"].astype(str).values:
         row = df[df["fluid_name"].astype(str) == fname].iloc[0]
-        return {
-            "rho_kg_m3": float(row["rho_kg_m3"]),
-            "mu_Pa_s": float(row["mu_Pa_s"]),
-            "D_mol_m2_s": float(row["D_mol_m2_s"]),
-            "surface_tension_N_m": float(row["surface_tension_N_m"]),
-            "Cp_J_per_kgK": float(row.get("Cp_J_per_kgK", 4182.0) or 4182.0),
-            "k_W_per_mK": float(row.get("k_W_per_mK", 0.607) or 0.607),
-        }
+        try:
+            return {
+                "rho_kg_m3": float(row["rho_kg_m3"]),
+                "mu_Pa_s": float(row["mu_Pa_s"]),
+                "D_mol_m2_s": float(row["D_mol_m2_s"]),
+                "surface_tension_N_m": float(row["surface_tension_N_m"]),
+                "Cp_J_per_kgK": float(row.get("Cp_J_per_kgK", 4182.0) or 4182.0),
+                "k_W_per_mK": float(row.get("k_W_per_mK", 0.607) or 0.607),
+            }
+        except (TypeError, ValueError):  # non-numeric cell -> treat as missing
+            return None
     return None
 
 
@@ -274,14 +277,19 @@ def on_fluid_add_row(state):
     if db.name_taken(state.fluid_df, "fluid_name", name):
         notify(state, "E", f"A custom fluid named '{name}' already exists.")
         return
-    new = pd.DataFrame([{
-        "fluid_name": name, "rho_kg_m3": float(state.flu_new_rho),
-        "mu_Pa_s": float(state.flu_new_mu), "D_mol_m2_s": float(state.flu_new_D),
-        "surface_tension_N_m": float(state.flu_new_sigma), "notes": state.flu_new_notes,
-        "Cp_J_per_kgK": float(state.flu_new_Cp), "k_W_per_mK": float(state.flu_new_k),
-        "hsp_d": float(state.flu_new_hd), "hsp_p": float(state.flu_new_hp),
-        "hsp_h": float(state.flu_new_hh),
-    }])
+    try:
+        props = {
+            "rho_kg_m3": float(state.flu_new_rho), "mu_Pa_s": float(state.flu_new_mu),
+            "D_mol_m2_s": float(state.flu_new_D),
+            "surface_tension_N_m": float(state.flu_new_sigma),
+            "Cp_J_per_kgK": float(state.flu_new_Cp), "k_W_per_mK": float(state.flu_new_k),
+            "hsp_d": float(state.flu_new_hd), "hsp_p": float(state.flu_new_hp),
+            "hsp_h": float(state.flu_new_hh),
+        }
+    except (TypeError, ValueError):
+        notify(state, "E", "All property fields must be numeric.")
+        return
+    new = pd.DataFrame([{"fluid_name": name, "notes": state.flu_new_notes, **props}])
     state.fluid_df = db.reset(pd.concat([state.fluid_df, new], ignore_index=True))
     _persist(state)
     state.flu_new_name = ""
@@ -332,7 +340,11 @@ def on_blend_compute(state):
         notify(state, "W", "Select components and enter amounts first.")
         return
     comps = inp["Component"].astype(str).tolist()
-    amounts = {r["Component"]: float(r["Amount"]) for _, r in inp.iterrows()}
+    try:
+        amounts = {str(r["Component"]): float(r["Amount"]) for _, r in inp.iterrows()}
+    except (TypeError, ValueError):
+        notify(state, "E", "Component amounts must be numeric.")
+        return
     total = sum(amounts.values())
     if total <= 0:
         notify(state, "E", "Total amount must be > 0.")
@@ -349,6 +361,12 @@ def on_blend_compute(state):
             comp_props.append({"name": comp, "input": amounts[comp] / total, **p})
     if missing:
         notify(state, "E", f"No properties for: {', '.join(missing)}")
+        return
+    bad = [cp["name"] for cp in comp_props
+           if not (cp["rho_kg_m3"] > 0 and cp["mu_Pa_s"] > 0 and cp["D_mol_m2_s"] > 0)]
+    if bad:
+        notify(state, "E",
+               f"Invalid properties (ρ, μ and D must be > 0) for: {', '.join(bad)}")
         return
 
     if is_vol:

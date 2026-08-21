@@ -61,6 +61,7 @@ from utils.solvent_properties import (
     resolve_solvent_name,
 )
 from utils.report_builder import build_reactor_comparison_pdf, report_filename
+from pages import _db_common as db
 from vessel_media import build_multi_vessel_viewer_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -118,25 +119,26 @@ def _sf(val, default=0.0) -> float:
 
 
 def _reactor_row(name: str) -> pd.Series:
-    row = reactors_df[reactors_df["reactor_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
+    row = df[df["reactor_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _reaction_row(name: str) -> pd.Series:
-    row = reactions_df[reactions_df["reaction_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
+    row = df[df["reaction_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _particle_row(name: str) -> pd.Series:
-    row = particles_df[particles_df["particle_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "particles.csv", ["particle_name"])
+    row = df[df["particle_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _reactor_id(name: str) -> str:
     r = _reactor_row(name)
-    if r.empty or "reactor_id" not in reactors_df.columns:
-        return ""
-    return str(r.get("reactor_id", "") or "")
+    return "" if r.empty else str(r.get("reactor_id", "") or "")
 
 
 def _viewers_html(names) -> str:
@@ -179,7 +181,8 @@ def _fluid_props(name: str, T_C: float, P_atm: float) -> tuple[float, float, flo
             note = (f"⚠️ {T_C:.1f} °C is outside the liquid range "
                     f"({p.get('mp_C', 0):.0f} – {p.get('bp_at_P_C', 0):.0f} °C) for {name}.")
         return (p["rho_kg_m3"], p["mu_Pa_s"], p["D_mol_m2_s"], p.get("in_range", True), note)
-    row = fluids_df[fluids_df["fluid_name"].astype(str) == str(name)]
+    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
+    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
     if not row.empty:
         r = row.iloc[0]
         return (_sf(r.get("rho_kg_m3"), 1000.0), _sf(r.get("mu_Pa_s"), 0.001),
@@ -996,12 +999,7 @@ def on_vc_save_results(state):
         return
     new_df = pd.DataFrame(rows)
     try:
-        if RECORDED_CSV.exists():
-            existing = pd.read_csv(RECORDED_CSV)
-            out = pd.concat([existing, new_df], ignore_index=True)
-        else:
-            out = new_df
-        out.to_csv(RECORDED_CSV, index=False)
+        db.append_csv(new_df, RECORDED_CSV)
         notify(state, "S", f"Saved {len(rows)} vessel result(s) to Recorded Results.")
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Save failed: {exc}")

@@ -40,6 +40,7 @@ from utils.solvent_properties import (
 )
 from utils.rom_registry import available_modes, compute_reactor_hydro_with_mode
 from utils.report_builder import build_vessel_assessment_pdf, report_filename
+from pages import _db_common as db
 from vessel_media import build_vessel_viewer_html, media_caption
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -90,26 +91,27 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
 
 
 def _reactor_row(name: str) -> pd.Series:
-    row = reactors_df[reactors_df["reactor_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
+    row = df[df["reactor_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _reaction_row(name: str) -> pd.Series:
-    row = reactions_df[reactions_df["reaction_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
+    row = df[df["reaction_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _particle_row(name: str) -> pd.Series:
-    row = particles_df[particles_df["particle_name"].astype(str) == str(name)]
+    df = db.fresh_csv(DATA_DIR / "particles.csv", ["particle_name"])
+    row = df[df["particle_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
 def _reactor_id(name: str) -> str:
     """Return the ``reactor_id`` for a reactor name (for image/3D lookup)."""
     row = _reactor_row(name)
-    if row.empty or "reactor_id" not in reactors_df.columns:
-        return ""
-    return str(row.get("reactor_id", "") or "")
+    return "" if row.empty else str(row.get("reactor_id", "") or "")
 
 
 def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> dict:
@@ -119,7 +121,8 @@ def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> dict:
         p = get_properties(canonical, T_C, P_atm)
         return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
                 "D_mol": p["D_mol_m2_s"], "sigma": p["surface_tension_N_m"]}
-    row = fluids_df[fluids_df["fluid_name"].astype(str) == str(name)]
+    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
+    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
     if not row.empty:
         r = row.iloc[0]
         return {"rho": _sf(r.get("rho_kg_m3"), 1000.0),
@@ -208,7 +211,8 @@ particle_options = sorted(particles_df["particle_name"].dropna().astype(str).uni
 # ---------------------------------------------------------------------------
 # State — Section 1: Vessel & System
 # ---------------------------------------------------------------------------
-va_reactor = "TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options else reactor_options[0]
+va_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
+              else (reactor_options[0] if reactor_options else ""))
 va_T = 25.0
 va_P = 1.0
 va_T_cool = 15.0
@@ -543,11 +547,11 @@ def on_va_compute(state):
         d_feed = _sf(state.va_feed_diam, 0.0) / 1000.0  # mm -> m
         loc = str(state.va_feed_location)
         if loc.startswith("Near impeller"):
-            eps_feed = hydro["ε_max (W/kg)"]
+            eps_feed = hydro.get("ε_max (W/kg)", hydro.get("P/V (W/kg)", 0.0))
         elif loc.startswith("Surface"):
-            eps_feed = 0.2 * hydro["P/V (W/kg)"]
+            eps_feed = 0.2 * hydro.get("P/V (W/kg)", 0.0)
         else:  # Bulk / mid-liquid
-            eps_feed = hydro["P/V (W/kg)"]
+            eps_feed = hydro.get("P/V (W/kg)", 0.0)
         t_meso = mesomixing_time(eps_feed, d_feed)
         da_meso = (t_meso / t_rxn) if (t_rxn > 0 and np.isfinite(t_meso)) else 0.0
 

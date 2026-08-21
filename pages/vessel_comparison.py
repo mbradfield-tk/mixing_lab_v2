@@ -224,8 +224,11 @@ coal_options = ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"]
 # ---------------------------------------------------------------------------
 # State — Section 1: reactors & conditions
 # ---------------------------------------------------------------------------
-vc_reactors = reactor_options[: min(3, len(reactor_options))]
-vc_fluid = fluid_options[0] if fluid_options else ""
+_DEFAULT_REACTORS = ["TMA EasyMax-102", "TMA 15 L Buchi", "Cambrex R-101", "Cambrex R-B01"]
+vc_reactors = [r for r in _DEFAULT_REACTORS if r in reactor_options] \
+    or reactor_options[: min(3, len(reactor_options))]
+vc_fluid = ("Water" if "Water" in fluid_options
+            else (fluid_options[0] if fluid_options else ""))
 vc_T = 25.0
 vc_P = 1.0
 vc_reaction = reaction_options[0] if reaction_options else ""

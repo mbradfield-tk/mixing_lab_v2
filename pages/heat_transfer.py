@@ -86,8 +86,18 @@ def _reaction_row(reaction_name: str) -> pd.Series:
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
 
 
-selected_reactor = reactor_options[0]
-selected_fluid = fluid_options[0]
+def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
+    """Midpoint of a reactor's min/max range, falling back to either bound."""
+    lo = safe_float(row.get(min_key), 0.0)
+    hi = safe_float(row.get(max_key), 0.0)
+    if lo > 0 and hi > 0:
+        return (lo + hi) / 2.0
+    return hi or lo or fallback
+
+
+selected_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
+                    else reactor_options[0])
+selected_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
 selected_htm = htm_options[0]
 nusselt_correlation = nusselt_options[0]
 
@@ -95,9 +105,9 @@ _r = _reactor_row(selected_reactor)
 
 d_tank = safe_float(_r.get("D_tank_m"), 0.1)
 d_imp = safe_float(_r.get("D_imp_m"), 0.05)
-n_rpm = safe_float(_r.get("N_rpm_max"), 300.0)
+n_rpm = _avg_range(_r, "N_rpm_min", "N_rpm_max", 300.0)
 np_in = safe_float(_r.get("Np"), 1.27)
-v_l = safe_float(_r.get("V_L"), 1.0)
+v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(v_l, d_tank, h_max)
 a_ht = estimate_jacket_area(d_tank, h_liquid, str(_r.get("bottom_dish", "")))
@@ -203,9 +213,9 @@ def on_reactor_change(state):
     row = _reactor_row(state.selected_reactor)
     state.d_tank = safe_float(row.get("D_tank_m"), state.d_tank)
     state.d_imp = safe_float(row.get("D_imp_m"), state.d_imp)
-    state.n_rpm = safe_float(row.get("N_rpm_max"), state.n_rpm)
+    state.n_rpm = _avg_range(row, "N_rpm_min", "N_rpm_max", state.n_rpm)
     state.np_in = safe_float(row.get("Np"), state.np_in)
-    state.v_l = safe_float(row.get("V_L"), state.v_l)
+    state.v_l = _avg_range(row, "V_L_min", "V_L_max", safe_float(row.get("V_L"), state.v_l))
     _refresh_area(state)
     shell = find_best_material_key(str(row.get("shell_material", "stainless steel")), wall_options)
     state.wall_material = shell

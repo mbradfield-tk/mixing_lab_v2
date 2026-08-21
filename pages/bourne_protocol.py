@@ -298,8 +298,8 @@ fluid_options = sorted(list_solvents() + fluids_df["fluid_name"].dropna().astype
 # ---------------------------------------------------------------------------
 # State — system definition
 # ---------------------------------------------------------------------------
-bp_reactor = "RX-027" if "RX-027" in reactor_options else reactor_options[0]
-bp_fluid = fluid_options[0]
+bp_reactor = "TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options else reactor_options[0]
+bp_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
 bp_T = 25.0
 bp_P = 1.0
 

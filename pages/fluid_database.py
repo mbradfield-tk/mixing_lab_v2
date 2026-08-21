@@ -96,7 +96,7 @@ fluid_upload = ""
 # ---------------------------------------------------------------------------
 # Solvent Properties (T) view
 # ---------------------------------------------------------------------------
-solvent_selected = solvent_options[0]
+solvent_selected = "Water" if "Water" in solvent_options else solvent_options[0]
 solvent_P = 1.0
 solvent_T = 25.0
 solvent_props_df = pd.DataFrame(columns=["Property", "Value", "Units"])

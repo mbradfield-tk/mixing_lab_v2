@@ -266,7 +266,8 @@ vessel_export = db.csv_bytes(vessel_raw_df)
 vessel_msg = f"{len(vessel_raw_df)} vessels in database."
 
 vessel_options = sorted(vessel_raw_df["reactor_name"].dropna().astype(str).unique().tolist())
-selected_vessel = vessel_options[0] if vessel_options else ""
+selected_vessel = ("TMA EasyMax-102" if "TMA EasyMax-102" in vessel_options
+                   else (vessel_options[0] if vessel_options else ""))
 
 # Admin gate
 admin_authenticated = False
@@ -334,10 +335,21 @@ vessel_detail_df = _detail_view(vessel_raw_df, selected_vessel, vessel_prop_sele
 vessel_viewer_html = build_vessel_viewer_html(_reactor_id_for(vessel_raw_df, selected_vessel))
 vessel_media_caption = media_caption(_reactor_id_for(vessel_raw_df, selected_vessel))
 
+def _default_fill_L(row: pd.Series, total_L: float) -> float:
+    """Midpoint of the vessel's working-volume range, else 70% of brim-full."""
+    try:
+        lo, hi = float(row.get("V_L_min")), float(row.get("V_L_max"))
+        if lo > 0 and hi > 0:  # NaN comparisons are False, so NaNs fall through
+            return round((lo + hi) / 2.0, 2)
+    except (TypeError, ValueError):
+        pass
+    return round(total_L * 0.7, 2)
+
+
 # 2D cross-section schematic + liquid fill level
 _row0 = _row_for(vessel_raw_df, selected_vessel)
 vessel_total_vol_L = brim_volume(_row0)
-vessel_fill_L = round(vessel_total_vol_L * 0.7, 2)
+vessel_fill_L = _default_fill_L(_row0, vessel_total_vol_L)
 _schem0 = build_vessel_schematic(_row0, vessel_fill_L, title=selected_vessel)
 vessel_schematic_html = _schem0["html"]
 
@@ -475,8 +487,8 @@ def on_vessel_select(state):
     rid = _reactor_id_for(state.vessel_raw_df, name)
     state.vessel_viewer_html = build_vessel_viewer_html(rid)
     state.vessel_media_caption = media_caption(rid)
-    total = brim_volume(_row_for(state.vessel_raw_df, name))
-    state.vessel_fill_L = round(total * 0.7, 2)
+    row = _row_for(state.vessel_raw_df, name)
+    state.vessel_fill_L = _default_fill_L(row, brim_volume(row))
     _refresh_schematic(state)
 
 

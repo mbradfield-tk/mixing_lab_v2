@@ -208,7 +208,7 @@ particle_options = sorted(particles_df["particle_name"].dropna().astype(str).uni
 # ---------------------------------------------------------------------------
 # State — Section 1: Vessel & System
 # ---------------------------------------------------------------------------
-va_reactor = "RX-027" if "RX-027" in reactor_options else reactor_options[0]
+va_reactor = "TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options else reactor_options[0]
 va_T = 25.0
 va_P = 1.0
 va_T_cool = 15.0
@@ -238,7 +238,7 @@ va_feed_location_options = ["Near impeller", "Bulk (mid-liquid)", "Surface"]
 # State — Section 2: Phases
 # ---------------------------------------------------------------------------
 # Liquid / solvent (always present)
-va_fluid = fluid_options[0]
+va_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
 _fp0 = _fluid_props(va_fluid, va_T, va_P)
 va_rho = _fp0["rho"]
 va_mu = _fp0["mu"]

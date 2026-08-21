@@ -496,6 +496,24 @@ def on_vessel_fill_change(state):
     _refresh_schematic(state)
 
 
+def _read_import_csv(path: str) -> pd.DataFrame:
+    """Read an uploaded CSV, falling back through common Excel export encodings.
+
+    Excel for Mac's plain "CSV" format is Mac-Roman (e.g. ``°`` = 0xA1);
+    Windows exports are typically cp1252. Both are tried after UTF-8.
+    """
+    try:
+        return pd.read_csv(path, encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    for enc in ("mac_roman", "cp1252"):
+        try:
+            return pd.read_csv(path, encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(path, encoding="latin-1")
+
+
 def on_vessel_import(state):
     if not _require_admin(state):
         return
@@ -503,7 +521,7 @@ def on_vessel_import(state):
     if not path:
         return
     try:
-        new_df = pd.read_csv(path, encoding="utf-8-sig")
+        new_df = _read_import_csv(path)
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return

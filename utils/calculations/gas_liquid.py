@@ -56,3 +56,41 @@ def gas_flooding_speed(
         return 0.0
     ratio_cubed = (QG * g) / (30 * D**4 * (D / T)**3.5)
     return ratio_cubed ** (1.0 / 3.0)
+
+
+def gas_flooding_flow_rate(
+    N: float | np.ndarray, D: float, T: float, g: float = 9.81
+) -> float | np.ndarray:
+    """Gas flow rate at the flooding limit (m^3/s).
+
+    From Fl_G = 30 Fr (D/T)^3.5 with:
+        Fl_G = Q_G / (N D^3)
+        Fr = N^2 D / g
+    """
+    if D <= 0 or T <= 0 or g <= 0:
+        return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
+    return 30.0 * np.asarray(N) ** 3 * D**4 * (D / T) ** 3.5 / g
+
+
+def complete_dispersion_speed(
+    QG: float, D: float, T: float, g: float = 9.81
+) -> float:
+    """Minimum impeller speed for complete gas dispersion (rev/s).
+
+    Uses:
+        (Fl_G)_CD = 0.2 (D/T)^0.5 Fr_CD^0.5
+    with Fl_G = Q_G / (N D^3) and Fr = N^2 D / g.
+    """
+    if QG <= 0 or D <= 0 or T <= 0 or g <= 0:
+        return 0.0
+    denominator = 0.2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)
+    return np.sqrt(QG / denominator)
+
+
+def complete_dispersion_flow_rate(
+    N: float | np.ndarray, D: float, T: float, g: float = 9.81
+) -> float | np.ndarray:
+    """Gas flow rate at the complete-dispersion limit (m^3/s)."""
+    if D <= 0 or T <= 0 or g <= 0:
+        return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
+    return 0.2 * np.asarray(N) ** 2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)

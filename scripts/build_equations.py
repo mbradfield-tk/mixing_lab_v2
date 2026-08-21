@@ -114,6 +114,7 @@ _GREEK = {
     r"\delta": "δ", r"\varphi": "φ", r"\phi": "φ", r"\theta": "θ", r"\tau": "τ",
     r"\gamma": "γ", r"\alpha": "α", r"\beta": "β", r"\omega": "ω", r"\Phi": "Φ",
     r"\Sigma": "Σ", r"\Omega": "Ω", r"\kappa": "κ", r"\zeta": "ζ", r"\xi": "ξ",
+    r"\Lambda": "Λ", r"\Gamma": "Γ", r"\Theta": "Θ", r"\Pi": "Π",
     r"\approx": "≈", r"\times": "×", r"\cdot": "·", r"\leq": "≤", r"\geq": "≥",
     r"\le": "≤", r"\ge": "≥", r"\pm": "±", r"\infty": "∞", r"\rightarrow": "→",
     r"\to": "→", r"\propto": "∝", r"\partial": "∂", r"\nabla": "∇", r"\ll": "≪",
@@ -125,6 +126,9 @@ _SUP = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵",
 
 def _math_to_text(m: str) -> str:
     s = m
+    # \dot{x} inline conversion: use centered dot for gamma to improve readability
+    s = re.sub(r"\\dot\{\\gamma\}", "γ·", s)
+    s = re.sub(r"\\dot\{([^{}]+)\}", "\\1\u0307", s)
     s = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)", s)
     s = re.sub(r"\\sqrt\{([^{}]*)\}", r"√(\1)", s)
     s = re.sub(r"\\(?:left|right|,|;|!|quad|qquad|[Bb]igl|[Bb]igr|[Bb]ig)\b", "", s)

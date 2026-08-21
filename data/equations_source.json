@@ -156,7 +156,7 @@
     },
     {
      "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $V$ | Liquid volume | m³ |\n| $N_q$ | Pumping (flow) number | — |\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n\nThe mean time for a fluid element to complete one loop through the\nimpeller zone.  Related to blend time via $\\theta_{95} \\approx 5.2 \\, t_c$.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
+     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $V$ | Liquid volume | m³ |\n| $N_q$ | Pumping (flow) number | — |\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n\nThe mean time for a fluid element to complete one loop through the\nimpeller zone. \n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
     },
     {
      "type": "header",

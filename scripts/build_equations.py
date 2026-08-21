@@ -111,7 +111,7 @@ def _render_latex(latex: str) -> str | None:
 _GREEK = {
     r"\rho": "ρ", r"\mu": "μ", r"\nu": "ν", r"\varepsilon": "ε", r"\epsilon": "ε",
     r"\eta": "η", r"\lambda": "λ", r"\sigma": "σ", r"\pi": "π", r"\Delta": "Δ",
-    r"\delta": "δ", r"\varphi": "φ", r"\phi": "φ", r"\theta": "θ", r"\tau": "τ",
+    r"\delta": "δ", r"\varphi": "φ", r"\phi": "ϕ", r"\theta": "θ", r"\tau": "τ",
     r"\gamma": "γ", r"\alpha": "α", r"\beta": "β", r"\omega": "ω", r"\Phi": "Φ",
     r"\Sigma": "Σ", r"\Omega": "Ω", r"\kappa": "κ", r"\zeta": "ζ", r"\xi": "ξ",
     r"\Lambda": "Λ", r"\Gamma": "Γ", r"\Theta": "Θ", r"\Pi": "Π",

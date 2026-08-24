@@ -1000,7 +1000,8 @@ def on_vc_save_results(state):
     new_df = pd.DataFrame(rows)
     try:
         db.append_csv(new_df, RECORDED_CSV)
-        notify(state, "S", f"Saved {len(rows)} vessel result(s) to Recorded Results.")
+        notify(state, "S",
+               f"Saved {len(rows)} vessel result(s) — view them on the Recorded Results page.")
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Save failed: {exc}")
 

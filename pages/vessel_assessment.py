@@ -49,6 +49,8 @@ reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
 particles_df = pd.read_csv(DATA_DIR / "particles.csv")
 fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
 
+RECORDED_CSV = DATA_DIR / "recorded_results.csv"
+
 # Correlation-source display labels <-> registry keys.
 _CORR_LABEL_TO_KEY = {
     "Empirical (literature)": "Literature",
@@ -351,6 +353,9 @@ va_pdf_bytes = b""
 va_pdf_name = "Vessel_Assessment.pdf"
 va_pdf_ready = False
 
+# per-state raw snapshot of the last compute (for save-to-Recorded-Results)
+_va_cache: dict = {}
+
 
 # ---------------------------------------------------------------------------
 # Change handlers — load defaults
@@ -464,6 +469,43 @@ def on_va_export_pdf(state):
         notify(state, "S", "PDF report generated — click Download.")
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"PDF generation failed: {exc}")
+
+
+def on_va_save_results(state):
+    """Append the last computed case to data/recorded_results.csv."""
+    if not state.va_result_ready or not state._va_cache:
+        notify(state, "W", "Compute the assessment before saving.")
+        return
+    cache = state._va_cache
+    h, dam = cache["hydro"], cache["dam"]
+    row = {
+        "reactor": cache["reactor"], "reaction": cache["reaction"],
+        "fluid": cache["fluid"], "fluid_T_C": cache["fluid_T_C"],
+        "RPM": cache["rpm"], "Volume (L)": cache["v_l"],
+        "Re": h.get("Re", ""), "P/V (W/L)": h.get("P/V (W/L)", ""),
+        "Tip speed (m/s)": h.get("Tip speed (m/s)", ""),
+        "Blend time (s)": h.get("Blend time 95% (s)", ""),
+        "Circulation time (s)": h.get("Circulation time (s)", ""),
+        "Micromix t_E (s)": h.get("Micromix time t_E (s)", ""),
+        "Micromix t_E_local (s)": h.get("Micromix time t_E_local (s)", ""),
+        "Kolmogorov η (µm)": h.get("Kolmogorov η (µm)", ""),
+        "EDCF (W/kg/s)": h.get("EDCF (W/kg/s)", ""),
+        "Torque (N·m)": h.get("Torque (N·m)", ""),
+        "Froude number": h.get("Froude number", ""),
+        "Avg shear rate (1/s)": h.get("Avg shear rate (1/s)", ""),
+        "Max shear rate (1/s)": h.get("Max shear rate (1/s)", ""),
+        "Avg shear stress (Pa)": h.get("Avg shear stress (Pa)", ""),
+        "kLa (1/s)": h.get("kLa (1/s)", ""),
+        "kLa_surface (1/s)": h.get("kLa_surface (1/s)", ""),
+        "t_rxn (s)": cache["t_rxn"], "Da_macro": dam.get("Da_macro", ""),
+        "Da_micro": dam.get("Da_micro", ""), "Da_GL": dam.get("Da_GL", ""),
+        "Da_SL": dam.get("Da_SL", ""), "Assessment": dam.get("Assessment", ""),
+    }
+    try:
+        db.append_csv(pd.DataFrame([row]), RECORDED_CSV)
+        notify(state, "S", "Saved 1 result — view it on the Recorded Results page.")
+    except Exception as exc:  # noqa: BLE001
+        notify(state, "E", f"Save failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -596,6 +638,13 @@ def on_va_compute(state):
         state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
+
+    state._va_cache = {
+        "hydro": hydro, "dam": dam, "t_rxn": t_rxn,
+        "reactor": state.va_reactor, "reaction": state.va_reaction,
+        "fluid": state.va_fluid, "fluid_T_C": state.va_T,
+        "rpm": state.va_n_rpm, "v_l": state.va_v_l,
+    }
 
     state.va_result_ready = True
     state.va_compute_class = "compute-btn-ok"
@@ -904,15 +953,20 @@ panels mark the 0.1 and 1.0 mixing-sensitivity thresholds.
 |>
 
 <|part|class_name=va-card|
-## Export Report
+## Export & Save
 Generate a PDF capturing the system configuration, hydrodynamics, Damköhler
 mixing-sensitivity, optional solid-suspension / heat balance, and the operating
-envelope chart.
+envelope chart — or save the computed case to the **Recorded Results** page for
+bulk export and comparison.
 
+<|layout|columns=1 1|
 <|Generate PDF report|button|on_action=on_va_export_pdf|class_name=compute-btn|>
 
+<|Save results to Recorded Results|button|on_action=on_va_save_results|>
+|>
+
 <|part|render={va_pdf_ready}|
-<|Download PDF|file_download|content={va_pdf_bytes}|name={va_pdf_name}|label=⬇️ Download PDF|>
+<|Download PDF|file_download|content={va_pdf_bytes}|name={va_pdf_name}|label=Download PDF|>
 |>
 |>
 |>

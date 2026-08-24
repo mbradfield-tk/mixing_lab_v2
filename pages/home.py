@@ -75,6 +75,8 @@ Use the menu on the left to navigate between sections.
 
 - **__ICON:Heat_Transfer__[Heat Transfer Tool](/Heat_Transfer)** — batch heating/cooling temperature and duty
   profiles, and heat-transfer-coefficient estimation.
+- **__ICON:Recorded_Results__[Recorded Results](/Recorded_Results)** — view, filter and bulk-export the case
+  results saved from the analysis pages.
 - **__ICON:Unit_Converter__[Unit Converter](/Unit_Converter)** — engineering unit conversions (pressure, viscosity,
   energy, agitation, and more).
 - **__ICON:Equations_Reference__[Equations Reference](/Equations_Reference)** — every correlation used in the app, with symbols,

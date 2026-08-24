@@ -176,7 +176,8 @@ def _viewer_card_body(name: str, reactor_id: str, height: int) -> str:
         mime = "model/gltf-binary" if path.suffix.lower() == ".glb" else "model/gltf+json"
         src = _media_src(path, mime)
         body = (
-            f"<model-viewer src=\"{src}\" camera-controls auto-rotate "
+            # lazy: off-screen cards in the scrolling row defer their GLB fetch
+            f"<model-viewer src=\"{src}\" loading=\"lazy\" camera-controls auto-rotate "
             "rotation-per-second=\"20deg\" interaction-prompt=\"none\" "
             "shadow-intensity=\"1\" exposure=\"1\" "
             f"style=\"width:100%;height:{height}px;background:#f5f5f5;border-radius:4px;\">"

@@ -590,6 +590,33 @@ TAKEDA_THEME = {
 # URLs (/vassets, /vimages) instead of megabyte base64 blobs in state variables.
 _flask_app = Flask(__name__)
 install_usage_logging(_flask_app, pages.keys())
+
+
+@_flask_app.after_request
+def _media_cache_headers(resp):
+    """Let browsers cache the vessel models/script for a day (Taipy's default
+    is no-cache, which re-validates the multi-MB GLBs on every page view)."""
+    from flask import request
+
+    if request.path.startswith(("/vimages/", "/vassets/")) and resp.status_code == 200:
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
+# gzip/brotli responses when flask-compress is available (GLB models and the
+# 0.9 MB viewer script shrink to ~25%). Optional: the app runs fine without it.
+try:
+    from flask_compress import Compress
+
+    _flask_app.config["COMPRESS_MIMETYPES"] = [
+        "text/html", "text/css", "application/json", "application/javascript",
+        "text/javascript", "image/svg+xml",
+        "model/gltf-binary", "model/gltf+json", "application/octet-stream",
+    ]
+    Compress(_flask_app)
+except ImportError:
+    pass
+
 gui = Gui(pages=pages, flask=_flask_app,
           path_mapping={"vimages": str(BASE_DIR / "images"),
                         "vassets": str(BASE_DIR / "assets")})

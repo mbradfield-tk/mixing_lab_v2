@@ -1,0 +1,6 @@
+# Block Taipy's root-dir static fallback from serving repository files
+# (app code, CSV databases, usage.db were all reachable over HTTP without this).
+# Vessel media & the 3D-viewer script are served explicitly via the /vimages and
+# /vassets path mappings (see Gui(path_mapping=...) in app.py), which are
+# checked before this ignore list and are unaffected by it.
+*

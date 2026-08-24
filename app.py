@@ -586,9 +586,13 @@ TAKEDA_THEME = {
 # Taipy runs on this externally-created Flask app so the usage-logging hook
 # (data/usage.db, one row per app load — see utils/usage.py and usage_report.py)
 # is active in both the local-dev and gunicorn deployment paths.
+# path_mapping serves the 3D-viewer script and vessel media as cacheable static
+# URLs (/vassets, /vimages) instead of megabyte base64 blobs in state variables.
 _flask_app = Flask(__name__)
 install_usage_logging(_flask_app, pages.keys())
-gui = Gui(pages=pages, flask=_flask_app)
+gui = Gui(pages=pages, flask=_flask_app,
+          path_mapping={"vimages": str(BASE_DIR / "images"),
+                        "vassets": str(BASE_DIR / "assets")})
 
 def create_app():
     """WSGI factory used by Gunicorn in production."""

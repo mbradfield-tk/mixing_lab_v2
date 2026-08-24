@@ -1,10 +1,17 @@
 """Resolve and render vessel imagery (3D .glb/.gltf preferred, else 2D .png).
 
-Builds a self-contained HTML document that can be served by Taipy's ``part``
-element (``content`` property) and shown inside an iframe.  3D models use
-Google's ``<model-viewer>`` web component, vendored locally and inlined so the
-viewer works offline.  Both the model and 2D images are embedded as base64
-data URIs, so no static file server is required.
+Builds a small HTML document that can be served by Taipy's ``part`` element
+(``content`` property) and shown inside an iframe.  3D models use Google's
+``<model-viewer>`` web component (vendored in ``assets/``).
+
+The viewer script and media files are referenced by **static URLs** served
+through Taipy's ``path_mapping`` (see ``Gui(path_mapping=...)`` in ``app.py``)
+rather than inlined as base64 data URIs: the inlined form made every viewer
+HTML string 1-5 MB, and since that string is a bound state variable it was
+pushed through the websocket on every page mount / vessel change — unnoticeable
+on localhost but laggy over a real network. Static URLs keep the state payload
+at a few KB and let the browser cache the script and models (ETag/304).
+Files outside the mapped folders fall back to base64.
 """
 
 from __future__ import annotations
@@ -12,11 +19,17 @@ from __future__ import annotations
 import base64
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 BASE_DIR = Path(__file__).resolve().parent
 IMG_DIR = BASE_DIR / "images" / "reactors"
+IMAGES_ROOT = BASE_DIR / "images"
 MODEL_VIEWER_JS = BASE_DIR / "assets" / "model-viewer-umd.min.js"
 MODEL_VIEWER_CDN = "https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
+
+# URL prefixes served by Taipy path_mapping (registered in app.py).
+IMAGES_URL_PREFIX = "/vimages"
+ASSETS_URL_PREFIX = "/vassets"
 
 IMG_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
 MODEL_SUFFIXES = (".glb", ".gltf")
@@ -56,11 +69,20 @@ def _data_uri(path_str: str, mime: str) -> str:
     return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
+def _media_src(path: Path, mime: str) -> str:
+    """Static URL for a file under images/ (base64 data URI otherwise)."""
+    p = Path(path).resolve()
+    try:
+        rel = p.relative_to(IMAGES_ROOT)
+    except ValueError:
+        return _data_uri(str(p), mime)
+    return f"{IMAGES_URL_PREFIX}/{quote(rel.as_posix())}"
+
+
 @lru_cache(maxsize=1)
 def _model_viewer_script() -> str:
     if MODEL_VIEWER_JS.is_file():
-        js = MODEL_VIEWER_JS.read_text(encoding="utf-8").replace("</script>", "<\\/script>")
-        return f"<script>{js}</script>"
+        return f'<script src="{ASSETS_URL_PREFIX}/{MODEL_VIEWER_JS.name}"></script>'
     return f'<script type="module" src="{MODEL_VIEWER_CDN}"></script>'
 
 
@@ -82,7 +104,7 @@ def build_vessel_viewer_html(reactor_id: str, height: int = 360) -> str:
     kind, path = media
     if kind == "3d":
         mime = "model/gltf-binary" if path.suffix.lower() == ".glb" else "model/gltf+json"
-        src = _data_uri(str(path), mime)
+        src = _media_src(path, mime)
         script = _model_viewer_script()
         return (
             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -97,7 +119,7 @@ def build_vessel_viewer_html(reactor_id: str, height: int = 360) -> str:
 
     suffix = path.suffix.lower().lstrip(".")
     mime = f"image/{'jpeg' if suffix in ('jpg', 'jpeg') else suffix}"
-    src = _data_uri(str(path), mime)
+    src = _media_src(path, mime)
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
         "<body style='margin:0;display:flex;align-items:center;justify-content:center;"
@@ -128,7 +150,7 @@ def build_image_html(image_path, alt: str = "diagram", background: str = "#fffff
         return _placeholder_html(f"Image not found: {p.name}")
     suffix = p.suffix.lower().lstrip(".")
     mime = f"image/{'jpeg' if suffix in ('jpg', 'jpeg') else suffix}"
-    src = _data_uri(str(p), mime)
+    src = _media_src(p, mime)
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
         f"<body style='margin:0;display:flex;justify-content:center;"
@@ -152,7 +174,7 @@ def _viewer_card_body(name: str, reactor_id: str, height: int) -> str:
     kind, path = media
     if kind == "3d":
         mime = "model/gltf-binary" if path.suffix.lower() == ".glb" else "model/gltf+json"
-        src = _data_uri(str(path), mime)
+        src = _media_src(path, mime)
         body = (
             f"<model-viewer src=\"{src}\" camera-controls auto-rotate "
             "rotation-per-second=\"20deg\" interaction-prompt=\"none\" "
@@ -162,7 +184,7 @@ def _viewer_card_body(name: str, reactor_id: str, height: int) -> str:
         return title + body
     suffix = path.suffix.lower().lstrip(".")
     mime = f"image/{'jpeg' if suffix in ('jpg', 'jpeg') else suffix}"
-    src = _data_uri(str(path), mime)
+    src = _media_src(path, mime)
     body = (f"<div style=\"height:{height}px;display:flex;align-items:center;"
             "justify-content:center;background:#f5f5f5;border-radius:4px;\">"
             f"<img src=\"{src}\" alt=\"{name}\" "

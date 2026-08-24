@@ -7,8 +7,10 @@ if sys.version_info >= (3, 13):
     raise RuntimeError("Taipy GUI currently requires Python 3.12 or lower for this app. Please run with Python 3.12.")
 
 from taipy.gui import Gui, navigate
+from flask import Flask
 
 from utils.menu_icons import image_thumb_uri, menu_icon_uri
+from utils.usage import install_usage_logging
 
 from pages import (
     bourne_protocol,
@@ -581,7 +583,12 @@ TAKEDA_THEME = {
 # Adding this for server deployment --------------------------------------------->
 
 # ---- Module-level Gui instance (so Taipy sees the module's globals) ----
-gui = Gui(pages=pages)
+# Taipy runs on this externally-created Flask app so the usage-logging hook
+# (data/usage.db, one row per app load — see utils/usage.py and usage_report.py)
+# is active in both the local-dev and gunicorn deployment paths.
+_flask_app = Flask(__name__)
+install_usage_logging(_flask_app, pages.keys())
+gui = Gui(pages=pages, flask=_flask_app)
 
 def create_app():
     """WSGI factory used by Gunicorn in production."""

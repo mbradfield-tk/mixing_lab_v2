@@ -9,15 +9,13 @@ the SI inputs above.
 
 REFERENCES (per function)
 -------------------------
-Neither correlation appears in the context source (Myerson 2019,
-crystallization handbook); the canonical references are given but MUST be
-verified against the original literature.
-
     kla_vant_riet (kLa = 0.026 (P/V)^0.4 v_s^0.5, coalescing)
         Ref: van 't Riet (1979), Ind. Eng. Chem. Process Des. Dev. 18, 357.
         [NOT in context/ - verify]   <-- requires P/V in W/m^3
     kla_surface (free-surface kL from surface renewal)
         Ref: Lamont & Scott (1970), AIChE J. 16, 513.  [NOT in context/ - verify]
+    gas_flooding_speed (N_flood at FlG = 30 Fr (D/T)^3.5)
+        Ref: Smith et al. (1987). [see Equation 11-4]
 """
 
 import numpy as np
@@ -41,3 +39,58 @@ def kla_surface(epsilon: float, nu: float, D_mol: float,
     A_surface = np.pi / 4 * D_tank**2
     a = A_surface / V
     return kL * a
+
+
+def gas_flooding_speed(
+    QG: float, D: float, T: float, g: float = 9.81
+) -> float:
+    """
+    Minimum impeller speed to avoid gas flooding (Equation 11-4).
+    
+    When FlG > 30 Fr (D/T)^3.5, the gas swamps the impeller.
+    Solves for N when FlG = QG/(N D^3) and Fr = N^2 D/g.
+    
+    Returns impeller speed in rev/s.
+    """
+    if QG <= 0 or D <= 0 or T <= 0 or g <= 0:
+        return 0.0
+    ratio_cubed = (QG * g) / (30 * D**4 * (D / T)**3.5)
+    return ratio_cubed ** (1.0 / 3.0)
+
+
+def gas_flooding_flow_rate(
+    N: float | np.ndarray, D: float, T: float, g: float = 9.81
+) -> float | np.ndarray:
+    """Gas flow rate at the flooding limit (m^3/s).
+
+    From Fl_G = 30 Fr (D/T)^3.5 with:
+        Fl_G = Q_G / (N D^3)
+        Fr = N^2 D / g
+    """
+    if D <= 0 or T <= 0 or g <= 0:
+        return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
+    return 30.0 * np.asarray(N) ** 3 * D**4 * (D / T) ** 3.5 / g
+
+
+def complete_dispersion_speed(
+    QG: float, D: float, T: float, g: float = 9.81
+) -> float:
+    """Minimum impeller speed for complete gas dispersion (rev/s).
+
+    Uses:
+        (Fl_G)_CD = 0.2 (D/T)^0.5 Fr_CD^0.5
+    with Fl_G = Q_G / (N D^3) and Fr = N^2 D / g.
+    """
+    if QG <= 0 or D <= 0 or T <= 0 or g <= 0:
+        return 0.0
+    denominator = 0.2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)
+    return np.sqrt(QG / denominator)
+
+
+def complete_dispersion_flow_rate(
+    N: float | np.ndarray, D: float, T: float, g: float = 9.81
+) -> float | np.ndarray:
+    """Gas flow rate at the complete-dispersion limit (m^3/s)."""
+    if D <= 0 or T <= 0 or g <= 0:
+        return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
+    return 0.2 * np.asarray(N) ** 2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)

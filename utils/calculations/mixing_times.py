@@ -43,24 +43,26 @@ Wiley (1999).
 
 import numpy as np
 
-from .hydrodynamics import pumping_rate
-
 # Named constants for literature correlations
 GRENVILLE_CONSTANT = 5.2        # Grenville (1992) blend-time coefficient
 ENGULFMENT_CONSTANT = 17.3      # Baldyga & Bourne engulfment model constant
 MESOMIXING_CONSTANT = 1.2       # Baldyga & Bourne mesomixing (inertial-convective) constant
-EPSILON_MAX_COEFF = 3.0         # Kresta & Wood ε_max / (P/ρD³) coefficient
+EPSILON_MAX_COEFF = 1.04
+EPSILON_MAX_X_DEFAULT = 15.0
 
 
-def blend_time_turbulent(Nq: float, V: float, D: float, N: float) -> float:
+def blend_time_turbulent(
+    Np: float, N: float, D: float, T: float, H: float,
+) -> float:
     """
-    Macro-blend (95 %) time using the circulation-model approach.
-    θ_95 ≈ 5.2 V / (Nq N D³)   (Grenville correlation for turbulent flow)
+    Macro-blend time to 95% homogeneity in the turbulent regime.
+
+    Po^(1/3) N theta_95 D^2 / (T^1.5 H^0.5) = 5.20
     """
-    Q = pumping_rate(Nq, N, D)
-    if Q == 0:
+    denominator = Np ** (1.0 / 3.0) * N * D**2
+    if denominator == 0:
         return np.inf
-    return GRENVILLE_CONSTANT * V / Q
+    return GRENVILLE_CONSTANT * T**1.5 * H**0.5 / denominator
 
 
 def micromixing_time_engulfment(epsilon: float, nu: float) -> float:
@@ -102,14 +104,17 @@ def kolmogorov_length(nu: float, epsilon: float) -> float:
     return (nu**3 / epsilon)**0.25
 
 
-def epsilon_max_estimate(P: float, rho: float, D: float, N: float) -> float:
+def epsilon_max_estimate(
+    Np: float, N: float, D: float, x: float = EPSILON_MAX_X_DEFAULT,
+) -> float:
     """
-    Local maximum dissipation rate near the impeller (order-of-magnitude).
-    ε_max ≈ C · P / (ρ D³), C~3 (Kresta & Wood)
+    Local maximum energy-dissipation rate near the impeller.
+
+    epsilon_max = 1.04 x Np^(3/4) N^3 D^2
     """
-    if D == 0:
+    if Np <= 0 or N <= 0 or D <= 0 or x <= 0:
         return 0.0
-    return EPSILON_MAX_COEFF * P / (rho * D**3)
+    return EPSILON_MAX_COEFF * x * Np**0.75 * N**3 * D**2
 
 
 def average_shear_rate(P: float, mu: float, V: float) -> float:

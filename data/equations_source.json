@@ -1,1017 +1,1057 @@
 {
- "sections": [
-  {
-   "title": "Hydrodynamics & Shear",
-   "items": [
+  "sections": [
     {
-     "type": "header",
-     "level": 3,
-     "text": "Impeller Reynolds Number"
+      "title": "Hydrodynamics & Shear",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Impeller Reynolds Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Re = \\frac{\\rho \\, N \\, D^2}{\\mu}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller rotational speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n\n**Regime classification:** Re < 10 laminar; 10 < Re < 10,000 transitional; Re > 10,000 turbulent.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Power Number & Impeller Power"
+        },
+        {
+          "type": "latex",
+          "latex": "P = N_p \\, \\rho \\, N^3 \\, D^5"
+        },
+        {
+          "type": "md",
+          "text": "\n$N_p$ is the **power number**, a dimensionless constant that depends on impeller geometry and Re.\n\n| Impeller Type | $N_p$ (turbulent) |\n|---------------|-------------------|\n| Rushton turbine (6-blade) | 5.0 |\n| Pitched-blade turbine (45°, 4-blade) | 1.27 |\n| Retreat-curve impeller | 0.3 – 0.5 |\n| A310 / A320 hydrofoil | 0.3 |\n| Magnetic stir bar | 0.3 – 0.5 (approx.) |\n\nFor laminar flow: $N_p \\approx 70 / Re$.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Power per Unit Volume (Specific Energy Dissipation)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\varepsilon = \\frac{P}{V}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $V$ | Liquid volume | m³ |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/m³ |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Impeller Tip Speed"
+        },
+        {
+          "type": "latex",
+          "latex": "u_{tip} = \\pi \\, N \\, D"
+        },
+        {
+          "type": "md",
+          "text": "\nTip speed is a common scale-up criterion and relates to shear at the impeller.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Pumping Rate"
+        },
+        {
+          "type": "latex",
+          "latex": "Q = N_Q \\, N \\, D^3"
+        },
+        {
+          "type": "md",
+          "text": "\n$N_Q$ is the **pumping number** (flow number).  Typical values:\n\n| Impeller | $N_Q$ |\n|----------|-------|\n| Rushton turbine | 0.72 |\n| Pitched-blade turbine (down-pumping) | 0.79 |\n| A310 hydrofoil | 0.56 |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Kolmogorov Length Scale"
+        },
+        {
+          "type": "latex",
+          "latex": "\\eta = \\left( \\frac{\\nu^3}{\\varepsilon} \\right)^{1/4}"
+        },
+        {
+          "type": "md",
+          "text": "\nThe smallest eddy size in turbulent flow.  Below this scale, viscous dissipation dominates.\nTypical values: 10 – 100 µm in stirred tanks.\n\n**Important:** $\\varepsilon$ here is the **mass-specific** energy dissipation rate in **W/kg** (= m²/s³),\ni.e. $\\varepsilon = P / (\\rho\\,V)$, not $P/V$ in W/m³.\n\n**Reference:** Kolmogorov, A.N. (1991). The local structure of turbulence in incompressible viscous fluid for very large Reynolds numbers. [*Proc. R. Soc. Lond. A*](https://doi.org/10.1098/rspa.1991.0075), 434, 9–13. (English translation of the 1941 *Dokl. Akad. Nauk SSSR*, 30, 301–305.)\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Maximum Local Energy Dissipation Rate"
+        },
+        {
+          "type": "latex",
+          "latex": "\\varepsilon_{max} \\approx 15.6 \\cdot {Po}^{3/4} \\ N^3 \\ D^2 "
+        },
+        {
+          "type": "md",
+          "text": "\nThe energy dissipation rate near the impeller can be 1–2 orders of magnitude\nhigher than the mean. \n\n**Reference:** Grenville, Richard & Giacomelli, Jason & Brown, David & Padron, Gustavo. (2017). Mixing: Impeller performance in stirred tanks. [*Chemical Engineering*](https://www.researchgate.net/publication/319042061_Mixing_Impeller_performance_in_stirred_tanks). 124. 42.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Average Shear Rate (Camp–Stein)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\dot{\\gamma}_{avg} = \\sqrt{\\frac{P}{\\mu \\, V}}"
+        },
+        {
+          "type": "md",
+          "text": "\nDerived from equating the volume-averaged viscous dissipation to the power input:"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mu \\, \\dot{\\gamma}^2 = \\frac{P}{V}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $\\gamma_{avg}$ | RMS average shear rate | 1/s |\n"
+        },
+        {
+          "type": "md",
+          "text": "\n**Reference:** Camp, T.R. & Stein, P.C. (1943). Velocity gradients and internal work in fluid motion. *J. Boston Soc. Civil Eng.*, 30, 219–237.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Maximum Shear Rate (Impeller Zone)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\dot{\\gamma}_{max} = \\sqrt{\\frac{\\varepsilon_{max}}{\\nu}}"
+        },
+        {
+          "type": "md",
+          "text": "\nEvaluated using $\\varepsilon_{max}$ from the Maximum Local Energy Dissipation Rate equation above.  This gives the peak\nshear rate in the impeller discharge zone.\n\n**Reference:** standard turbulence dissipation relation ε = ν γ̇² (e.g. Tennekes, H. & Lumley, J.L. (1972). *A First Course in Turbulence*, MIT Press, Ch. 3); $\\varepsilon_{max}$ estimate from Kresta & Wood (1993), as above.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Shear Stress"
+        },
+        {
+          "type": "latex",
+          "latex": "\\tau = \\mu \\, \\dot{\\gamma}"
+        },
+        {
+          "type": "md",
+          "text": "\nFor Newtonian fluids, shear stress (Pa) is simply viscosity multiplied by\nthe shear rate.  Both $\\tau_{avg}$ and $\\tau_{max}$ are reported.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Circulation Time"
+        },
+        {
+          "type": "latex",
+          "latex": "t_c = \\frac{V}{N_q \\, N \\, D^3}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $V$ | Liquid volume | m³ |\n| $N_q$ | Pumping (flow) number | — |\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n\nThe mean time for a fluid element to complete one loop through the\nimpeller zone. \n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Impeller Torque"
+        },
+        {
+          "type": "latex",
+          "latex": "\\Lambda = \\frac{P}{2 \\pi N}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $N$ | Impeller speed | rev/s |\n| $\\Lambda$ | Torque | N·m |\n\n**Torque per unit volume** $\\frac{\\Lambda}{V}$ provides a scale-independent measure\nof mechanical stress on the fluid.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Energy Dissipation Circulation Function (EDCF)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\text{EDCF} = \\frac{\\varepsilon_{max}}{t_c}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\varepsilon_{max}$ | Maximum local energy dissipation rate | W/kg |\n| $t_c$ | Circulation time | s |\n| EDCF | Mixing intensity × exposure frequency | W/kg/s |\n\nEDCF combines the **intensity** of the impeller discharge zone with the\n**frequency** at which fluid passes through it.\n\n**Reference:** Nienow, A.W. (1997). On impeller circulation and mixing effectiveness in the turbulent flow regime. [*Chem. Eng. Sci.*](https://doi.org/10.1016/S0009-2509%2897%2900072-9), 52(15), 2557–2565.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Froude Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Fr = \\frac{N^2 \\, D}{g}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n\nRatio of inertial to gravitational forces.  Important for predicting\nfree-surface vortex formation in unbaffled or partially baffled vessels.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+        }
+      ]
     },
     {
-     "type": "latex",
-     "latex": "Re = \\frac{\\rho \\, N \\, D^2}{\\mu}"
+      "title": "Mixing & Damköhler Numbers",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Macro-Blend Time (95 %)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\theta_{95} = \\frac{5.20 \\, T^{1.5} \\, H^{0.5}}{Po^{1/3} N D^2}"
+        },
+        {
+          "type": "md",
+          "text": "This represents the time to achieve 95 % uniformity on the bulk (macro) scale.\n\n**Reference**: [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Engulfment Micromixing Time"
+        },
+        {
+          "type": "latex",
+          "latex": "t_E = 17.3 \\left( \\frac{\\nu}{\\varepsilon} \\right)^{1/2}"
+        },
+        {
+          "type": "md",
+          "text": "\nBaldyga & Bourne engulfment model – characterises the time for mixing at the\nsmallest (molecular) scales.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\nu$ | Kinematic viscosity ($\\mu / \\rho$) | m²/s |\n| $\\varepsilon$ | Mass-specific energy dissipation rate $P/(\\rho V)$ | W/kg (= m²/s³) |\n\n**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Damköhler Numbers"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Macro Damköhler Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Da_{macro} = \\frac{\\theta_{blend}}{t_{rxn}}"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Micro Damköhler Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Da_{micro} = \\frac{t_E}{t_{rxn}}"
+        },
+        {
+          "type": "md",
+          "text": "\n| $Da$ range | Interpretation |\n|-----------|----------------|\n| $Da \\ll 0.01$ | Reaction-limited – insensitive to mixing |\n| $0.01 < Da < 0.1$ | Likely insensitive |\n| $0.1 < Da < 1$ | Potentially sensitive |\n| $1 < Da < 10$ | Mixing-sensitive |\n| $Da \\gg 10$ | Strongly mixing-limited |\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 13.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Gas-Liquid Damköhler Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Da_{GL} = \\frac{1}{k_L a \\; t_{rxn}} = \\frac{t_{\\text{transfer}}}{t_{rxn}}"
+        },
+        {
+          "type": "md",
+          "text": "\nCompares the characteristic **gas-liquid mass-transfer time** $\\;(1/k_L a)\\;$ to\nthe reaction time.\n\n| $Da_{GL}$ range | Interpretation |\n|----------------|----------------|\n| $Da_{GL} \\ll 0.01$ | Mass transfer is fast — reaction-limited |\n| $0.01 < Da_{GL} < 0.1$ | Likely insensitive to G-L transfer |\n| $0.1 < Da_{GL} < 1$ | Potentially transfer-limited |\n| $1 < Da_{GL} < 10$ | Transfer-limited |\n| $Da_{GL} \\gg 10$ | Strongly transfer-limited |\n\nWhen $k_L a = 0$ (no gas phase present), $Da_{GL}$ is set to zero (not applicable).\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 13.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Solid-Liquid Damköhler Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Da_{SL} = \\frac{1}{k_L a_{SL} \\; t_{rxn}} = \\frac{t_{\\text{SL transfer}}}{t_{rxn}}"
+        },
+        {
+          "type": "md",
+          "text": "\nCompares the characteristic **solid-liquid mass-transfer time** $\\;(1/k_L a_{SL})\\;$\nto the reaction time, where $k_L a_{SL}$ is the volumetric solid-liquid\nmass-transfer coefficient:\n\n$$k_L a_{SL} = k_{SL} \\cdot a_s, \\quad a_s = \\frac{6\\,\\phi_s}{d_p}$$\n\nThe slip velocity used in the Ranz-Marshall correlation is the larger of the\nterminal settling velocity and the Kolmogorov-scale turbulent slip velocity:\n\n$$v_{\\text{slip}} = \\max\\!\\bigl(v_t,\\; (\\varepsilon \\cdot d_p)^{1/3}\\bigr)$$\n\n| $Da_{SL}$ range | Interpretation |\n|----------------|----------------|\n| $Da_{SL} \\ll 0.01$ | Mass transfer is fast — reaction-limited |\n| $0.01 < Da_{SL} < 0.1$ | Likely insensitive to S-L transfer |\n| $0.1 < Da_{SL} < 1$ | Potentially transfer-limited |\n| $1 < Da_{SL} < 10$ | Transfer-limited |\n| $Da_{SL} \\gg 10$ | Strongly transfer-limited |\n\nWhen $k_L a_{SL} = 0$ (no solid phase present), $Da_{SL}$ is set to zero.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k_{SL}$ | Solid-liquid mass-transfer coefficient | m/s |\n| $a_s$ | Specific particle surface area | 1/m |\n| $\\phi_s$ | Volumetric solids fraction | — |\n| $d_p$ | Particle diameter | m |\n| $v_t$ | Terminal settling velocity | m/s |\n| $\\varepsilon$ | Specific energy dissipation rate | W/kg |\n| $t_{rxn}$ | Characteristic reaction time | s |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 13; Ranz, W.E. & Marshall, W.R. (1952). *Chem. Eng. Prog.*, 48, 141–146.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Characteristic Reaction Time"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "First-order or pseudo-first-order"
+        },
+        {
+          "type": "latex",
+          "latex": "t_{rxn} = \\frac{1}{k}"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Second-order"
+        },
+        {
+          "type": "latex",
+          "latex": "t_{rxn} = \\frac{1}{k \\, C_0}"
+        },
+        {
+          "type": "md",
+          "text": "\nThe characteristic reaction time is taken as the **reaction time constant**\n(the e-folding time, i.e. the time for the limiting reagent to fall to $1/e$ of\nits initial value), consistent with the Damköhler-number definition\n$Da = t_{mix} / t_{rxn}$.  Note this is **not** the 50 % half-life\n$t_{1/2} = \\ln 2 / k$, which is ~30 % shorter for a first-order reaction.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k$ | Rate constant | 1/s (1st order) or L/(mol·s) (2nd order) |\n| $C_0$ | Initial concentration | mol/L |\n\n**Reference:** Levenspiel, O. (1999). [*Chemical Reaction Engineering*](https://openlibrary.org/isbn/9780471254249), 3rd ed. Wiley, Ch. 3.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Local Micromixing Time (Impeller Zone)"
+        },
+        {
+          "type": "latex",
+          "latex": "t_{E,\\text{local}} = 17.3 \\left( \\frac{\\nu}{\\varepsilon_{max}} \\right)^{1/2}"
+        },
+        {
+          "type": "md",
+          "text": "\nSame Baldyga & Bourne engulfment model, but evaluated using the **local maximum**\nenergy dissipation rate $\\varepsilon_{max}$ near the impeller.  Relevant when\nreagents are **fed directly into the impeller discharge zone**.\n\n**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Mesomixing Time Scales"
+        },
+        {
+          "type": "md",
+          "text": "\nMesomixing acts at the scale of the feed plume / feed-pipe diameter and has\n**two** characteristic time scales (Baldyga & Bourne, 1999; Myerson 2019, Table 8.1).\nMixing Lab implements the inertial-convective (disintegration) scale below.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Inertial-Convective Disintegration"
+        },
+        {
+          "type": "latex",
+          "latex": "\\tau_S = A \\left( \\frac{\\Lambda_C^{2}}{\\varepsilon} \\right)^{1/3}, \\quad A \\approx 1.2"
+        },
+        {
+          "type": "md",
+          "text": "\nBreak-up of the feed plume by inertial-convective disintegration of the large\neddies. $\\Lambda_C$ is the integral scale of the velocity fluctuations, set by\nthe feed-pipe / plume size. **Mixing Lab implements this scale** using the\nfeed-pipe diameter $d_{\\text{feed}}$ as the length scale with $A = 1.2$:"
+        },
+        {
+          "type": "latex",
+          "latex": "t_{\\text{meso}} = 1.2 \\left( \\frac{d_{\\text{feed}}^2}{\\varepsilon} \\right)^{1/3}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Lambda_C$ | Integral scale of velocity fluctuations | m |\n| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |\n| $\\varepsilon$ | Local energy dissipation at the feed point | W/kg (= m²/s³) |\n"
+        }
+      ]
     },
     {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller rotational speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n\n**Regime classification:** Re < 10 laminar; 10 < Re < 10 000 transitional; Re > 10 000 turbulent.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
+      "title": "Mass Transfer & kLa",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "kLa – Volumetric Mass-Transfer Coefficient (Gas-Liquid)"
+        },
+        {
+          "type": "latex",
+          "latex": "k_L a = C_1 \\left( \\frac{P}{V} \\right)^{C_2} v_s^{C_3}"
+        },
+        {
+          "type": "md",
+          "text": "\nVan 't Riet (1979) correlation for aerated stirred tanks.\n\n| System | $C_1$ | $C_2$ | $C_3$ |\n|--------|-------|-------|-------|\n| Coalescing (pure liquids) | 0.026 | 0.4 | 0.5 |\n| Non-coalescing (electrolytes) | 0.002 | 0.7 | 0.2 |\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P/V$ | Gassed specific power input | W/m³ |\n| $v_s$ | Superficial gas velocity | m/s |\n| $k_L a$ | Volumetric mass-transfer coefficient | 1/s |\n\n**Note:** $v_s = 0$ (no sparging) → $k_L a = 0$.\n\n**Reference:** van 't Riet, K. (1979). Review of measuring methods and results in non-viscous gas-liquid mass transfer in stirred vessels. [*Ind. Eng. Chem. Process Des. Dev.*](https://doi.org/10.1021/i260071a001), 18(3), 357–364.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "kLa – Free-Surface (Headspace) Mass Transfer"
+        },
+        {
+          "type": "latex",
+          "latex": "k_L = 0.4 \\; D_{mol}^{\\,1/2} \\left( \\frac{\\varepsilon}{\\nu} \\right)^{1/4}"
+        },
+        {
+          "type": "latex",
+          "latex": "a_{\\text{surface}} = \\frac{\\pi / 4 \\; D_T^2}{V}"
+        },
+        {
+          "type": "latex",
+          "latex": "k_L a_{\\text{surface}} = k_L \\cdot a_{\\text{surface}}"
+        },
+        {
+          "type": "md",
+          "text": "\nLamont & Scott (1970) small-eddy surface-renewal model.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $D_{mol}$ | Molecular diffusivity of dissolved gas | m²/s |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/kg (= m²/s³) |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $D_T$ | Tank inside diameter | m |\n| $V$ | Liquid volume | m³ |\n| $a_{\\text{surface}}$ | Specific interfacial area (free surface) | 1/m |\n\n**Typical $D_{mol}$ values for common gases in water at 25 °C:**\n\n| Gas | $D_{mol}$ (m²/s) |\n|-----|------------------|\n| O₂  | 2.1 × 10⁻⁹ |\n| CO₂ | 1.9 × 10⁻⁹ |\n| N₂  | 1.9 × 10⁻⁹ |\n| H₂  | 4.5 × 10⁻⁹ |\n\n**Reference:** Lamont, J.C. & Scott, D.S. (1970). An eddy cell model of mass transfer into the surface of a turbulent liquid. [*AIChE J.*](https://doi.org/10.1002/aic.690160403), 16(4), 513–519.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Miscibility Screening"
+        },
+        {
+          "type": "md",
+          "text": "\n**Two-tier approach:**\n\n**1. Known-pair lookup** — Experimental miscibility data from standard references\n(Perry's, CRC Handbook, Merck Index).\n\n**2. Hansen Solubility Parameters (fallback):**\n"
+        },
+        {
+          "type": "latex",
+          "latex": "R_a = \\sqrt{4\\,(\\delta_{d1}-\\delta_{d2})^2 + (\\delta_{p1}-\\delta_{p2})^2 + (\\delta_{h1}-\\delta_{h2})^2}"
+        },
+        {
+          "type": "md",
+          "text": "\n| $R_a$ (MPa$^{0.5}$) | Interpretation |\n|----------------------|----------------|\n| < 15 | Likely **miscible** |\n| 15 – 25 | Partially miscible / borderline |\n| > 25 | Likely **immiscible** |\n\n**Reference:** Hansen, C.M. (2007). [*Hansen Solubility Parameters: A User's Handbook*](https://doi.org/10.1201/9781420006834), 2nd ed. CRC Press.\n"
+        }
+      ]
     },
     {
-     "type": "header",
-     "level": 3,
-     "text": "Power Number & Impeller Power"
+      "title": "Heat Balance",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Reaction Rate (Molar)"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "First-order or pseudo-first-order"
+        },
+        {
+          "type": "latex",
+          "latex": "r = k \\, C_0 \\quad [\\mathrm{mol/(L \\cdot s)}]"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Second-order or pseudo-second-order"
+        },
+        {
+          "type": "latex",
+          "latex": "r = k \\, C_0^2 \\quad [\\mathrm{mol/(L \\cdot s)}]"
+        },
+        {
+          "type": "latex",
+          "latex": "r_{\\text{total}} = r \\times V_L \\quad [\\mathrm{mol/s}]"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k$ | Rate constant | 1/s (1st) or L/(mol·s) (2nd) |\n| $C_0$ | Initial concentration | mol/L |\n| $V_L$ | Liquid volume | L |\n\n**Reference:** Levenspiel, O. (1999). [*Chemical Reaction Engineering*](https://openlibrary.org/isbn/9780471254249), 3rd ed. Wiley.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Heat Generation Rate"
+        },
+        {
+          "type": "latex",
+          "latex": "Q_{\\text{gen}} = \\lvert \\Delta H_{rxn} \\rvert \\times r_{\\text{total}}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction (negative = exothermic) | kJ/mol |\n| $r_{\\text{total}}$ | Total molar reaction rate | mol/s |\n| $Q_{\\text{gen}}$ | Rate of heat release | W |\n\n**Reference:** Levenspiel (1999), Ch. 9.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Adiabatic Temperature Rise"
+        },
+        {
+          "type": "latex",
+          "latex": "\\Delta T_{ad} = \\frac{\\lvert \\Delta H_{rxn} \\rvert \\, C_0}{\\rho \\, C_p}"
+        },
+        {
+          "type": "md",
+          "text": "\nThe temperature the batch would reach if **all** reaction heat were retained\n(no cooling).  Unlike the molar enthalpy alone, $\\Delta T_{ad}$ accounts for\nreagent concentration and the thermal mass of the mixture, and is the basis of\nthe Stoessel criticality classification used to rank thermal-runaway risk.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction | J/mol (or kJ/mol × 1000) |\n| $C_0$ | Limiting-reagent concentration | mol/m³ (= mol/L × 1000) |\n| $\\rho \\, C_p$ | Volumetric heat capacity of the mixture | J/(m³·K) |\n| $\\Delta T_{ad}$ | Adiabatic temperature rise | K |\n\n**Indicative severity bands:** $\\Delta T_{ad}$ < 20 K low · 20–50 K moderate ·\n50–200 K high · > 200 K very high (assess MTSR and secondary decomposition).\n\n**Reference:** Stoessel, F. (2020). [*Thermal Safety of Chemical Processes: Risk Assessment and Process Design*](https://doi.org/10.1002/9783527696918), 2nd ed. Wiley-VCH, Ch. 2–3.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Heat Removal Capacity (Jacket)"
+        },
+        {
+          "type": "latex",
+          "latex": "Q_{\\text{cool}} = U \\, A \\, \\Delta T"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $U$ | Overall heat-transfer coefficient | W/(m²·K) |\n| $A$ | Heat-transfer area (jacket + bottom) | m² |\n| $\\Delta T$ | $T_{\\text{process}} - T_{\\text{coolant}}$ | °C or K |\n| $Q_{\\text{cool}}$ | Maximum steady-state heat removal | W |\n\n**Reference:** Incropera, F.P. *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), 6th ed. Wiley.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Jacket Heat-Transfer Area Estimation"
+        },
+        {
+          "type": "latex",
+          "latex": "A_{\\text{cyl}} = \\pi \\, D_T \\, (H - h_{\\text{dish}})"
+        },
+        {
+          "type": "latex",
+          "latex": "A_{\\text{total}} = A_{\\text{cyl}} + f_{dish} \\cdot \\frac{\\pi}{4} D_T^2"
+        },
+        {
+          "type": "md",
+          "text": "\n| Bottom Dish Type | $f_{dish}$ |\n|-----------------|------------|\n| Flat | 1.00 |\n| 2:1 Elliptical | 1.38 |\n| Torispherical / DIN | 1.26 |\n| Conical | 1 / cos θ (1.41 at 45°) |\n\n**Reference:** DIN 28131 (Jacketed agitated vessels).\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Overall Heat-Transfer Coefficient Estimation"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Simple Material-Based Estimate (Fallback)"
+        },
+        {
+          "type": "md",
+          "text": "\n| Wall Material | $U$ range (W/m²·K) |\n|--------------|-------------------|\n| Glass-lined | 100 – 250 |\n| Stainless steel | 200 – 500 |\n| Hastelloy | 200 – 450 |\n| Carbon steel | 150 – 350 |\n\n**Reference:** Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill, Section 11.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Individual Resistances Approach"
+        },
+        {
+          "type": "latex",
+          "latex": "\\frac{1}{U} = \\frac{1}{h_i} + \\frac{x_w}{k_w} + \\frac{1}{h_o} + R_f"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $h_i$ | Process-side (internal) heat-transfer coefficient | W/(m²·K) |\n| $x_w$ | Wall thickness | m |\n| $k_w$ | Wall thermal conductivity | W/(m·K) |\n| $h_o$ | Utility-side (jacket) heat-transfer coefficient | W/(m²·K) |\n| $R_f$ | Fouling resistance | m²·K/W |\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 3.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Process-Side Coefficient (Nusselt Correlation)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Nu} = C \\cdot \\mathrm{Re}^{2/3} \\cdot \\mathrm{Pr}^{1/3} \\cdot \\left(\\frac{\\mu}{\\mu_w}\\right)^{0.14}"
+        },
+        {
+          "type": "latex",
+          "latex": "h_i = \\frac{\\mathrm{Nu} \\cdot k_f}{D_T}"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Typical value |\n|--------|-------------|---------------|\n| $C$ | Correlation constant | 0.36 (radial turbine, baffled) |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Fluid specific heat capacity | J/(kg·K) |\n| $\\mu / \\mu_w$ | Viscosity ratio (bulk / wall) | ≈ 1 for moderate ΔT |\n\n**Reference:** DIN 28131; Sieder, E.N. & Tate, G.E. (1936). Heat transfer and pressure drop of liquids in tubes. [*Ind. Eng. Chem.*](https://doi.org/10.1021/ie50324a027), 28(12), 1429–1435.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Wall Thermal Conductivity"
+        },
+        {
+          "type": "md",
+          "text": "\n| Material | $k_w$ (W/(m·K)) |\n|----------|-----------------|\n| Stainless steel (316/304) | 16 |\n| Hastelloy C-276 | 12 |\n| Carbon steel | 50 |\n| Glass lining | 1.0 |\n| Titanium | 22 |\n| Inconel | 15 |\n\nFor **glass-lined** vessels:\n\n$$R_{wall} = \\frac{x_{glass}}{k_{glass}} + \\frac{x_{steel}}{k_{steel}}$$\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Table 11-7.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Jacket-Side Coefficient"
+        },
+        {
+          "type": "md",
+          "text": "\n| Jacket Type | Typical $h_o$ (W/(m²·K)) |\n|-------------|--------------------------|\n| Simple jacket (water/glycol) | 1500 |\n| Half-pipe coil | 2500 |\n| Dimple jacket | 1200 |\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Section 11.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Fouling Resistance"
+        },
+        {
+          "type": "md",
+          "text": "\n| Condition | $R_f$ (m²·K/W) |\n|-----------|----------------|\n| Clean (fresh equipment) | 0.0001 |\n| Moderate (pharmaceutical) | 0.0002 |\n| Heavy fouling | 0.001 |\n\nDefault value: **0.0002 m²·K/W** (moderate pharmaceutical process).\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Table 11-9.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Heat Balance Assessment"
+        },
+        {
+          "type": "latex",
+          "latex": "\\text{Ratio} = \\frac{Q_{\\text{gen}}}{Q_{\\text{cool}}}"
+        },
+        {
+          "type": "md",
+          "text": "\n| $Q_{gen} / Q_{cool}$ | Assessment |\n|---------------------|------------|\n| < 0.25 | Easily manageable |\n| 0.25 – 0.50 | Comfortable margin |\n| 0.50 – 0.75 | Moderate – monitor closely |\n| 0.75 – 1.00 | ⚠️ Tight – limited safety margin |\n| > 1.00 | 🔴 Insufficient cooling capacity |\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Time to Cool or Heat (Batch)"
+        },
+        {
+          "type": "latex",
+          "latex": "t = \\frac{\\rho \\, V \\, C_p}{U \\, A} \\, \\ln \\frac{T_{\\text{start}} - T_{\\text{jacket}}}{T_{\\text{end}} - T_{\\text{jacket}}}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $V$ | Liquid volume | m³ |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $U$ | Overall heat-transfer coefficient | W/(m²·K) |\n| $A$ | Heat-transfer area | m² |\n| $T_{\\text{start}}$ | Initial batch temperature | °C |\n| $T_{\\text{end}}$ | Target batch temperature | °C |\n| $T_{\\text{jacket}}$ | Jacket / coolant temperature | °C |\n\nStandard logarithmic solution for a well-mixed batch with constant $U$, $A$,\nand jacket temperature.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 5.\n"
+        }
+      ]
     },
     {
-     "type": "latex",
-     "latex": "P = N_p \\, \\rho \\, N^3 \\, D^5"
+      "title": "Solid-Particle Hydrodynamics",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Terminal Settling Velocity"
+        },
+        {
+          "type": "latex",
+          "latex": "v_{t,\\text{Stokes}} = \\frac{d_p^2 \\, g \\, \\Delta\\rho}{18 \\, \\mu} \\cdot \\phi"
+        },
+        {
+          "type": "md",
+          "text": "\n**Stokes regime** ($Re_p < 0.1$): valid for small or slow-settling particles.\n$\\phi$ is the sphericity (shape factor, 0–1).\n\nFor intermediate Reynolds numbers ($0.1 < Re_p < 1000$) the\n**Schiller-Naumann** drag correction is applied iteratively:"
+        },
+        {
+          "type": "latex",
+          "latex": "C_D = \\frac{24}{Re_p}\\left(1 + 0.15\\,Re_p^{0.687}\\right)"
+        },
+        {
+          "type": "latex",
+          "latex": "v_t = \\sqrt{\\frac{4\\,g\\,d_p\\,\\Delta\\rho}{3\\,C_D\\,\\rho_L}} \\cdot \\phi"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $d_p$ | Particle diameter (typically D50) | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $\\phi$ | Sphericity / shape factor | – |\n\n**Reference:** Clift, R., Grace, J.R. & Weber, M.E. (1978). [*Bubbles, Drops, and Particles*](https://openlibrary.org/isbn/9780121769505), Academic Press; Schiller, L. & Naumann, A. (1935). *Z. Ver. Dtsch. Ing.*, 77, 318–320.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Particle Reynolds Number"
+        },
+        {
+          "type": "latex",
+          "latex": "Re_p = \\frac{\\rho_L \\, v_t \\, d_p}{\\mu}"
+        },
+        {
+          "type": "md",
+          "text": "\nClassifies the flow regime around a settling particle.\n\n**Reference:** Clift *et al.* (1978).\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Zwietering Just-Suspended Speed"
+        },
+        {
+          "type": "latex",
+          "latex": "N_{js} = S \\, \\nu^{0.1} \\, d_p^{0.2} \\left(\\frac{g\\,\\Delta\\rho}{\\rho_L}\\right)^{0.45} X^{0.13} \\, D^{-0.85}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $S$ | Zwietering constant (geometry-dependent) | – |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $d_p$ | Mass-mean particle diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\rho_L$ | Liquid density | kg/m³ |\n| $X$ | Solids loading | wt-% |\n| $D$ | Impeller diameter | m |\n\n**Typical S values:**\n\n| Impeller / geometry | S |\n|-------------------|---|\n| PBT (45° down-pumping), D/T ≈ 0.4 | 4.5 – 6.5 |\n| Rushton turbine, D/T ≈ 0.33 | 7 – 9 |\n| Hydrofoil (A310), D/T ≈ 0.4 | 3 – 5 |\n\n**Reference:** Zwietering, Th.N. (1958). Suspending of solid particles in liquid by agitators. [*Chem. Eng. Sci.*](https://doi.org/10.1016/0009-2509%2858%2985031-9), 8(3–4), 244–253.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Grenville, Mak & Brown (GMB) Just-Suspended Speed"
+        },
+        {
+          "type": "latex",
+          "latex": "N_{js} = z \\, Po^{-1/3} \\, D^{-2/3} \\left(\\frac{g\\,\\Delta\\rho}{\\rho_L}\\right)^{0.5} X_v^{0.154} \\, d_p^{0.167} \\left(\\frac{C}{D}\\right)^{0.1}"
+        },
+        {
+          "type": "md",
+          "text": "\nAn alternative to Zwietering that uses the **power number** $Po$ and\n**impeller clearance ratio** $C/D$ explicitly.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $z$ | Geometry constant (impeller-type dependent) | – |\n| $Po$ | Power number ($N_p$) | – |\n| $D$ | Impeller diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\rho_L$ | Liquid density | kg/m³ |\n| $X_v$ | Volume percent of solids | vol-% |\n| $d_p$ | Particle diameter | m |\n| $C/D$ | Impeller clearance / impeller diameter | – |\n\nNote: Zwietering uses mass-based solids loading $X$ (wt-%), while GMB uses volume-based $X_v$ (vol-%).\n\n**Reference:** Grenville, R.K., Mak, A.T.C. & Brown, D.A.R. (2015). Suspension of solid particles in vessels agitated by axial flow impellers. [*Chem. Eng. Res. Des.*](https://doi.org/10.1016/j.cherd.2015.05.026), 100, 282–291.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Solid-Liquid Mass Transfer (Ranz-Marshall)"
+        },
+        {
+          "type": "latex",
+          "latex": "Sh = 2 + 0.6 \\, Re_p^{1/2} \\, Sc^{1/3}"
+        },
+        {
+          "type": "latex",
+          "latex": "k_{SL} = \\frac{Sh \\cdot D_{mol}}{d_p}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Sh$ | Sherwood number | – |\n| $Re_p$ | Particle Reynolds number | – |\n| $Sc = \\nu / D_{mol}$ | Schmidt number | – |\n| $D_{mol}$ | Molecular diffusivity | m²/s |\n| $d_p$ | Particle diameter | m |\n| $k_{SL}$ | Solid-liquid mass transfer coefficient | m/s |\n\n**Reference:** Ranz, W.E. & Marshall, W.R. (1952). Evaporation from drops. *Chem. Eng. Prog.*, 48(3), 141–146; 48(4), 173–180.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Suspension Quality Assessment"
+        },
+        {
+          "type": "md",
+          "text": "\n| $N / N_{js}$ | Assessment |\n|-------------|------------|\n| $< 0.7$ | Poorly suspended |\n| $0.7 – 1.0$ | Partially suspended |\n| $1.0 – 1.3$ | Just suspended |\n| $> 1.3$ | Fully / homogeneously suspended |\n\nOperating at $N \\ge N_{js}$ ensures complete off-bottom suspension.\n\n**Reference:** Zwietering (1958); Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 10.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Solid-Liquid Volumetric Mass Transfer (kLa)"
+        },
+        {
+          "type": "latex",
+          "latex": "a_s = \\frac{6 \\, \\phi_s}{d_p}"
+        },
+        {
+          "type": "latex",
+          "latex": "k_L a_{SL} = k_{SL} \\cdot a_s"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $a_s$ | Specific surface area of particles per unit liquid volume | 1/m |\n| $\\phi_s$ | Volumetric solids fraction | – |\n| $d_p$ | Particle diameter | m |\n| $k_{SL}$ | Solid-liquid mass transfer coefficient (from Ranz-Marshall) | m/s |\n| $k_L a_{SL}$ | Volumetric mass transfer coefficient | 1/s |\n\n**Reference:** Ranz & Marshall (1952); Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 10.\n"
+        }
+      ]
     },
     {
-     "type": "md",
-     "text": "\n$N_p$ is the **power number**, a dimensionless constant that depends on impeller geometry and Re.\n\n| Impeller Type | $N_p$ (turbulent) |\n|---------------|-------------------|\n| Rushton turbine (6-blade) | 5.0 |\n| Pitched-blade turbine (45°, 4-blade) | 1.27 |\n| Retreat-curve impeller | 0.3 – 0.5 |\n| A310 / A320 hydrofoil | 0.3 |\n| Magnetic stir bar | 0.3 – 0.5 (approx.) |\n\nFor laminar flow: $N_p \\approx 70 / Re$.\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6.\n"
+      "title": "Scale-Up & Solvent Properties",
+      "items": [
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Temperature-Dependent Solvent Properties"
+        },
+        {
+          "type": "md",
+          "text": "\nThe Fluid Database's *Solvent Properties (T)* tab provides physical properties\nat any liquid-phase temperature for common pharmaceutical solvents.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Density"
+        },
+        {
+          "type": "latex",
+          "latex": "\\rho(T) = \\rho_{25} + \\frac{d\\rho}{dT} \\cdot (T - 25) \\quad [\\mathrm{kg/m^3}]"
+        },
+        {
+          "type": "md",
+          "text": "Linear fit anchored at the known 25 °C value.  $T$ in °C, slope $d\\rho/dT$ (typically negative) from published data."
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Dynamic Viscosity (Arrhenius)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mu(T) = \\mu_{25} \\, \\exp\\!\\left[ \\frac{E_a}{R} \\left( \\frac{1}{T_K} - \\frac{1}{298.15} \\right) \\right]"
+        },
+        {
+          "type": "md",
+          "text": "\n$T_K$ = temperature in Kelvin, $E_a$ = activation energy for viscous flow\n(J/mol), $R$ = 8.314 J/(mol·K).\n\n**Reference:** Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill; CRC Handbook of Chemistry and Physics; DIPPR correlations.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Surface Tension"
+        },
+        {
+          "type": "latex",
+          "latex": "\\sigma(T) = \\sigma_{25} + \\frac{d\\sigma}{dT} \\cdot (T - 25) \\quad [\\mathrm{N/m}]"
+        },
+        {
+          "type": "md",
+          "text": "Linear fit anchored at the known 25 °C value.  Clamped to $\\sigma \\ge 0$."
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Molecular Diffusivity (Stokes-Einstein Scaling)"
+        },
+        {
+          "type": "latex",
+          "latex": "D(T) = D_{\\mathrm{ref}} \\; \\frac{T_K}{298.15} \\; \\frac{\\mu_{\\mathrm{ref}}}{\\mu(T)}"
+        },
+        {
+          "type": "md",
+          "text": "\nScaled from a reference value $D_{\\mathrm{ref}}$ at 25 °C using the\nStokes-Einstein relation ($D \\propto T / \\mu$).\n\n**Reference:** Yaws' Handbook; Perry's (2019); CRC Handbook; DIPPR correlations.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Pressure-Dependent Boiling Point (Antoine Equation)"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Vapor Pressure"
+        },
+        {
+          "type": "latex",
+          "latex": "\\log_{10}\\!\\left(P_{\\mathrm{mmHg}}\\right) = A - \\frac{B}{C + T\\;(°C)}"
+        },
+        {
+          "type": "md",
+          "text": "\nwhere $A$, $B$, $C$ are substance-specific constants.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Boiling Point at Pressure P"
+        },
+        {
+          "type": "latex",
+          "latex": "T_{\\mathrm{bp}}\\;(°C) = \\frac{B}{A - \\log_{10}(P_{\\mathrm{mmHg}})} - C"
+        },
+        {
+          "type": "md",
+          "text": "\nAt 1 atm ($P$ = 760 mmHg), this recovers the normal boiling point.\n\n**Conversion:** 1 atm = 760 mmHg = 101.325 kPa.\n\n**Reference:** [NIST Chemistry WebBook](https://webbook.nist.gov/chemistry/); Yaws' Handbook of Vapor Pressure (Antoine Constants).\n"
+        }
+      ]
     },
     {
-     "type": "header",
-     "level": 3,
-     "text": "Power per Unit Volume (Specific Energy Dissipation)"
+      "title": "ROM & Experimental Correlations",
+      "items": [
+        {
+          "type": "md",
+          "text": "\nIn addition to the standard **literature correlations** used throughout\nMixing Lab, reactor-specific correlations can be registered from:\n\n- **ROM (Reduced Order Models)** – fitted from CFD parametric studies or\n  surrogate models.\n- **Experimental** – fitted directly to measured data (e.g. kLa from\n  gassing-out experiments, blend time from PLIF/decolourisation).\n\nThese override the literature correlation for a specific parameter when\nthe corresponding mode is selected on the **Vessel Assessment** or\n**Vessel Comparison** pages.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Supported Parameters"
+        },
+        {
+          "type": "md",
+          "text": "ℹ️ Reactor-specific correlations are registered in `utils/rom_registry.py` (demo entries plus fitted correlations loaded from `data/fitted_correlations.json`) and become selectable on the Vessel Assessment / Vessel Comparison pages."
+        },
+        {
+          "type": "md",
+          "text": "💡 **Adding new correlations:** Register them in `utils/rom_registry.py` using the `register()` function.  They will automatically appear here and become selectable on the calculation pages."
+        }
+      ]
     },
     {
-     "type": "latex",
-     "latex": "\\varepsilon = \\frac{P}{V}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $V$ | Liquid volume | m³ |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/m³ |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Impeller Tip Speed"
-    },
-    {
-     "type": "latex",
-     "latex": "u_{tip} = \\pi \\, N \\, D"
-    },
-    {
-     "type": "md",
-     "text": "\nTip speed is a common scale-up criterion and relates to shear at the impeller.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Pumping Rate"
-    },
-    {
-     "type": "latex",
-     "latex": "Q = N_Q \\, N \\, D^3"
-    },
-    {
-     "type": "md",
-     "text": "\n$N_Q$ is the **pumping number** (flow number).  Typical values:\n\n| Impeller | $N_Q$ |\n|----------|-------|\n| Rushton turbine | 0.72 |\n| Pitched-blade turbine (down-pumping) | 0.79 |\n| A310 hydrofoil | 0.56 |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Kolmogorov Length Scale"
-    },
-    {
-     "type": "latex",
-     "latex": "\\eta = \\left( \\frac{\\nu^3}{\\varepsilon} \\right)^{1/4}"
-    },
-    {
-     "type": "md",
-     "text": "\nThe smallest eddy size in turbulent flow.  Below this scale, viscous dissipation dominates.\nTypical values: 10 – 100 µm in stirred tanks.\n\n**Important:** $\\varepsilon$ here is the **mass-specific** energy dissipation rate in **W/kg** (= m²/s³),\ni.e. $\\varepsilon = P / (\\rho\\,V)$, not $P/V$ in W/m³.\n\n**Reference:** Kolmogorov, A.N. (1991). The local structure of turbulence in incompressible viscous fluid for very large Reynolds numbers. [*Proc. R. Soc. Lond. A*](https://doi.org/10.1098/rspa.1991.0075), 434, 9–13. (English translation of the 1941 *Dokl. Akad. Nauk SSSR*, 30, 301–305.)\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Maximum Local Energy Dissipation Rate"
-    },
-    {
-     "type": "latex",
-     "latex": "\\varepsilon_{max} \\approx C \\cdot \\frac{P}{\\rho \\, D^3}, \\quad C \\approx 1 - 5"
-    },
-    {
-     "type": "md",
-     "text": "\nThe energy dissipation rate near the impeller can be 1–2 orders of magnitude\nhigher than the mean.  We use $C = 3$ as a representative estimate.\n\n**Reference:** Kresta, S.M. & Wood, P.E. (1993). The flow field produced by a pitched blade turbine: Characterization of the turbulence and estimation of the dissipation rate. [*Chem. Eng. Sci.*](https://doi.org/10.1016/0009-2509%2893%2980346-R), 48(10), 1761–1774.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Average Shear Rate (Camp–Stein)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\dot{\\gamma}_{avg} = \\sqrt{\\frac{P}{\\mu \\, V}}"
-    },
-    {
-     "type": "md",
-     "text": "\nDerived from equating the volume-averaged viscous dissipation to the power input:\n\n$$\\mu \\, \\dot{\\gamma}^2 = \\frac{P}{V}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Power input | W |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $V$ | Liquid volume | m³ |\n| $\\dot{\\gamma}_{avg}$ | RMS average shear rate | 1/s |\n\n**Reference:** Camp, T.R. & Stein, P.C. (1943). Velocity gradients and internal work in fluid motion. *J. Boston Soc. Civil Eng.*, 30, 219–237.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Maximum Shear Rate (Impeller Zone)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\dot{\\gamma}_{max} = \\sqrt{\\frac{\\varepsilon_{max}}{\\nu}}"
-    },
-    {
-     "type": "md",
-     "text": "\nEvaluated using $\\varepsilon_{max}$ from the Maximum Local Energy Dissipation Rate equation above.  This gives the peak\nshear rate in the impeller discharge zone.\n\n**Reference:** standard turbulence dissipation relation ε = ν γ̇² (e.g. Tennekes, H. & Lumley, J.L. (1972). *A First Course in Turbulence*, MIT Press, Ch. 3); ε_max estimate from Kresta & Wood (1993), as above.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Shear Stress"
-    },
-    {
-     "type": "latex",
-     "latex": "\\tau = \\mu \\, \\dot{\\gamma}"
-    },
-    {
-     "type": "md",
-     "text": "\nFor Newtonian fluids, shear stress (Pa) is simply viscosity multiplied by\nthe shear rate.  Both $\\tau_{avg}$ and $\\tau_{max}$ are reported.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Circulation Time"
-    },
-    {
-     "type": "latex",
-     "latex": "t_c = \\frac{V}{N_q \\, N \\, D^3}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $V$ | Liquid volume | m³ |\n| $N_q$ | Pumping (flow) number | — |\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n\nThe mean time for a fluid element to complete one loop through the\nimpeller zone.  Related to blend time via $\\theta_{95} \\approx 5.2 \\, t_c$.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Impeller Torque"
-    },
-    {
-     "type": "latex",
-     "latex": "\\Lambda = \\frac{P}{2 \\pi N}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P$ | Impeller power draw | W |\n| $N$ | Impeller speed | rev/s |\n| $\\Lambda$ | Torque | N·m |\n\n**Torque per unit volume** $\\Lambda/V$ provides a scale-independent measure\nof mechanical stress on the fluid.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Energy Dissipation Circulation Function (EDCF)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\text{EDCF} = \\frac{\\varepsilon_{max}}{t_c}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\varepsilon_{max}$ | Maximum local energy dissipation rate | W/kg |\n| $t_c$ | Circulation time | s |\n| EDCF | Mixing intensity × exposure frequency | W/kg/s |\n\nEDCF combines the **intensity** of the impeller discharge zone with the\n**frequency** at which fluid passes through it.\n\n**Reference:** Nienow, A.W. (1997). On impeller circulation and mixing effectiveness in the turbulent flow regime. [*Chem. Eng. Sci.*](https://doi.org/10.1016/S0009-2509%2897%2900072-9), 52(15), 2557–2565.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Froude Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Fr = \\frac{N^2 \\, D}{g}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $N$ | Impeller speed | rev/s |\n| $D$ | Impeller diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n\nRatio of inertial to gravitational forces.  Important for predicting\nfree-surface vortex formation in unbaffled or partially baffled vessels.\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6.\n"
+      "title": "Heat Transfer Tool",
+      "items": [
+        {
+          "type": "md",
+          "text": "\nEquations used in the **Heat Transfer Modeling** page (Tools → Heat Transfer).\nThis page builds on the basic heat-balance equations above with multiple\nNusselt correlations, jacket-side modeling, transient simulations, and\nNTU-effectiveness analysis.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Process-Side Nusselt Correlations"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Nu} = C \\cdot \\mathrm{Re}^{a} \\cdot \\mathrm{Pr}^{b} \\cdot \\left(\\frac{\\mu}{\\mu_w}\\right)^{c}"
+        },
+        {
+          "type": "latex",
+          "latex": "h_i = \\frac{\\mathrm{Nu} \\cdot k_f}{D_T}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Correlation | $C$ | $a$ | $b$ | $c$ | Application | Reference |\n|-------------|-----|-----|-----|-----|-------------|-----------|\n| DIN 28131 (standard) | 0.36 | 2/3 | 1/3 | 0.14 | General-purpose, baffled vessels with turbine impellers | DIN 28131:1979 |\n| Chilton–Drew–Jebens | 0.36 | 2/3 | 1/3 | 0.14 | Classic correlation for jacketed stirred vessels | Chilton, Drew, Jebens (1944) *Ind. Eng. Chem.* 36(6):510 |\n| Lehrer (anchor/helical) | 0.54 | 2/3 | 1/3 | 0.14 | Anchor and helical ribbon impellers | Lehrer (1970) *Chem. Eng. Sci.* 25:1397 |\n| Stein–Schmidt (high Re) | 0.50 | 2/3 | 1/3 | 0.14 | High-Re turbulent regimes (Re > 40 000) | Stein & Schmidt (1993) *Chem. Eng. Process.* 32:305 |\n| Brooks–Su (Retreat Blade) | 0.33 | 2/3 | 1/3 | 0.14 | Retreat-blade impellers in glass-lined vessels | Brooks & Su (1959) |\n| Nagata (paddle) | 0.36 | 2/3 | 1/3 | 0.18 | Paddle impellers with stronger wall viscosity correction | Nagata (1975) *Mixing: Principles and Applications* |\n\nWhere:"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $C, a, b, c$ | Correlation constants | — |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $\\mu$ | Bulk viscosity | Pa·s |\n| $\\mu_w$ | Viscosity at wall temperature | Pa·s |\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Overall Heat-Transfer Coefficient (Resistance Model)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\frac{1}{U} = \\frac{1}{h_i} + \\frac{x_w}{k_w} + \\frac{x_l}{k_l} + \\frac{1}{h_o} + R_f"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $h_i$ | Process-side heat-transfer coefficient | W/(m²·K) |\n| $x_w$ | Wall thickness | m |\n| $k_w$ | Wall thermal conductivity | W/(m·K) |\n| $x_l$ | Lining thickness | m |\n| $k_l$ | Lining thermal conductivity | W/(m·K) |\n| $h_o$ | Jacket-side (utility) heat-transfer coefficient | W/(m²·K) |\n| $R_f$ | Fouling resistance | m²·K/W |\n\nWhen a lining is present (glass, PTFE, etc.), both wall and lining resistances\nare summed. Typical lining conductivities:\n\n| Lining | $k_l$ (W/(m·K)) | Default thickness (mm) |\n|--------|-----------------|----------------------|\n| Glass | 1.0 | 1.5 |\n| PTFE / Teflon / PFA | 0.25 | 2.0 |\n| PVDF | 0.19 | 3.0 |\n| Rubber | 0.16 | 6.0 |\n| Epoxy | 0.20 | 3.0 |\n\n**Reference:** Incropera, F.P. *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 3.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Jacket-Side Heat-Transfer Coefficient"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Turbulent Flow — Dittus-Boelter Equation"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Nu}_j = 0.023 \\cdot \\mathrm{Re}_j^{0.8} \\cdot \\mathrm{Pr}_j^{0.4} \\qquad (\\mathrm{Re}_j > 2300)"
+        },
+        {
+          "type": "latex",
+          "latex": "h_o = \\frac{\\mathrm{Nu}_j \\cdot k_j}{D_h}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\mathrm{Re}_j$ | Jacket Reynolds number $= \\rho_j \\, v_j \\, D_h / \\mu_j$ | — |\n| $\\mathrm{Pr}_j$ | Jacket Prandtl number $= C_{p,j} \\, \\mu_j / k_j$ | — |\n| $v_j$ | Jacket fluid velocity | m/s |\n| $D_h$ | Hydraulic diameter of jacket annulus | m |\n| $k_j$ | Jacket fluid thermal conductivity | W/(m·K) |\n\n**Reference:** Dittus, F.W. & Boelter, L.M.K. (1930). *Univ. Calif. Publ. Eng.* 2:443; Incropera *et al.* (2007), Ch. 8.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Laminar Flow"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{Nu}_j = 3.66 + \\frac{0.065 \\,(D_h / L)\\, \\mathrm{Re}_j \\, \\mathrm{Pr}_j}{1 + 0.04 \\,\\left[(D_h / L)\\, \\mathrm{Re}_j \\, \\mathrm{Pr}_j\\right]^{2/3}} \\qquad (\\mathrm{Re}_j < 2300)"
+        },
+        {
+          "type": "md",
+          "text": "\nCombined developing / fully-developed laminar flow correlation.\n\n**Reference:** Hausen, H. (1943). *VDI Z., Beiheft Verfahrenstechnik*, 4, 91–98.\n"
+        },
+        {
+          "type": "header",
+          "level": 4,
+          "text": "Condensing Steam"
+        },
+        {
+          "type": "md",
+          "text": "\nFor condensing steam, the jacket-side coefficient is very high\n($h_o \\approx$ 6 000 – 12 000 W/(m²·K)) and is treated as a fixed value\nrather than computed from a Nusselt correlation.\n\n**Default:** $h_o$ = 8 000 W/(m²·K) for condensing steam.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Impeller Power (Agitator Heat Input)"
+        },
+        {
+          "type": "latex",
+          "latex": "P = N_p \\, \\rho \\, N^3 \\, D_i^5"
+        },
+        {
+          "type": "md",
+          "text": "\nAll mechanical energy dissipated by the impeller is ultimately converted to\nheat in the fluid. This is added as a heat source in the transient energy balance.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $N_p$ | Power number | — |\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $P$ | Impeller power draw | W |\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Steady-State Heat Duty"
+        },
+        {
+          "type": "latex",
+          "latex": "Q = U \\, A \\, \\Delta T"
+        },
+        {
+          "type": "latex",
+          "latex": "\\Delta T = |T_{\\text{batch}} - T_{\\text{jacket}}|"
+        },
+        {
+          "type": "md",
+          "text": "\nThe maximum instantaneous heat removal/addition rate at any point in time.\nAs the batch temperature approaches the jacket temperature, $\\Delta T$ and\ntherefore $Q$ decrease exponentially.\n\n**Reference:** Incropera *et al.* (2007), Ch. 3.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Instantaneous Cooling / Heating Rate"
+        },
+        {
+          "type": "latex",
+          "latex": "\\frac{dT}{dt} = \\frac{Q_{\\text{jacket}} + P_{\\text{agitator}} + Q_{\\text{rxn}}}{\\rho \\, V \\, C_p}"
+        },
+        {
+          "type": "md",
+          "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Q_{\\text{jacket}}$ | Heat transfer through jacket (= $U A (T_{jacket} - T)$; positive when the jacket heats the batch) | W |\n| $P_{\\text{agitator}}$ | Impeller power dissipation (always heats) | W |\n| $Q_{\\text{rxn}}$ | Reaction heat (positive = exothermic, heats) | W |\n| $\\rho \\, V \\, C_p$ | Thermal mass of batch | J/K |\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Analytical Batch Time (Log-Mean)"
+        },
+        {
+          "type": "latex",
+          "latex": "t = \\frac{\\rho \\, V \\, C_p}{U \\, A} \\, \\ln \\frac{T_{\\text{start}} - T_{\\text{jacket}}}{T_{\\text{end}} - T_{\\text{jacket}}}"
+        },
+        {
+          "type": "md",
+          "text": "\nAssumes constant $U$, $A$, and jacket temperature, with no agitator heat or\nreaction heat. This is the standard analytical solution for an\nexponentially-decaying driving force.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 5.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Transient Model — Constant Jacket Temperature (Euler Integration)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\frac{dT}{dt} = \\frac{U \\, A \\,(T_{\\text{jacket}} - T) + P_{\\text{agitator}} + Q_{\\text{rxn}}}{\\rho \\, V \\, C_p}"
+        },
+        {
+          "type": "latex",
+          "latex": "T(t + \\Delta t) = T(t) + \\frac{dT}{dt} \\cdot \\Delta t"
+        },
+        {
+          "type": "md",
+          "text": "\nA forward Euler integration of the energy balance at each time step.\n\n**Sign convention:**\n- $U \\cdot A \\cdot (T_{\\text{jacket}} - T)$: positive when jacket is hotter (heating), negative when cooler (cooling)\n- $P_{\\text{agitator}}$: always positive (adds heat to batch)\n- $Q_{\\text{rxn}}$: positive = exothermic (adds heat)\n\nIntegration stops when $T$ reaches $T_{\\text{target}}$ or $t$ reaches $t_{\\text{max}}$.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Transient Model — Variable Jacket Temperature (NTU-Effectiveness)"
+        },
+        {
+          "type": "latex",
+          "latex": "\\mathrm{NTU} = \\frac{U \\, A}{\\dot{m}_j \\, C_{p,j}}"
+        },
+        {
+          "type": "latex",
+          "latex": "\\varepsilon = 1 - e^{-\\mathrm{NTU}}"
+        },
+        {
+          "type": "latex",
+          "latex": "Q_{\\text{jacket}} = \\varepsilon \\, \\dot{m}_j \\, C_{p,j} \\, (T_{j,\\text{in}} - T_{\\text{batch}})"
+        },
+        {
+          "type": "latex",
+          "latex": "T_{j,\\text{out}} = T_{j,\\text{in}} - \\frac{Q_{\\text{jacket}}}{\\dot{m}_j \\, C_{p,j}}"
+        },
+        {
+          "type": "md",
+          "text": "\nWhen the jacket fluid has a finite flow rate, the outlet temperature differs\nfrom the inlet. The NTU-effectiveness method models this:\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\mathrm{NTU}$ | Number of Transfer Units | — |\n| $\\varepsilon$ | Heat exchanger effectiveness | — |\n| $\\dot{m}_j$ | Jacket mass flow rate | kg/s |\n| $C_{p,j}$ | Jacket fluid specific heat capacity | J/(kg·K) |\n| $T_{j,\\text{in}}$ | Jacket inlet temperature (constant) | °C |\n| $T_{j,\\text{out}}$ | Jacket outlet temperature (varies) | °C |\n\nAt each time step, $Q_{\\text{jacket}}$ is computed using the current batch\ntemperature and the effectiveness, then the batch temperature is updated\nvia the same Euler integration as the constant-jacket model.\n\n**Key insight:** Lower jacket flow rates → higher NTU → higher effectiveness\nbut also higher jacket outlet temperature, which reduces the effective $\\Delta T$.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 11 (Heat Exchangers).\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Heat Transfer Media Database"
+        },
+        {
+          "type": "md",
+          "text": "\nThe tool includes a built-in database of common heat transfer fluids:\n\n| Medium | T range (°C) | ρ (kg/m³) | Cp (J/(kg·K)) | μ (Pa·s) | k (W/(m·K)) |\n|--------|-------------|-----------|---------------|----------|-------------|\n| Water | 5 – 95 | 997 | 4182 | 8.9×10⁻⁴ | 0.607 |\n| Water-Glycol (50/50) | −30 – 105 | 1075 | 3350 | 3.5×10⁻³ | 0.400 |\n| Syltherm 800 | −40 – 400 | 935 | 1630 | 9.6×10⁻⁴ | 0.135 |\n| Syltherm HF | −73 – 260 | 873 | 1590 | 5.0×10⁻⁴ | 0.100 |\n| Dowtherm A | 15 – 400 | 1056 | 1590 | 2.5×10⁻³ | 0.138 |\n| Dowtherm Q | −35 – 330 | 993 | 1660 | 2.2×10⁻³ | 0.114 |\n| Steam (condensing) | 100 – 250 | — | — | — | — |\n| Therminol 66 | −3 – 345 | 1005 | 1680 | 3.0×10⁻³ | 0.118 |\n| Marlotherm SH | −5 – 350 | 1040 | 1630 | 2.8×10⁻³ | 0.120 |\n| Brine (CaCl₂ 25%) | −40 – 60 | 1230 | 2810 | 4.5×10⁻³ | 0.540 |\n\nProperties are at approximately 25 °C (nominal). All values are user-overridable.\n\n**Sources:** Dow Chemical product data sheets; Perry & Green (2019), Section 11.\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Wetted Heat-Transfer Area"
+        },
+        {
+          "type": "latex",
+          "latex": "A_{\\text{total}} = A_{\\text{dish}} + \\pi \\, D_T \\, (H - h_{\\text{dish}})"
+        },
+        {
+          "type": "md",
+          "text": "\nThe wetted heat-transfer area is computed from the liquid height and vessel\ngeometry. When liquid partially fills the bottom dish, only the wetted\nfraction of the dish area is counted.\n\n| Bottom Dish Type | $h_{\\text{dish}}$ | $A_{\\text{dish,full}}$ |\n|-----------------|-------------------|----------------------|\n| Flat | 0 | $\\pi/4 \\cdot D_T^2$ |\n| 2:1 Elliptical | $D_T / 4$ | $1.084 \\cdot D_T^2$ |\n| Torispherical / DIN | $0.194 \\cdot D_T$ | $0.99 \\cdot D_T^2$ |\n| Conical (45°) | $D_T / 2$ | $\\sqrt{2} \\cdot \\pi/4 \\cdot D_T^2$ |\n\n**Reference:** DIN 28131 (Jacketed agitated vessels).\n"
+        },
+        {
+          "type": "header",
+          "level": 3,
+          "text": "Key References"
+        },
+        {
+          "type": "md",
+          "text": "\n1. Incropera, F.P., DeWitt, D.P., Bergman, T.L. & Lavine, A.S. (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), 6th ed. Wiley.\n2. Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill.\n3. DIN 28131:1979 — Agitated vessels; heat transfer at the wall of agitated vessels.\n4. Chilton, T.H., Drew, T.B. & Jebens, R.H. (1944). Heat transfer coefficients in agitated vessels. *Ind. Eng. Chem.* 36(6):510–516.\n5. Dittus, F.W. & Boelter, L.M.K. (1930). Heat transfer in automobile radiators of the tubular type. *Univ. Calif. Publ. Eng.* 2:443–461.\n6. Lehrer, I.H. (1970). Jacket-side Nusselt number. *Chem. Eng. Sci.* 25:1397.\n7. Stein, W.A. & Schmidt, M. (1993). Heat transfer for agitated vessels with large impellers. *Chem. Eng. Process.* 32:305.\n8. Nagata, S. (1975). *Mixing: Principles and Applications.* Wiley.\n"
+        }
+      ]
     }
-   ]
-  },
-  {
-   "title": "Mixing & Damköhler Numbers",
-   "items": [
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Macro-Blend Time (95 %)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\theta_{95} = \\frac{5.2 \\, V}{N_Q \\, N \\, D^3}"
-    },
-    {
-     "type": "md",
-     "text": "\nCirculation-model blend time — ≈ 5.2 circulation times, t_c = V/(N_Q N D³) — for turbulent blending in a baffled stirred tank. The published Grenville correlation is N θ₉₅ = 5.2 Po^(−1/3) (T/D)²; this circulation form approximates it (typically conservatively, predicting longer times).\nThis represents the time to achieve 95 % uniformity on the bulk (macro) scale.\n\n**Reference:** Grenville, R.K. (1992). *Blending of Viscous Newtonian and Non-Newtonian Fluids.* Ph.D. thesis, Cranfield University. Also: Grenville, R.K. & Nienow, A.W. (2004). Blending of miscible liquids. In [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Engulfment Micromixing Time"
-    },
-    {
-     "type": "latex",
-     "latex": "t_E = 17.3 \\left( \\frac{\\nu}{\\varepsilon} \\right)^{1/2}"
-    },
-    {
-     "type": "md",
-     "text": "\nBaldyga & Bourne engulfment model – characterises the time for mixing at the\nsmallest (molecular) scales.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\nu$ | Kinematic viscosity ($\\mu / \\rho$) | m²/s |\n| $\\varepsilon$ | Mass-specific energy dissipation rate $P/(\\rho V)$ | W/kg (= m²/s³) |\n\n**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Damköhler Numbers"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Macro Damköhler Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Da_{macro} = \\frac{\\theta_{blend}}{t_{rxn}}"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Micro Damköhler Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Da_{micro} = \\frac{t_E}{t_{rxn}}"
-    },
-    {
-     "type": "md",
-     "text": "\n| $Da$ range | Interpretation |\n|-----------|----------------|\n| $Da \\ll 0.01$ | Reaction-limited – insensitive to mixing |\n| $0.01 < Da < 0.1$ | Likely insensitive |\n| $0.1 < Da < 1$ | Potentially sensitive |\n| $1 < Da < 10$ | Mixing-sensitive |\n| $Da \\gg 10$ | Strongly mixing-limited |\n\n**Reference:** Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 13.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Gas-Liquid Damköhler Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Da_{GL} = \\frac{1}{k_L a \\; t_{rxn}} = \\frac{t_{\\text{transfer}}}{t_{rxn}}"
-    },
-    {
-     "type": "md",
-     "text": "\nCompares the characteristic **gas-liquid mass-transfer time** $\\;(1/k_L a)\\;$ to\nthe reaction time.\n\n| $Da_{GL}$ range | Interpretation |\n|----------------|----------------|\n| $Da_{GL} \\ll 0.01$ | Mass transfer is fast — reaction-limited |\n| $0.01 < Da_{GL} < 0.1$ | Likely insensitive to G-L transfer |\n| $0.1 < Da_{GL} < 1$ | Potentially transfer-limited |\n| $1 < Da_{GL} < 10$ | Transfer-limited |\n| $Da_{GL} \\gg 10$ | Strongly transfer-limited |\n\nWhen $k_L a = 0$ (no gas phase present), $Da_{GL}$ is set to zero (not applicable).\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 13.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Solid-Liquid Damköhler Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Da_{SL} = \\frac{1}{k_L a_{SL} \\; t_{rxn}} = \\frac{t_{\\text{SL transfer}}}{t_{rxn}}"
-    },
-    {
-     "type": "md",
-     "text": "\nCompares the characteristic **solid-liquid mass-transfer time** $\\;(1/k_L a_{SL})\\;$\nto the reaction time, where $k_L a_{SL}$ is the volumetric solid-liquid\nmass-transfer coefficient:\n\n$$k_L a_{SL} = k_{SL} \\cdot a_s, \\quad a_s = \\frac{6\\,\\phi_s}{d_p}$$\n\nThe slip velocity used in the Ranz-Marshall correlation is the larger of the\nterminal settling velocity and the Kolmogorov-scale turbulent slip velocity:\n\n$$v_{\\text{slip}} = \\max\\!\\bigl(v_t,\\; (\\varepsilon \\cdot d_p)^{1/3}\\bigr)$$\n\n| $Da_{SL}$ range | Interpretation |\n|----------------|----------------|\n| $Da_{SL} \\ll 0.01$ | Mass transfer is fast — reaction-limited |\n| $0.01 < Da_{SL} < 0.1$ | Likely insensitive to S-L transfer |\n| $0.1 < Da_{SL} < 1$ | Potentially transfer-limited |\n| $1 < Da_{SL} < 10$ | Transfer-limited |\n| $Da_{SL} \\gg 10$ | Strongly transfer-limited |\n\nWhen $k_L a_{SL} = 0$ (no solid phase present), $Da_{SL}$ is set to zero.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k_{SL}$ | Solid-liquid mass-transfer coefficient | m/s |\n| $a_s$ | Specific particle surface area | 1/m |\n| $\\phi_s$ | Volumetric solids fraction | — |\n| $d_p$ | Particle diameter | m |\n| $v_t$ | Terminal settling velocity | m/s |\n| $\\varepsilon$ | Specific energy dissipation rate | W/kg |\n| $t_{rxn}$ | Characteristic reaction time | s |\n\n**Reference:** Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 13; Ranz, W.E. & Marshall, W.R. (1952). *Chem. Eng. Prog.*, 48, 141–146.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Characteristic Reaction Time"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "First-order or pseudo-first-order"
-    },
-    {
-     "type": "latex",
-     "latex": "t_{rxn} = \\frac{1}{k}"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Second-order"
-    },
-    {
-     "type": "latex",
-     "latex": "t_{rxn} = \\frac{1}{k \\, C_0}"
-    },
-    {
-     "type": "md",
-     "text": "\nThe characteristic reaction time is taken as the **reaction time constant**\n(the e-folding time, i.e. the time for the limiting reagent to fall to $1/e$ of\nits initial value), consistent with the Damköhler-number definition\n$Da = t_{mix} / t_{rxn}$.  Note this is **not** the 50 % half-life\n$t_{1/2} = \\ln 2 / k$, which is ~30 % shorter for a first-order reaction.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k$ | Rate constant | 1/s (1st order) or L/(mol·s) (2nd order) |\n| $C_0$ | Initial concentration | mol/L |\n\n**Reference:** Levenspiel, O. (1999). [*Chemical Reaction Engineering*](https://openlibrary.org/isbn/9780471254249), 3rd ed. Wiley, Ch. 3.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Local Micromixing Time (Impeller Zone)"
-    },
-    {
-     "type": "latex",
-     "latex": "t_{E,\\text{local}} = 17.3 \\left( \\frac{\\nu}{\\varepsilon_{max}} \\right)^{1/2}"
-    },
-    {
-     "type": "md",
-     "text": "\nSame Baldyga & Bourne engulfment model, but evaluated using the **local maximum**\nenergy dissipation rate $\\varepsilon_{max}$ near the impeller.  Relevant when\nreagents are **fed directly into the impeller discharge zone**.\n\n**Reference:** Baldyga, J. & Bourne, J.R. (1999). [*Turbulent Mixing and Chemical Reactions*](https://openlibrary.org/isbn/0471981710), Wiley.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Mesomixing Time Scales"
-    },
-    {
-     "type": "md",
-     "text": "\nMesomixing acts at the scale of the feed plume / feed-pipe diameter and has\n**two** characteristic time scales (Baldyga & Bourne, 1999; Myerson 2019, Table 8.1).\nMixing Lab implements the inertial-convective (disintegration) scale below.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Inertial-Convective Disintegration"
-    },
-    {
-     "type": "latex",
-     "latex": "\\tau_S = A \\left( \\frac{\\Lambda_C^{2}}{\\varepsilon} \\right)^{1/3}, \\quad A \\approx 1.2"
-    },
-    {
-     "type": "md",
-     "text": "\nBreak-up of the feed plume by inertial-convective disintegration of the large\neddies. $\\Lambda_C$ is the integral scale of the velocity fluctuations, set by\nthe feed-pipe / plume size. **Mixing Lab implements this scale** using the\nfeed-pipe diameter $d_{\\text{feed}}$ as the length scale with $A = 1.2$:\n\n$$t_{\\text{meso}} = 1.2 \\left( \\frac{d_{\\text{feed}}^2}{\\varepsilon} \\right)^{1/3}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Lambda_C$ | Integral scale of velocity fluctuations | m |\n| $d_{\\text{feed}}$ | Feed-pipe internal diameter | m |\n| $\\varepsilon$ | Local energy dissipation at the feed point | W/kg (= m²/s³) |\n"
-    }
-   ]
-  },
-  {
-   "title": "Mass Transfer & kLa",
-   "items": [
-    {
-     "type": "header",
-     "level": 3,
-     "text": "kLa – Volumetric Mass-Transfer Coefficient (Gas-Liquid)"
-    },
-    {
-     "type": "latex",
-     "latex": "k_L a = C_1 \\left( \\frac{P}{V} \\right)^{C_2} v_s^{C_3}"
-    },
-    {
-     "type": "md",
-     "text": "\nVan 't Riet (1979) correlation for aerated stirred tanks.\n\n| System | $C_1$ | $C_2$ | $C_3$ |\n|--------|-------|-------|-------|\n| Coalescing (pure liquids) | 0.026 | 0.4 | 0.5 |\n| Non-coalescing (electrolytes) | 0.002 | 0.7 | 0.2 |\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $P/V$ | Gassed specific power input | W/m³ |\n| $v_s$ | Superficial gas velocity | m/s |\n| $k_L a$ | Volumetric mass-transfer coefficient | 1/s |\n\n**Note:** $v_s = 0$ (no sparging) → $k_L a = 0$.\n\n**Reference:** van 't Riet, K. (1979). Review of measuring methods and results in non-viscous gas-liquid mass transfer in stirred vessels. [*Ind. Eng. Chem. Process Des. Dev.*](https://doi.org/10.1021/i260071a001), 18(3), 357–364.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "kLa – Free-Surface (Headspace) Mass Transfer"
-    },
-    {
-     "type": "latex",
-     "latex": "k_L = 0.4 \\; D_{mol}^{\\,1/2} \\left( \\frac{\\varepsilon}{\\nu} \\right)^{1/4}"
-    },
-    {
-     "type": "latex",
-     "latex": "a_{\\text{surface}} = \\frac{\\pi / 4 \\; D_T^2}{V}"
-    },
-    {
-     "type": "latex",
-     "latex": "k_L a_{\\text{surface}} = k_L \\cdot a_{\\text{surface}}"
-    },
-    {
-     "type": "md",
-     "text": "\nLamont & Scott (1970) small-eddy surface-renewal model.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $D_{mol}$ | Molecular diffusivity of dissolved gas | m²/s |\n| $\\varepsilon$ | Mean specific energy dissipation rate | W/kg (= m²/s³) |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $D_T$ | Tank inside diameter | m |\n| $V$ | Liquid volume | m³ |\n| $a_{\\text{surface}}$ | Specific interfacial area (free surface) | 1/m |\n\n**Typical D_mol values for common gases in water at 25 °C:**\n\n| Gas | $D_{mol}$ (m²/s) |\n|-----|------------------|\n| O₂  | 2.1 × 10⁻⁹ |\n| CO₂ | 1.9 × 10⁻⁹ |\n| N₂  | 1.9 × 10⁻⁹ |\n| H₂  | 4.5 × 10⁻⁹ |\n\n**Reference:** Lamont, J.C. & Scott, D.S. (1970). An eddy cell model of mass transfer into the surface of a turbulent liquid. [*AIChE J.*](https://doi.org/10.1002/aic.690160403), 16(4), 513–519.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Miscibility Screening"
-    },
-    {
-     "type": "md",
-     "text": "\n**Two-tier approach:**\n\n**1. Known-pair lookup** — Experimental miscibility data from standard references\n(Perry's, CRC Handbook, Merck Index).\n\n**2. Hansen Solubility Parameters (fallback):**\n"
-    },
-    {
-     "type": "latex",
-     "latex": "R_a = \\sqrt{4\\,(\\delta_{d1}-\\delta_{d2})^2 + (\\delta_{p1}-\\delta_{p2})^2 + (\\delta_{h1}-\\delta_{h2})^2}"
-    },
-    {
-     "type": "md",
-     "text": "\n| $R_a$ (MPa$^{0.5}$) | Interpretation |\n|----------------------|----------------|\n| < 15 | Likely **miscible** |\n| 15 – 25 | Partially miscible / borderline |\n| > 25 | Likely **immiscible** |\n\n**Reference:** Hansen, C.M. (2007). [*Hansen Solubility Parameters: A User's Handbook*](https://doi.org/10.1201/9781420006834), 2nd ed. CRC Press.\n"
-    }
-   ]
-  },
-  {
-   "title": "Heat Balance",
-   "items": [
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Reaction Rate (Molar)"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "First-order or pseudo-first-order"
-    },
-    {
-     "type": "latex",
-     "latex": "r = k \\, C_0 \\quad [\\mathrm{mol/(L \\cdot s)}]"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Second-order or pseudo-second-order"
-    },
-    {
-     "type": "latex",
-     "latex": "r = k \\, C_0^2 \\quad [\\mathrm{mol/(L \\cdot s)}]"
-    },
-    {
-     "type": "latex",
-     "latex": "r_{\\text{total}} = r \\times V_L \\quad [\\mathrm{mol/s}]"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $k$ | Rate constant | 1/s (1st) or L/(mol·s) (2nd) |\n| $C_0$ | Initial concentration | mol/L |\n| $V_L$ | Liquid volume | L |\n\n**Reference:** Levenspiel, O. (1999). [*Chemical Reaction Engineering*](https://openlibrary.org/isbn/9780471254249), 3rd ed. Wiley.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Heat Generation Rate"
-    },
-    {
-     "type": "latex",
-     "latex": "Q_{\\text{gen}} = \\lvert \\Delta H_{rxn} \\rvert \\times r_{\\text{total}}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction (negative = exothermic) | kJ/mol |\n| $r_{\\text{total}}$ | Total molar reaction rate | mol/s |\n| $Q_{\\text{gen}}$ | Rate of heat release | W |\n\n**Reference:** Levenspiel (1999), Ch. 9.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Adiabatic Temperature Rise"
-    },
-    {
-     "type": "latex",
-     "latex": "\\Delta T_{ad} = \\frac{\\lvert \\Delta H_{rxn} \\rvert \\, C_0}{\\rho \\, C_p}"
-    },
-    {
-     "type": "md",
-     "text": "\nThe temperature the batch would reach if **all** reaction heat were retained\n(no cooling).  Unlike the molar enthalpy alone, $\\Delta T_{ad}$ accounts for\nreagent concentration and the thermal mass of the mixture, and is the basis of\nthe Stoessel criticality classification used to rank thermal-runaway risk.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\Delta H_{rxn}$ | Enthalpy of reaction | J/mol (or kJ/mol × 1000) |\n| $C_0$ | Limiting-reagent concentration | mol/m³ (= mol/L × 1000) |\n| $\\rho \\, C_p$ | Volumetric heat capacity of the mixture | J/(m³·K) |\n| $\\Delta T_{ad}$ | Adiabatic temperature rise | K |\n\n**Indicative severity bands:** ΔT_ad < 20 K low · 20–50 K moderate ·\n50–200 K high · > 200 K very high (assess MTSR and secondary decomposition).\n\n**Reference:** Stoessel, F. (2020). [*Thermal Safety of Chemical Processes: Risk Assessment and Process Design*](https://doi.org/10.1002/9783527696918), 2nd ed. Wiley-VCH, Ch. 2–3.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Heat Removal Capacity (Jacket)"
-    },
-    {
-     "type": "latex",
-     "latex": "Q_{\\text{cool}} = U \\, A \\, \\Delta T"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $U$ | Overall heat-transfer coefficient | W/(m²·K) |\n| $A$ | Heat-transfer area (jacket + bottom) | m² |\n| $\\Delta T$ | $T_{\\text{process}} - T_{\\text{coolant}}$ | °C or K |\n| $Q_{\\text{cool}}$ | Maximum steady-state heat removal | W |\n\n**Reference:** Incropera, F.P. *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), 6th ed. Wiley.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Jacket Heat-Transfer Area Estimation"
-    },
-    {
-     "type": "latex",
-     "latex": "A_{\\text{cyl}} = \\pi \\, D_T \\, (H - h_{\\text{dish}})"
-    },
-    {
-     "type": "latex",
-     "latex": "A_{\\text{total}} = A_{\\text{cyl}} + f_{dish} \\cdot \\frac{\\pi}{4} D_T^2"
-    },
-    {
-     "type": "md",
-     "text": "\n| Bottom Dish Type | $f_{dish}$ |\n|-----------------|------------|\n| Flat | 1.00 |\n| 2:1 Elliptical | 1.38 |\n| Torispherical / DIN | 1.26 |\n| Conical | 1 / cos θ (1.41 at 45°) |\n\n**Reference:** DIN 28131 (Jacketed agitated vessels).\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Overall Heat-Transfer Coefficient Estimation"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Simple Material-Based Estimate (Fallback)"
-    },
-    {
-     "type": "md",
-     "text": "\n| Wall Material | $U$ range (W/m²·K) |\n|--------------|-------------------|\n| Glass-lined | 100 – 250 |\n| Stainless steel | 200 – 500 |\n| Hastelloy | 200 – 450 |\n| Carbon steel | 150 – 350 |\n\n**Reference:** Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill, Section 11.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Individual Resistances Approach"
-    },
-    {
-     "type": "latex",
-     "latex": "\\frac{1}{U} = \\frac{1}{h_i} + \\frac{x_w}{k_w} + \\frac{1}{h_o} + R_f"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $h_i$ | Process-side (internal) heat-transfer coefficient | W/(m²·K) |\n| $x_w$ | Wall thickness | m |\n| $k_w$ | Wall thermal conductivity | W/(m·K) |\n| $h_o$ | Utility-side (jacket) heat-transfer coefficient | W/(m²·K) |\n| $R_f$ | Fouling resistance | m²·K/W |\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 3.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Process-Side Coefficient (Nusselt Correlation)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{Nu} = C \\cdot \\mathrm{Re}^{2/3} \\cdot \\mathrm{Pr}^{1/3} \\cdot \\left(\\frac{\\mu}{\\mu_w}\\right)^{0.14}"
-    },
-    {
-     "type": "latex",
-     "latex": "h_i = \\frac{\\mathrm{Nu} \\cdot k_f}{D_T}"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Typical value |\n|--------|-------------|---------------|\n| $C$ | Correlation constant | 0.36 (radial turbine, baffled) |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Fluid specific heat capacity | J/(kg·K) |\n| $\\mu / \\mu_w$ | Viscosity ratio (bulk / wall) | ≈ 1 for moderate ΔT |\n\n**Reference:** DIN 28131; Sieder, E.N. & Tate, G.E. (1936). Heat transfer and pressure drop of liquids in tubes. [*Ind. Eng. Chem.*](https://doi.org/10.1021/ie50324a027), 28(12), 1429–1435.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Wall Thermal Conductivity"
-    },
-    {
-     "type": "md",
-     "text": "\n| Material | $k_w$ (W/(m·K)) |\n|----------|-----------------|\n| Stainless steel (316/304) | 16 |\n| Hastelloy C-276 | 12 |\n| Carbon steel | 50 |\n| Glass lining | 1.0 |\n| Titanium | 22 |\n| Inconel | 15 |\n\nFor **glass-lined** vessels:\n\n$$R_{wall} = \\frac{x_{glass}}{k_{glass}} + \\frac{x_{steel}}{k_{steel}}$$\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Table 11-7.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Jacket-Side Coefficient"
-    },
-    {
-     "type": "md",
-     "text": "\n| Jacket Type | Typical $h_o$ (W/(m²·K)) |\n|-------------|--------------------------|\n| Simple jacket (water/glycol) | 1500 |\n| Half-pipe coil | 2500 |\n| Dimple jacket | 1200 |\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Section 11.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Fouling Resistance"
-    },
-    {
-     "type": "md",
-     "text": "\n| Condition | $R_f$ (m²·K/W) |\n|-----------|----------------|\n| Clean (fresh equipment) | 0.0001 |\n| Moderate (pharmaceutical) | 0.0002 |\n| Heavy fouling | 0.001 |\n\nDefault value: **0.0002 m²·K/W** (moderate pharmaceutical process).\n\n**Reference:** Perry & Green (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), Table 11-9.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Heat Balance Assessment"
-    },
-    {
-     "type": "latex",
-     "latex": "\\text{Ratio} = \\frac{Q_{\\text{gen}}}{Q_{\\text{cool}}}"
-    },
-    {
-     "type": "md",
-     "text": "\n| $Q_{gen} / Q_{cool}$ | Assessment |\n|---------------------|------------|\n| < 0.25 | Easily manageable |\n| 0.25 – 0.50 | Comfortable margin |\n| 0.50 – 0.75 | Moderate – monitor closely |\n| 0.75 – 1.00 | ⚠️ Tight – limited safety margin |\n| > 1.00 | 🔴 Insufficient cooling capacity |\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Time to Cool or Heat (Batch)"
-    },
-    {
-     "type": "latex",
-     "latex": "t = \\frac{\\rho \\, V \\, C_p}{U \\, A} \\, \\ln \\frac{T_{\\text{start}} - T_{\\text{jacket}}}{T_{\\text{end}} - T_{\\text{jacket}}}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\rho$ | Fluid density | kg/m³ |\n| $V$ | Liquid volume | m³ |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $U$ | Overall heat-transfer coefficient | W/(m²·K) |\n| $A$ | Heat-transfer area | m² |\n| $T_{\\text{start}}$ | Initial batch temperature | °C |\n| $T_{\\text{end}}$ | Target batch temperature | °C |\n| $T_{\\text{jacket}}$ | Jacket / coolant temperature | °C |\n\nStandard logarithmic solution for a well-mixed batch with constant $U$, $A$,\nand jacket temperature.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 5.\n"
-    }
-   ]
-  },
-  {
-   "title": "Solid-Particle Hydrodynamics",
-   "items": [
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Terminal Settling Velocity"
-    },
-    {
-     "type": "latex",
-     "latex": "v_{t,\\text{Stokes}} = \\frac{d_p^2 \\, g \\, \\Delta\\rho}{18 \\, \\mu} \\cdot \\phi"
-    },
-    {
-     "type": "md",
-     "text": "\n**Stokes regime** ($Re_p < 0.1$): valid for small or slow-settling particles.\n$\\phi$ is the sphericity (shape factor, 0–1).\n\nFor intermediate Reynolds numbers ($0.1 < Re_p < 1000$) the\n**Schiller-Naumann** drag correction is applied iteratively:\n\n$$C_D = \\frac{24}{Re_p}\\left(1 + 0.15\\,Re_p^{0.687}\\right)$$\n\n$$v_t = \\sqrt{\\frac{4\\,g\\,d_p\\,\\Delta\\rho}{3\\,C_D\\,\\rho_L}} \\cdot \\phi$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $d_p$ | Particle diameter (typically D50) | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\mu$ | Dynamic viscosity | Pa·s |\n| $\\phi$ | Sphericity / shape factor | – |\n\n**Reference:** Clift, R., Grace, J.R. & Weber, M.E. (1978). [*Bubbles, Drops, and Particles*](https://openlibrary.org/isbn/9780121769505), Academic Press; Schiller, L. & Naumann, A. (1935). *Z. Ver. Dtsch. Ing.*, 77, 318–320.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Particle Reynolds Number"
-    },
-    {
-     "type": "latex",
-     "latex": "Re_p = \\frac{\\rho_L \\, v_t \\, d_p}{\\mu}"
-    },
-    {
-     "type": "md",
-     "text": "\nClassifies the flow regime around a settling particle.\n\n**Reference:** Clift *et al.* (1978).\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Zwietering Just-Suspended Speed"
-    },
-    {
-     "type": "latex",
-     "latex": "N_{js} = S \\, \\nu^{0.1} \\, d_p^{0.2} \\left(\\frac{g\\,\\Delta\\rho}{\\rho_L}\\right)^{0.45} X^{0.13} \\, D^{-0.85}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $S$ | Zwietering constant (geometry-dependent) | – |\n| $\\nu$ | Kinematic viscosity | m²/s |\n| $d_p$ | Mass-mean particle diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\rho_L$ | Liquid density | kg/m³ |\n| $X$ | Solids loading | wt-% |\n| $D$ | Impeller diameter | m |\n\n**Typical S values:**\n\n| Impeller / geometry | S |\n|-------------------|---|\n| PBT (45° down-pumping), D/T ≈ 0.4 | 4.5 – 6.5 |\n| Rushton turbine, D/T ≈ 0.33 | 7 – 9 |\n| Hydrofoil (A310), D/T ≈ 0.4 | 3 – 5 |\n\n**Reference:** Zwietering, Th.N. (1958). Suspending of solid particles in liquid by agitators. [*Chem. Eng. Sci.*](https://doi.org/10.1016/0009-2509%2858%2985031-9), 8(3–4), 244–253.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Grenville, Mak & Brown (GMB) Just-Suspended Speed"
-    },
-    {
-     "type": "latex",
-     "latex": "N_{js} = z \\, Po^{-1/3} \\, D^{-2/3} \\left(\\frac{g\\,\\Delta\\rho}{\\rho_L}\\right)^{0.5} X_v^{0.154} \\, d_p^{0.167} \\left(\\frac{C}{D}\\right)^{0.1}"
-    },
-    {
-     "type": "md",
-     "text": "\nAn alternative to Zwietering that uses the **power number** $Po$ and\n**impeller clearance ratio** $C/D$ explicitly.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $z$ | Geometry constant (impeller-type dependent) | – |\n| $Po$ | Power number ($N_p$) | – |\n| $D$ | Impeller diameter | m |\n| $g$ | Gravitational acceleration | m/s² |\n| $\\Delta\\rho$ | $\\lvert\\rho_p - \\rho_L\\rvert$ | kg/m³ |\n| $\\rho_L$ | Liquid density | kg/m³ |\n| $X_v$ | Volume percent of solids | vol-% |\n| $d_p$ | Particle diameter | m |\n| $C/D$ | Impeller clearance / impeller diameter | – |\n\nNote: Zwietering uses mass-based solids loading $X$ (wt-%), while GMB uses volume-based $X_v$ (vol-%).\n\n**Reference:** Grenville, R.K., Mak, A.T.C. & Brown, D.A.R. (2015). Suspension of solid particles in vessels agitated by axial flow impellers. [*Chem. Eng. Res. Des.*](https://doi.org/10.1016/j.cherd.2015.05.026), 100, 282–291.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Solid-Liquid Mass Transfer (Ranz-Marshall)"
-    },
-    {
-     "type": "latex",
-     "latex": "Sh = 2 + 0.6 \\, Re_p^{1/2} \\, Sc^{1/3}"
-    },
-    {
-     "type": "latex",
-     "latex": "k_{SL} = \\frac{Sh \\cdot D_{mol}}{d_p}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Sh$ | Sherwood number | – |\n| $Re_p$ | Particle Reynolds number | – |\n| $Sc = \\nu / D_{mol}$ | Schmidt number | – |\n| $D_{mol}$ | Molecular diffusivity | m²/s |\n| $d_p$ | Particle diameter | m |\n| $k_{SL}$ | Solid-liquid mass transfer coefficient | m/s |\n\n**Reference:** Ranz, W.E. & Marshall, W.R. (1952). Evaporation from drops. *Chem. Eng. Prog.*, 48(3), 141–146; 48(4), 173–180.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Suspension Quality Assessment"
-    },
-    {
-     "type": "md",
-     "text": "\n| $N / N_{js}$ | Assessment |\n|-------------|------------|\n| $< 0.7$ | Poorly suspended |\n| $0.7 – 1.0$ | Partially suspended |\n| $1.0 – 1.3$ | Just suspended |\n| $> 1.3$ | Fully / homogeneously suspended |\n\nOperating at $N \\ge N_{js}$ ensures complete off-bottom suspension.\n\n**Reference:** Zwietering (1958); Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 10.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Solid-Liquid Volumetric Mass Transfer (kLa)"
-    },
-    {
-     "type": "latex",
-     "latex": "a_s = \\frac{6 \\, \\phi_s}{d_p}"
-    },
-    {
-     "type": "latex",
-     "latex": "k_L a_{SL} = k_{SL} \\cdot a_s"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $a_s$ | Specific surface area of particles per unit liquid volume | 1/m |\n| $\\phi_s$ | Volumetric solids fraction | – |\n| $d_p$ | Particle diameter | m |\n| $k_{SL}$ | Solid-liquid mass transfer coefficient (from Ranz-Marshall) | m/s |\n| $k_L a_{SL}$ | Volumetric mass transfer coefficient | 1/s |\n\n**Reference:** Ranz & Marshall (1952); Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 10.\n"
-    }
-   ]
-  },
-  {
-   "title": "Scale-Up & Solvent Properties",
-   "items": [
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Temperature-Dependent Solvent Properties"
-    },
-    {
-     "type": "md",
-     "text": "\nThe Fluid Database's *Solvent Properties (T)* tab provides physical properties\nat any liquid-phase temperature for common pharmaceutical solvents.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Density"
-    },
-    {
-     "type": "latex",
-     "latex": "\\rho(T) = \\rho_{25} + \\frac{d\\rho}{dT} \\cdot (T - 25) \\quad [\\mathrm{kg/m^3}]"
-    },
-    {
-     "type": "md",
-     "text": "Linear fit anchored at the known 25 °C value.  $T$ in °C, slope $d\\rho/dT$ (typically negative) from published data."
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Dynamic Viscosity (Arrhenius)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mu(T) = \\mu_{25} \\, \\exp\\!\\left[ \\frac{E_a}{R} \\left( \\frac{1}{T_K} - \\frac{1}{298.15} \\right) \\right]"
-    },
-    {
-     "type": "md",
-     "text": "\n$T_K$ = temperature in Kelvin, $E_a$ = activation energy for viscous flow\n(J/mol), $R$ = 8.314 J/(mol·K).\n\n**Reference:** Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill; CRC Handbook of Chemistry and Physics; DIPPR correlations.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Surface Tension"
-    },
-    {
-     "type": "latex",
-     "latex": "\\sigma(T) = \\sigma_{25} + \\frac{d\\sigma}{dT} \\cdot (T - 25) \\quad [\\mathrm{N/m}]"
-    },
-    {
-     "type": "md",
-     "text": "Linear fit anchored at the known 25 °C value.  Clamped to $\\sigma \\ge 0$."
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Molecular Diffusivity (Stokes-Einstein Scaling)"
-    },
-    {
-     "type": "latex",
-     "latex": "D(T) = D_{\\mathrm{ref}} \\; \\frac{T_K}{298.15} \\; \\frac{\\mu_{\\mathrm{ref}}}{\\mu(T)}"
-    },
-    {
-     "type": "md",
-     "text": "\nScaled from a reference value $D_{\\mathrm{ref}}$ at 25 °C using the\nStokes-Einstein relation ($D \\propto T / \\mu$).\n\n**Reference:** Yaws' Handbook; Perry's (2019); CRC Handbook; DIPPR correlations.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Pressure-Dependent Boiling Point (Antoine Equation)"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Vapor Pressure"
-    },
-    {
-     "type": "latex",
-     "latex": "\\log_{10}\\!\\left(P_{\\mathrm{mmHg}}\\right) = A - \\frac{B}{C + T\\;(°C)}"
-    },
-    {
-     "type": "md",
-     "text": "\nwhere $A$, $B$, $C$ are substance-specific constants.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Boiling Point at Pressure P"
-    },
-    {
-     "type": "latex",
-     "latex": "T_{\\mathrm{bp}}\\;(°C) = \\frac{B}{A - \\log_{10}(P_{\\mathrm{mmHg}})} - C"
-    },
-    {
-     "type": "md",
-     "text": "\nAt 1 atm ($P$ = 760 mmHg), this recovers the normal boiling point.\n\n**Conversion:** 1 atm = 760 mmHg = 101.325 kPa.\n\n**Reference:** [NIST Chemistry WebBook](https://webbook.nist.gov/chemistry/); Yaws' Handbook of Vapor Pressure (Antoine Constants).\n"
-    }
-   ]
-  },
-  {
-   "title": "ROM & Experimental Correlations",
-   "items": [
-    {
-     "type": "md",
-     "text": "\nIn addition to the standard **literature correlations** used throughout\nMixing Lab, reactor-specific correlations can be registered from:\n\n- **ROM (Reduced Order Models)** – fitted from CFD parametric studies or\n  surrogate models.\n- **Experimental** – fitted directly to measured data (e.g. kLa from\n  gassing-out experiments, blend time from PLIF/decolourisation).\n\nThese override the literature correlation for a specific parameter when\nthe corresponding mode is selected on the **Vessel Assessment** or\n**Vessel Comparison** pages.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Supported Parameters"
-    },
-    {
-     "type": "md",
-     "text": "ℹ️ Reactor-specific correlations are registered in `utils/rom_registry.py` (demo entries plus fitted correlations loaded from `data/fitted_correlations.json`) and become selectable on the Vessel Assessment / Vessel Comparison pages."
-    },
-    {
-     "type": "md",
-     "text": "💡 **Adding new correlations:** Register them in `utils/rom_registry.py` using the `register()` function.  They will automatically appear here and become selectable on the calculation pages."
-    }
-   ]
-  },
-  {
-   "title": "Heat Transfer Tool",
-   "items": [
-    {
-     "type": "md",
-     "text": "\nEquations used in the **Heat Transfer Modeling** page (Tools → Heat Transfer).\nThis page builds on the basic heat-balance equations above with multiple\nNusselt correlations, jacket-side modeling, transient simulations, and\nNTU-effectiveness analysis.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Process-Side Nusselt Correlations"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{Nu} = C \\cdot \\mathrm{Re}^{a} \\cdot \\mathrm{Pr}^{b} \\cdot \\left(\\frac{\\mu}{\\mu_w}\\right)^{c}"
-    },
-    {
-     "type": "latex",
-     "latex": "h_i = \\frac{\\mathrm{Nu} \\cdot k_f}{D_T}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Correlation | $C$ | $a$ | $b$ | $c$ | Application | Reference |\n|-------------|-----|-----|-----|-----|-------------|-----------|\n| DIN 28131 (standard) | 0.36 | 2/3 | 1/3 | 0.14 | General-purpose, baffled vessels with turbine impellers | DIN 28131:1979 |\n| Chilton–Drew–Jebens | 0.36 | 2/3 | 1/3 | 0.14 | Classic correlation for jacketed stirred vessels | Chilton, Drew, Jebens (1944) *Ind. Eng. Chem.* 36(6):510 |\n| Lehrer (anchor/helical) | 0.54 | 2/3 | 1/3 | 0.14 | Anchor and helical ribbon impellers | Lehrer (1970) *Chem. Eng. Sci.* 25:1397 |\n| Stein–Schmidt (high Re) | 0.50 | 2/3 | 1/3 | 0.14 | High-Re turbulent regimes (Re > 40 000) | Stein & Schmidt (1993) *Chem. Eng. Process.* 32:305 |\n| Brooks–Su (Retreat Blade) | 0.33 | 2/3 | 1/3 | 0.14 | Retreat-blade impellers in glass-lined vessels | Brooks & Su (1959) |\n| Nagata (paddle) | 0.36 | 2/3 | 1/3 | 0.18 | Paddle impellers with stronger wall viscosity correction | Nagata (1975) *Mixing: Principles and Applications* |\n\nWhere:\n\n$$\\mathrm{Re} = \\frac{\\rho \\, N \\, D_i^2}{\\mu} \\qquad \\mathrm{Pr} = \\frac{C_p \\, \\mu}{k_f}$$\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $C, a, b, c$ | Correlation constants | — |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $D_T$ | Tank diameter | m |\n| $k_f$ | Fluid thermal conductivity | W/(m·K) |\n| $C_p$ | Specific heat capacity | J/(kg·K) |\n| $\\mu$ | Bulk viscosity | Pa·s |\n| $\\mu_w$ | Viscosity at wall temperature | Pa·s |\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Overall Heat-Transfer Coefficient (Resistance Model)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\frac{1}{U} = \\frac{1}{h_i} + \\frac{x_w}{k_w} + \\frac{x_l}{k_l} + \\frac{1}{h_o} + R_f"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $h_i$ | Process-side heat-transfer coefficient | W/(m²·K) |\n| $x_w$ | Wall thickness | m |\n| $k_w$ | Wall thermal conductivity | W/(m·K) |\n| $x_l$ | Lining thickness | m |\n| $k_l$ | Lining thermal conductivity | W/(m·K) |\n| $h_o$ | Jacket-side (utility) heat-transfer coefficient | W/(m²·K) |\n| $R_f$ | Fouling resistance | m²·K/W |\n\nWhen a lining is present (glass, PTFE, etc.), both wall and lining resistances\nare summed. Typical lining conductivities:\n\n| Lining | $k_l$ (W/(m·K)) | Default thickness (mm) |\n|--------|-----------------|----------------------|\n| Glass | 1.0 | 1.5 |\n| PTFE / Teflon / PFA | 0.25 | 2.0 |\n| PVDF | 0.19 | 3.0 |\n| Rubber | 0.16 | 6.0 |\n| Epoxy | 0.20 | 3.0 |\n\n**Reference:** Incropera, F.P. *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 3.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Jacket-Side Heat-Transfer Coefficient"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Turbulent Flow — Dittus-Boelter Equation"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{Nu}_j = 0.023 \\cdot \\mathrm{Re}_j^{0.8} \\cdot \\mathrm{Pr}_j^{0.4} \\qquad (\\mathrm{Re}_j > 2300)"
-    },
-    {
-     "type": "latex",
-     "latex": "h_o = \\frac{\\mathrm{Nu}_j \\cdot k_j}{D_h}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\mathrm{Re}_j$ | Jacket Reynolds number $= \\rho_j \\, v_j \\, D_h / \\mu_j$ | — |\n| $\\mathrm{Pr}_j$ | Jacket Prandtl number $= C_{p,j} \\, \\mu_j / k_j$ | — |\n| $v_j$ | Jacket fluid velocity | m/s |\n| $D_h$ | Hydraulic diameter of jacket annulus | m |\n| $k_j$ | Jacket fluid thermal conductivity | W/(m·K) |\n\n**Reference:** Dittus, F.W. & Boelter, L.M.K. (1930). *Univ. Calif. Publ. Eng.* 2:443; Incropera *et al.* (2007), Ch. 8.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Laminar Flow"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{Nu}_j = 3.66 + \\frac{0.065 \\,(D_h / L)\\, \\mathrm{Re}_j \\, \\mathrm{Pr}_j}{1 + 0.04 \\,\\left[(D_h / L)\\, \\mathrm{Re}_j \\, \\mathrm{Pr}_j\\right]^{2/3}} \\qquad (\\mathrm{Re}_j < 2300)"
-    },
-    {
-     "type": "md",
-     "text": "\nCombined developing / fully-developed laminar flow correlation.\n\n**Reference:** Hausen, H. (1943). *VDI Z., Beiheft Verfahrenstechnik*, 4, 91–98.\n"
-    },
-    {
-     "type": "header",
-     "level": 4,
-     "text": "Condensing Steam"
-    },
-    {
-     "type": "md",
-     "text": "\nFor condensing steam, the jacket-side coefficient is very high\n($h_o \\approx$ 6 000 – 12 000 W/(m²·K)) and is treated as a fixed value\nrather than computed from a Nusselt correlation.\n\n**Default:** $h_o$ = 8 000 W/(m²·K) for condensing steam.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Impeller Power (Agitator Heat Input)"
-    },
-    {
-     "type": "latex",
-     "latex": "P = N_p \\, \\rho \\, N^3 \\, D_i^5"
-    },
-    {
-     "type": "md",
-     "text": "\nAll mechanical energy dissipated by the impeller is ultimately converted to\nheat in the fluid. This is added as a heat source in the transient energy balance.\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $N_p$ | Power number | — |\n| $\\rho$ | Fluid density | kg/m³ |\n| $N$ | Impeller speed | rev/s |\n| $D_i$ | Impeller diameter | m |\n| $P$ | Impeller power draw | W |\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Steady-State Heat Duty"
-    },
-    {
-     "type": "latex",
-     "latex": "Q = U \\, A \\, \\Delta T"
-    },
-    {
-     "type": "latex",
-     "latex": "\\Delta T = |T_{\\text{batch}} - T_{\\text{jacket}}|"
-    },
-    {
-     "type": "md",
-     "text": "\nThe maximum instantaneous heat removal/addition rate at any point in time.\nAs the batch temperature approaches the jacket temperature, $\\Delta T$ and\ntherefore $Q$ decrease exponentially.\n\n**Reference:** Incropera *et al.* (2007), Ch. 3.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Instantaneous Cooling / Heating Rate"
-    },
-    {
-     "type": "latex",
-     "latex": "\\frac{dT}{dt} = \\frac{Q_{\\text{jacket}} + P_{\\text{agitator}} + Q_{\\text{rxn}}}{\\rho \\, V \\, C_p}"
-    },
-    {
-     "type": "md",
-     "text": "\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $Q_{\\text{jacket}}$ | Heat transfer through jacket (= U A (T_jacket - T); positive when the jacket heats the batch) | W |\n| $P_{\\text{agitator}}$ | Impeller power dissipation (always heats) | W |\n| $Q_{\\text{rxn}}$ | Reaction heat (positive = exothermic, heats) | W |\n| $\\rho \\, V \\, C_p$ | Thermal mass of batch | J/K |\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Analytical Batch Time (Log-Mean)"
-    },
-    {
-     "type": "latex",
-     "latex": "t = \\frac{\\rho \\, V \\, C_p}{U \\, A} \\, \\ln \\frac{T_{\\text{start}} - T_{\\text{jacket}}}{T_{\\text{end}} - T_{\\text{jacket}}}"
-    },
-    {
-     "type": "md",
-     "text": "\nAssumes constant $U$, $A$, and jacket temperature, with no agitator heat or\nreaction heat. This is the standard analytical solution for an\nexponentially-decaying driving force.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 5.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Transient Model — Constant Jacket Temperature (Euler Integration)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\frac{dT}{dt} = \\frac{U \\, A \\,(T_{\\text{jacket}} - T) + P_{\\text{agitator}} + Q_{\\text{rxn}}}{\\rho \\, V \\, C_p}"
-    },
-    {
-     "type": "latex",
-     "latex": "T(t + \\Delta t) = T(t) + \\frac{dT}{dt} \\cdot \\Delta t"
-    },
-    {
-     "type": "md",
-     "text": "\nA forward Euler integration of the energy balance at each time step.\n\n**Sign convention:**\n- $U \\cdot A \\cdot (T_{\\text{jacket}} - T)$: positive when jacket is hotter (heating), negative when cooler (cooling)\n- $P_{\\text{agitator}}$: always positive (adds heat to batch)\n- $Q_{\\text{rxn}}$: positive = exothermic (adds heat)\n\nIntegration stops when $T$ reaches $T_{\\text{target}}$ or $t$ reaches $t_{\\text{max}}$.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Transient Model — Variable Jacket Temperature (NTU-Effectiveness)"
-    },
-    {
-     "type": "latex",
-     "latex": "\\mathrm{NTU} = \\frac{U \\, A}{\\dot{m}_j \\, C_{p,j}}"
-    },
-    {
-     "type": "latex",
-     "latex": "\\varepsilon = 1 - e^{-\\mathrm{NTU}}"
-    },
-    {
-     "type": "latex",
-     "latex": "Q_{\\text{jacket}} = \\varepsilon \\, \\dot{m}_j \\, C_{p,j} \\, (T_{j,\\text{in}} - T_{\\text{batch}})"
-    },
-    {
-     "type": "latex",
-     "latex": "T_{j,\\text{out}} = T_{j,\\text{in}} - \\frac{Q_{\\text{jacket}}}{\\dot{m}_j \\, C_{p,j}}"
-    },
-    {
-     "type": "md",
-     "text": "\nWhen the jacket fluid has a finite flow rate, the outlet temperature differs\nfrom the inlet. The NTU-effectiveness method models this:\n\n| Symbol | Description | Units |\n|--------|-------------|-------|\n| $\\mathrm{NTU}$ | Number of Transfer Units | — |\n| $\\varepsilon$ | Heat exchanger effectiveness | — |\n| $\\dot{m}_j$ | Jacket mass flow rate | kg/s |\n| $C_{p,j}$ | Jacket fluid specific heat capacity | J/(kg·K) |\n| $T_{j,\\text{in}}$ | Jacket inlet temperature (constant) | °C |\n| $T_{j,\\text{out}}$ | Jacket outlet temperature (varies) | °C |\n\nAt each time step, $Q_{\\text{jacket}}$ is computed using the current batch\ntemperature and the effectiveness, then the batch temperature is updated\nvia the same Euler integration as the constant-jacket model.\n\n**Key insight:** Lower jacket flow rates → higher NTU → higher effectiveness\nbut also higher jacket outlet temperature, which reduces the effective $\\Delta T$.\n\n**Reference:** Incropera *et al.* (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), Ch. 11 (Heat Exchangers).\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Heat Transfer Media Database"
-    },
-    {
-     "type": "md",
-     "text": "\nThe tool includes a built-in database of common heat transfer fluids:\n\n| Medium | T range (°C) | ρ (kg/m³) | Cp (J/(kg·K)) | μ (Pa·s) | k (W/(m·K)) |\n|--------|-------------|-----------|---------------|----------|-------------|\n| Water | 5 – 95 | 997 | 4182 | 8.9×10⁻⁴ | 0.607 |\n| Water-Glycol (50/50) | −30 – 105 | 1075 | 3350 | 3.5×10⁻³ | 0.400 |\n| Syltherm 800 | −40 – 400 | 935 | 1630 | 9.6×10⁻⁴ | 0.135 |\n| Syltherm HF | −73 – 260 | 873 | 1590 | 5.0×10⁻⁴ | 0.100 |\n| Dowtherm A | 15 – 400 | 1056 | 1590 | 2.5×10⁻³ | 0.138 |\n| Dowtherm Q | −35 – 330 | 993 | 1660 | 2.2×10⁻³ | 0.114 |\n| Steam (condensing) | 100 – 250 | — | — | — | — |\n| Therminol 66 | −3 – 345 | 1005 | 1680 | 3.0×10⁻³ | 0.118 |\n| Marlotherm SH | −5 – 350 | 1040 | 1630 | 2.8×10⁻³ | 0.120 |\n| Brine (CaCl₂ 25%) | −40 – 60 | 1230 | 2810 | 4.5×10⁻³ | 0.540 |\n\nProperties are at approximately 25 °C (nominal). All values are user-overridable.\n\n**Sources:** Dow Chemical product data sheets; Perry & Green (2019), Section 11.\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Wetted Heat-Transfer Area"
-    },
-    {
-     "type": "latex",
-     "latex": "A_{\\text{total}} = A_{\\text{dish}} + \\pi \\, D_T \\, (H - h_{\\text{dish}})"
-    },
-    {
-     "type": "md",
-     "text": "\nThe wetted heat-transfer area is computed from the liquid height and vessel\ngeometry. When liquid partially fills the bottom dish, only the wetted\nfraction of the dish area is counted.\n\n| Bottom Dish Type | $h_{\\text{dish}}$ | $A_{\\text{dish,full}}$ |\n|-----------------|-------------------|----------------------|\n| Flat | 0 | $\\pi/4 \\cdot D_T^2$ |\n| 2:1 Elliptical | $D_T / 4$ | $1.084 \\cdot D_T^2$ |\n| Torispherical / DIN | $0.194 \\cdot D_T$ | $0.99 \\cdot D_T^2$ |\n| Conical (45°) | $D_T / 2$ | $\\sqrt{2} \\cdot \\pi/4 \\cdot D_T^2$ |\n\n**Reference:** DIN 28131 (Jacketed agitated vessels).\n"
-    },
-    {
-     "type": "header",
-     "level": 3,
-     "text": "Key References"
-    },
-    {
-     "type": "md",
-     "text": "\n1. Incropera, F.P., DeWitt, D.P., Bergman, T.L. & Lavine, A.S. (2007). [*Fundamentals of Heat and Mass Transfer*](https://openlibrary.org/isbn/0471457280), 6th ed. Wiley.\n2. Perry, R.H. & Green, D.W. (2019). [*Perry's Chemical Engineers' Handbook*](https://openlibrary.org/isbn/0071834087), 9th ed. McGraw-Hill.\n3. DIN 28131:1979 — Agitated vessels; heat transfer at the wall of agitated vessels.\n4. Chilton, T.H., Drew, T.B. & Jebens, R.H. (1944). Heat transfer coefficients in agitated vessels. *Ind. Eng. Chem.* 36(6):510–516.\n5. Dittus, F.W. & Boelter, L.M.K. (1930). Heat transfer in automobile radiators of the tubular type. *Univ. Calif. Publ. Eng.* 2:443–461.\n6. Lehrer, I.H. (1970). Jacket-side Nusselt number. *Chem. Eng. Sci.* 25:1397.\n7. Stein, W.A. & Schmidt, M. (1993). Heat transfer for agitated vessels with large impellers. *Chem. Eng. Process.* 32:305.\n8. Nagata, S. (1975). *Mixing: Principles and Applications.* Wiley.\n"
-    }
-   ]
-  }
- ]
+  ]
 }

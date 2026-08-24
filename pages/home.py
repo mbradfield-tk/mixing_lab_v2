@@ -33,7 +33,7 @@ page = Markdown(
 **Mixing Lab** is an engineering toolkit for characterising mixing sensitivity and comparing
 agitated vessels for experimental design or scale-up. It combines equipment, fluid, reaction and particle databases
 with hydrodynamic, mixing, and mass- and heat-transfer calculations so you can
-assess whether a vessel is fit for a given process, compare candidate vessels, determine sale-up suitability
+assess whether a vessel is fit for a given process, compare candidate vessels, determine scale-up suitability
 and document the results as PDF reports.
 
 Use the menu on the left to navigate between sections.

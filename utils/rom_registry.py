@@ -334,7 +334,7 @@ def compute_reactor_hydro_with_mode(
         t_blend = c.func(**kw)
         sources["blend_time"] = c.name
     else:
-        t_blend = blend_time_turbulent(Nq_val, V, D_imp, N)
+        t_blend = blend_time_turbulent(Np_val, N, D_imp, D_tank, H)
 
     # -- eps_max --
     c = _corr_cache["epsilon_max"]
@@ -342,7 +342,7 @@ def compute_reactor_hydro_with_mode(
         eps_max_val = c.func(**kw)
         sources["epsilon_max"] = c.name
     else:
-        eps_max_val = epsilon_max_estimate(P, rho, D_imp, N)
+        eps_max_val = epsilon_max_estimate(Np_val, N, D_imp)
 
     # -- Micromixing time --
     c = _corr_cache["micromixing_time"]

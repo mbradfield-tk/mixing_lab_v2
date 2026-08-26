@@ -185,6 +185,29 @@ def test_aqueous_organic_pairs_split(aqueous, organic):
         f"{aqueous} + {organic} reported {m['assessment']!r}"
 
 
+@pytest.mark.parametrize("alkane", ["Hexane", "Heptane"])
+def test_acetic_acid_alkane_is_not_fully_miscible(alkane):
+    """AcOH/alkane sits near its UCST at RT; must not read as a clean blend."""
+    m = solvent_miscibility("Acetic Acid", alkane)
+    assert m["miscible"] is False
+    assert not m.get("reactive")
+
+
+@pytest.mark.parametrize("ether", ["Diethyl Ether", "MTBE"])
+def test_dmso_ether_is_immiscible(ether):
+    """Standard miscibility charts mark DMSO immiscible with ethers."""
+    m = solvent_miscibility("DMSO", ether)
+    assert m["miscible"] is False
+    assert not m.get("reactive")
+
+
+@pytest.mark.parametrize("amide", ["DMF", "NMP"])
+def test_k2co3_salts_out_amides(amide):
+    m = solvent_miscibility("47% K2CO3 (aq)", amide)
+    assert m["miscible"] is False
+    assert not m.get("reactive")
+
+
 def test_borderline_hansen_band_is_not_miscible():
     """The 15-25 MPa^0.5 band is a phase-split risk, not a clean blend."""
     assert miscibility_assessment(20.0)["miscible"] is False

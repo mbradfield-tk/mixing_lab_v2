@@ -764,6 +764,9 @@ _IMMISCIBLE: set[frozenset[str]] = {
         ("Heptane", "DMF"),
         ("Heptane", "NMP"),
         ("Heptane", "Acetonitrile"),
+        # DMSO is also immiscible with ethers (standard miscibility chart)
+        ("DMSO", "Diethyl Ether"),
+        ("DMSO", "MTBE"),
     ]
 }
 
@@ -790,6 +793,8 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
         # Salting-out: conc. K2CO3 / 6 M NaOH reduce mutual solubility
         ("47% K2CO3 (aq)", "Ethanol"),
         ("47% K2CO3 (aq)", "Methanol"),
+        ("47% K2CO3 (aq)", "DMF"),
+        ("47% K2CO3 (aq)", "NMP"),
         ("6 M NaOH (aq)", "THF"),
         ("6 M NaOH (aq)", "Acetonitrile"),
         ("6 M NaOH (aq)", "Acetone"),
@@ -798,6 +803,8 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
         ("Hexane", "Methanol"),         # UCST ~34 °C
         ("Heptane", "Methanol"),        # partial at RT
         ("Toluene", "DMSO"),            # limited mutual solubility
+        ("Acetic Acid", "Hexane"),      # near-ambient UCST; Hansen Ra ≈ 16 (borderline)
+        ("Acetic Acid", "Heptane"),     # near-ambient UCST; Hansen Ra ≈ 16 (borderline)
     ]
 }
 

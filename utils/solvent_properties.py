@@ -668,6 +668,8 @@ def miscibility_assessment(
     """Assess miscibility based on Hansen distance R_a.
 
     Returns dict with keys: Ra, miscible (bool), assessment (str), color (str).
+    ``miscible`` is False for both the borderline and immiscible bands so
+    partial miscibility triggers the same phase-split warning as the lookup.
 
     Thresholds are calibrated for solvent–solvent pairs (larger than
     the polymer–solvent thresholds in Hansen 2007).  Aqueous systems
@@ -679,7 +681,7 @@ def miscibility_assessment(
                 "assessment": "Likely miscible",
                 "color": "green"}
     elif Ra < 25.0:
-        return {"Ra": Ra, "miscible": True,
+        return {"Ra": Ra, "miscible": False,
                 "assessment": "Partially miscible / borderline",
                 "color": "orange"}
     else:
@@ -701,7 +703,9 @@ def get_hsp(name: str, custom_fluids=None) -> tuple[float, float, float] | None:
         return (s.hsp_d, s.hsp_p, s.hsp_h)
     # Fallback: custom-fluid dataframe
     if custom_fluids is not None and not custom_fluids.empty:
-        _rows = custom_fluids[custom_fluids["fluid_name"] == name]
+        # Strip both sides: CSV-edited names often carry stray whitespace.
+        _names = custom_fluids["fluid_name"].astype(str).str.strip()
+        _rows = custom_fluids[_names == name.strip()]
         if not _rows.empty:
             _r = _rows.iloc[0]
             _d = float(_r.get("hsp_d", 0.0) or 0.0)
@@ -727,11 +731,9 @@ _IMMISCIBLE: set[frozenset[str]] = {
         ("Water", "Chloroform"),
         ("Water", "Hexane"),
         ("Water", "Heptane"),
-        ("Water", "Diethyl Ether"),
         # Aqueous solutions – same immiscibility as water
         ("6 M NaOH (aq)", "Toluene"),
         ("6 M NaOH (aq)", "DCM"),
-        ("6 M NaOH (aq)", "Chloroform"),
         ("6 M NaOH (aq)", "Hexane"),
         ("6 M NaOH (aq)", "Heptane"),
         ("6 M NaOH (aq)", "Diethyl Ether"),
@@ -747,6 +749,12 @@ _IMMISCIBLE: set[frozenset[str]] = {
         ("47% K2CO3 (aq)", "Hexane"),
         ("47% K2CO3 (aq)", "Heptane"),
         ("47% K2CO3 (aq)", "Diethyl Ether"),
+        # Salting-out: conc. K2CO3 splits water-miscible organics (SALLE)
+        ("47% K2CO3 (aq)", "THF"),
+        ("47% K2CO3 (aq)", "Acetonitrile"),
+        ("47% K2CO3 (aq)", "Acetone"),
+        ("47% K2CO3 (aq)", "Isopropanol (IPA)"),
+        ("47% K2CO3 (aq)", "1,4-Dioxane"),
         # Hydrocarbon–polar aprotic
         ("Hexane", "DMSO"),
         ("Hexane", "DMF"),
@@ -765,6 +773,7 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
         ("Water", "MTBE"),              # ~4% solubility
         ("Water", "2-MeTHF"),           # limited miscibility
         ("Water", "MEK"),               # ~24% in water at 20 °C
+        ("Water", "Diethyl Ether"),     # ~6.9% ether in water / ~1.2% water in ether
         # Aqueous solutions – same partial miscibility as water
         ("6 M NaOH (aq)", "Ethyl Acetate"),
         ("6 M NaOH (aq)", "MTBE"),
@@ -778,9 +787,71 @@ _PARTIALLY_MISCIBLE: set[frozenset[str]] = {
         ("47% K2CO3 (aq)", "MTBE"),
         ("47% K2CO3 (aq)", "2-MeTHF"),
         ("47% K2CO3 (aq)", "MEK"),
+        # Salting-out: conc. K2CO3 / 6 M NaOH reduce mutual solubility
+        ("47% K2CO3 (aq)", "Ethanol"),
+        ("47% K2CO3 (aq)", "Methanol"),
+        ("6 M NaOH (aq)", "THF"),
+        ("6 M NaOH (aq)", "Acetonitrile"),
+        ("6 M NaOH (aq)", "Acetone"),
+        ("6 M NaOH (aq)", "Isopropanol (IPA)"),
+        ("6 M NaOH (aq)", "1,4-Dioxane"),
         ("Hexane", "Methanol"),         # UCST ~34 °C
         ("Heptane", "Methanol"),        # partial at RT
         ("Toluene", "DMSO"),            # limited mutual solubility
+    ]
+}
+
+# Pairs that react chemically on mixing — physical miscibility is moot.
+# Maps the pair to a short reason shown in the screening table, so the user
+# sees *what* happens rather than a generic warning.
+_REACTIVE: dict[frozenset[str], str] = {
+    frozenset({a, b}): reason for a, b, reason in [
+        # TFAA hydrolyses / solvolyses exothermically
+        ("Trifluoroacetic Anhydride", "Water",
+         "hydrolyses exothermically to trifluoroacetic acid"),
+        ("Trifluoroacetic Anhydride", "Methanol",
+         "solvolyses exothermically to the trifluoroacetate ester"),
+        ("Trifluoroacetic Anhydride", "Ethanol",
+         "solvolyses exothermically to the trifluoroacetate ester"),
+        ("Trifluoroacetic Anhydride", "Isopropanol (IPA)",
+         "solvolyses exothermically to the trifluoroacetate ester"),
+        ("Trifluoroacetic Anhydride", "6 M NaOH (aq)",
+         "violent hydrolysis / neutralisation"),
+        ("Trifluoroacetic Anhydride", "36% HCl (aq)",
+         "hydrolyses exothermically in aqueous acid"),
+        ("Trifluoroacetic Anhydride", "47% K2CO3 (aq)",
+         "violent hydrolysis; evolves CO2"),
+        # TFAA activates carboxylic acids and polar aprotic solvents
+        ("Trifluoroacetic Anhydride", "Acetic Acid",
+         "forms the mixed acetic–trifluoroacetic anhydride"),
+        ("Trifluoroacetic Anhydride", "DMSO",
+         "Swern-type activation — strongly exothermic, evolves CO/CO2"),
+        ("Trifluoroacetic Anhydride", "DMF",
+         "forms a Vilsmeier-type iminium adduct; exothermic"),
+        ("Trifluoroacetic Anhydride", "NMP",
+         "acylates the amide to an activated iminium species; exothermic"),
+        # Acid–base neutralisation (exothermic; carbonate evolves CO2)
+        ("36% HCl (aq)", "6 M NaOH (aq)",
+         "strong acid–base neutralisation; highly exothermic"),
+        ("36% HCl (aq)", "47% K2CO3 (aq)",
+         "neutralisation; vigorous CO2 evolution"),
+        ("Trifluoroacetic Acid", "6 M NaOH (aq)",
+         "acid–base neutralisation; highly exothermic"),
+        ("Trifluoroacetic Acid", "47% K2CO3 (aq)",
+         "neutralisation; vigorous CO2 evolution"),
+        ("Acetic Acid", "6 M NaOH (aq)",
+         "acid–base neutralisation; highly exothermic"),
+        ("Acetic Acid", "47% K2CO3 (aq)",
+         "neutralisation; CO2 evolution"),
+        # Strong aqueous base degrades polar aprotic solvents
+        ("6 M NaOH (aq)", "DMSO",
+         "base-promoted DMSO decomposition — documented runaway risk on heating"),
+        ("6 M NaOH (aq)", "DMF",
+         "hydrolyses the amide to dimethylamine + formate"),
+        ("6 M NaOH (aq)", "NMP",
+         "hydrolyses the lactam ring to the amino-acid salt"),
+        ("6 M NaOH (aq)", "Chloroform",
+         "generates dichlorocarbene with concentrated base — documented incompatibility"),
     ]
 }
 
@@ -799,8 +870,9 @@ def solvent_miscibility(name1: str, name2: str, custom_fluids=None) -> dict:
         computed for non-built-in fluids.
 
     Returns dict with keys:
-        miscible (bool), assessment (str), source (str),
-        Ra (float | None), hsp_1 (tuple | None), hsp_2 (tuple | None)
+        miscible (bool | None), assessment (str), source (str),
+        Ra (float | None), hsp_1 (tuple | None), hsp_2 (tuple | None),
+        and reactive=True for chemically incompatible pairs.
     """
     # Resolve aliases to canonical names
     _n1 = resolve_solvent_name(name1) or name1
@@ -815,6 +887,12 @@ def solvent_miscibility(name1: str, name2: str, custom_fluids=None) -> dict:
     if _n1 == _n2:
         return {"miscible": True, "assessment": "Same solvent — miscible",
                 "source": "identity", "Ra": 0.0, "hsp_1": hsp1, "hsp_2": hsp2}
+
+    # Chemical incompatibility trumps physical miscibility
+    if pair in _REACTIVE:
+        return {"miscible": False, "reactive": True,
+                "assessment": f"⚠️ Reactive — {_REACTIVE[pair]}",
+                "source": "lookup", "Ra": Ra, "hsp_1": hsp1, "hsp_2": hsp2}
 
     # Check known lookup
     if pair in _IMMISCIBLE:

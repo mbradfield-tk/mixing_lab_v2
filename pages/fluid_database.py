@@ -334,6 +334,13 @@ def on_blend_amount_edit(state, var_name, payload):
     state.blend_input_df = db.apply_edit(state.blend_input_df.copy(), payload)
 
 
+def _join_pairs(pairs: list[str], limit: int = 3) -> str:
+    """Render offending pair labels for a status line, truncating long lists."""
+    if len(pairs) <= limit:
+        return "; ".join(pairs)
+    return "; ".join(pairs[:limit]) + f"; +{len(pairs) - limit} more"
+
+
 def on_blend_compute(state):
     inp = state.blend_input_df
     if inp.empty:
@@ -413,24 +420,38 @@ def on_blend_compute(state):
     state.blend_result_df = pd.DataFrame(rows)
 
     # Pairwise miscibility screening
-    misc_rows, any_immiscible = [], False
+    misc_rows = []
+    reactive_pairs, immiscible_pairs, unknown_pairs = [], [], []
     for n1, n2 in combinations(comps, 2):
         m = solvent_miscibility(n1, n2, custom_fluids=state.fluid_df)
+        label = f"{n1} / {n2}"
         misc_rows.append({
-            "Pair": f"{n1} / {n2}",
+            "Pair": label,
             "Assessment": m["assessment"],
             "R_a (MPa½)": f"{m['Ra']:.1f}" if m.get("Ra") is not None else "—",
             "Source": m["source"],
         })
-        if m["miscible"] is False:
-            any_immiscible = True
+        if m.get("reactive"):
+            reactive_pairs.append(label)
+        elif m["miscible"] is False:
+            immiscible_pairs.append(label)
+        elif m["miscible"] is None:
+            unknown_pairs.append(label)
     state.blend_misc_df = pd.DataFrame(misc_rows) if misc_rows else pd.DataFrame(
         columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
 
-    if any_immiscible:
-        state.blend_status = ("⚠️ One or more pairs are immiscible / partially miscible — "
+    if reactive_pairs:
+        state.blend_status = (f"⚠️ Reacts chemically on mixing ({_join_pairs(reactive_pairs)}) — "
+                              "this is not a physical blend; averaged properties do not apply.")
+        notify(state, "E", "Reactive pair detected.")
+    elif immiscible_pairs:
+        state.blend_status = (f"⚠️ Immiscible / partially miscible ({_join_pairs(immiscible_pairs)}) — "
                               "the blend may split into phases; averaged properties may not apply.")
         notify(state, "W", "Immiscible pair detected.")
+    elif unknown_pairs:
+        state.blend_status = (f"❔ Miscibility unknown — no HSP data for {_join_pairs(unknown_pairs)}. "
+                              f"If single-phase: ρ = {blend_rho:.1f} kg/m³, μ = {blend_mu:.6f} Pa·s.")
+        notify(state, "I", "Some pairs have unknown miscibility.")
     else:
         state.blend_status = f"🟢 Single-phase blend: ρ = {blend_rho:.1f} kg/m³, μ = {blend_mu:.6f} Pa·s."
         notify(state, "S", "Blend computed.")
@@ -577,6 +598,8 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 <|{blend_result_df}|table|width=100%|show_all|>
 
 ### Miscibility screening
+_Screening reflects ~25 °C behaviour; temperature effects (e.g. hexane/methanol UCST ≈ 34 °C) are not modeled._
+
 <|{blend_misc_df}|table|width=100%|show_all|>
 |>
 |>

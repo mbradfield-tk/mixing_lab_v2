@@ -117,6 +117,18 @@ blend_misc_df = pd.DataFrame(columns=["Pair", "Assessment", "R_a (MPa½)", "Sour
 blend_status = "Select two or more components and enter amounts, then compute."
 
 
+def _phase_placeholder_fig(msg: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_annotation(x=0.5, y=0.5, text=msg, showarrow=False, font={"size": 13})
+    fig.update_xaxes(visible=False, range=[0, 1])
+    fig.update_yaxes(visible=False, range=[0, 1])
+    fig.update_layout(height=430, margin={"t": 30, "b": 10})
+    return fig
+
+
+blend_phase_fig = _phase_placeholder_fig("Compute a blend to see the predicted phase stratification.")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -341,6 +353,101 @@ def _join_pairs(pairs: list[str], limit: int = 3) -> str:
     return "; ".join(pairs[:limit]) + f"; +{len(pairs) - limit} more"
 
 
+_PHASE_COLORS = ["#4E79A7", "#F28E2B", "#76B7B2", "#59A14F",
+                 "#B07AA1", "#EDC948", "#E15759", "#9C755F"]
+
+
+def _build_phase_fig(comp_props: list[dict], pair_misc: dict) -> go.Figure:
+    """Vessel diagram of settled liquid phases stacked by density.
+
+    Components are partitioned into the FEWEST phases such that every pair
+    within a phase is assessed miscible (exhaustive search with pruning —
+    order-independent, unlike a greedy pass where a bridging solvent picked
+    early can block the correct grouping).  Phases then settle by density
+    (densest at the bottom); layer height is proportional to volume fraction.
+    """
+    def _misc(a: str, b: str):
+        m = pair_misc.get((a, b)) or pair_misc.get((b, a))
+        return m["miscible"] if m else None
+
+    best: list[list[dict]] = [[cp] for cp in comp_props]
+
+    def _assign(i: int, groups: list[list[dict]]) -> None:
+        nonlocal best
+        if len(groups) >= len(best):
+            return  # cannot beat the best partition found so far
+        if i == len(comp_props):
+            best = [g[:] for g in groups]
+            return
+        cp = comp_props[i]
+        for g in groups:
+            if all(_misc(cp["name"], other["name"]) is True for other in g):
+                g.append(cp)
+                _assign(i + 1, groups)
+                g.pop()
+        groups.append([cp])
+        _assign(i + 1, groups)
+        groups.pop()
+
+    _assign(0, [])
+    groups = best
+
+    phase_of = {cp["name"]: i for i, g in enumerate(groups) for cp in g}
+    phases = []
+    for members in groups:
+        vol = sum(cp["vol_frac"] for cp in members)
+        mass = sum(cp["mass_frac"] for cp in members)
+        rho = mass / sum(cp["mass_frac"] / cp["rho_kg_m3"] for cp in members)
+        phases.append({"label": " + ".join(cp["name"] for cp in members),
+                       "vol": vol, "rho": rho})
+    phases.sort(key=lambda p: p["rho"], reverse=True)  # densest settles to the bottom
+
+    # Was any cross-phase pair only "unknown" (no data) rather than immiscible?
+    unknown_split = any(
+        m["miscible"] is None and phase_of[n1] != phase_of[n2]
+        for (n1, n2), m in pair_misc.items())
+
+    x0, x1 = 0.22, 0.78
+    liquid_top = 0.82  # liquid fills 82% of vessel height (headspace above)
+    fig = go.Figure()
+    y = 0.0
+    for i, ph in enumerate(phases):  # bottom-up
+        h = ph["vol"] * liquid_top
+        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y, y1=y + h,
+                      fillcolor=_PHASE_COLORS[i % len(_PHASE_COLORS)],
+                      opacity=0.75, line={"width": 0}, layer="below")
+        fig.add_annotation(
+            x=(x0 + x1) / 2, y=y + h / 2,
+            text=(f"<b>{ph['label']}</b><br>"
+                  f"{ph['vol'] * 100:.1f} vol% · ρ ≈ {ph['rho']:.0f} kg/m³"),
+            showarrow=False, font={"size": 12, "color": "#2A2E33"},
+            bgcolor="rgba(255,255,255,0.75)")
+        y += h
+    # Vessel outline (open top)
+    fig.add_shape(type="line", x0=x0, x1=x1, y0=0, y1=0,
+                  line={"color": "#808080", "width": 3})
+    fig.add_shape(type="line", x0=x0, x1=x0, y0=0, y1=1.0,
+                  line={"color": "#808080", "width": 3})
+    fig.add_shape(type="line", x0=x1, x1=x1, y0=0, y1=1.0,
+                  line={"color": "#808080", "width": 3})
+    # Liquid surface line
+    fig.add_shape(type="line", x0=x0, x1=x1, y0=liquid_top, y1=liquid_top,
+                  line={"color": "#808080", "width": 1, "dash": "dot"})
+
+    n_ph = len(phases)
+    title = ("Single-phase blend (settled)" if n_ph == 1
+             else f"Predicted stratification — {n_ph} liquid phases (settled)")
+    if unknown_split and n_ph > 1:
+        fig.add_annotation(x=0.5, y=1.06, showarrow=False,
+                           font={"size": 11},
+                           text="❔ Some pairs lack miscibility data — split is indicative only.")
+    fig.update_xaxes(visible=False, range=[0, 1])
+    fig.update_yaxes(visible=False, range=[-0.04, 1.12])
+    fig.update_layout(height=430, margin={"t": 40, "b": 10},
+                      title={"text": title, "x": 0.5, "xanchor": "center"})
+    return fig
+
+
 def on_blend_compute(state):
     inp = state.blend_input_df
     if inp.empty:
@@ -421,9 +528,11 @@ def on_blend_compute(state):
 
     # Pairwise miscibility screening
     misc_rows = []
+    pair_misc: dict[tuple[str, str], dict] = {}
     reactive_pairs, immiscible_pairs, unknown_pairs = [], [], []
     for n1, n2 in combinations(comps, 2):
         m = solvent_miscibility(n1, n2, custom_fluids=state.fluid_df)
+        pair_misc[(n1, n2)] = m
         label = f"{n1} / {n2}"
         misc_rows.append({
             "Pair": label,
@@ -439,6 +548,13 @@ def on_blend_compute(state):
             unknown_pairs.append(label)
     state.blend_misc_df = pd.DataFrame(misc_rows) if misc_rows else pd.DataFrame(
         columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
+
+    if reactive_pairs:
+        state.blend_phase_fig = _phase_placeholder_fig(
+            "⚠️ Reactive pair — chemical reaction on mixing;<br>"
+            "physical phase stratification does not apply.")
+    else:
+        state.blend_phase_fig = _build_phase_fig(comp_props, pair_misc)
 
     if reactive_pairs:
         state.blend_status = (f"⚠️ Reacts chemically on mixing ({_join_pairs(reactive_pairs)}) — "
@@ -601,6 +717,13 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 _Screening reflects ~25 °C behaviour; temperature effects (e.g. hexane/methanol UCST ≈ 34 °C) are not modeled._
 
 <|{blend_misc_df}|table|width=100%|show_all|>
+
+### Phase stratification
+_Settled (unagitated) liquid levels predicted from pairwise miscibility and phase density —
+densest phase at the bottom. Layer heights are proportional to volume; mutual solubility
+between phases is neglected._
+
+<|chart|figure={blend_phase_fig}|height=450px|>
 |>
 |>
 

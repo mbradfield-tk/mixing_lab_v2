@@ -16,9 +16,29 @@ REFERENCES (per function)
         Ref: Lamont & Scott (1970), AIChE J. 16, 513.  [NOT in context/ - verify]
     gas_flooding_speed (N_flood at FlG = 30 Fr (D/T)^3.5)
         Ref: Smith et al. (1987). [see Equation 11-4]
+    gas_holdup_calderbank (vessel-averaged gas holdup, Eq. 17)
+        Ref: Calderbank (1958), Trans. Inst. Chem. Eng. 36, 443.
+        [NOT in context/ - verify]   <-- requires P/V in W/m^3
 """
 
 import numpy as np
+from sympy import symbols, solve
+
+def gas_holdup_calderbank(
+    P_V: float,
+    U_s: float,
+    rho_C: float,
+    sigma: float,
+    U_t: float = 0.265,
+) -> float:
+    """Vessel-averaged gas holdup from the Calderbank correlation."""
+    if P_V < 0 or U_s <= 0 or rho_C <= 0 or sigma <= 0 or U_t <= 0:
+        return 0.0
+
+    a = np.sqrt(U_s / U_t)
+    B = 0.000216 * (P_V**0.4 * rho_C**0.2 / sigma**0.6) * a
+    x = 0.5 * (a + np.sqrt(a * a + 4.0 * B))
+    return float(x * x)
 
 
 def kla_vant_riet(P_V: float, v_s: float, coalescing: bool = True) -> float:
@@ -94,3 +114,21 @@ def complete_dispersion_flow_rate(
     if D <= 0 or T <= 0 or g <= 0:
         return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
     return 0.2 * np.asarray(N) ** 2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)
+
+def gas_holdup_calderbank_symbolic(
+    P_V: float,
+    U_s: float,
+    rho_C: float,
+    sigma: float,
+    U_t: float = 0.265,
+) -> float:
+    """Vessel-averaged gas holdup from the Calderbank correlation (symbolic solution)."""
+    if P_V < 0 or U_s <= 0 or rho_C <= 0 or sigma <= 0 or U_t <= 0:
+        return 0.0
+
+    a = np.sqrt(U_s / U_t)
+    B = 0.000216 * (P_V**0.4 * rho_C**0.2 / sigma**0.6) * a
+    x = symbols('x', positive=True)
+    eq = x * (x - a) - B
+    sol = solve(eq, x)
+    return float(sol[0]**2) if sol else 0.0

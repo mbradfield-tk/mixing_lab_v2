@@ -748,7 +748,9 @@ def _build_env_fig(state):
     _plot_area = max(fig_height - _t_margin - 40, 120)
     _legend_y = 1 + 45 / _plot_area
     fig.update_layout(height=fig_height, margin={"t": _t_margin, "b": 40},
-                      plot_bgcolor="rgba(225,37,27,0.06)", paper_bgcolor="white",
+                      # No explicit paper/font colors: Taipy swaps the plotly
+                      # template per theme, keeping legends legible in dark mode.
+                      plot_bgcolor="rgba(225,37,27,0.06)",
                       legend={"title": "Vessel", "orientation": "h", "y": _legend_y,
                               "yanchor": "bottom", "x": 0.5, "xanchor": "center"})
     state.vc_env_fig = fig

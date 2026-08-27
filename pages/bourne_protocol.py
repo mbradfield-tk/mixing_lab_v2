@@ -538,7 +538,9 @@ def _build_t1_plot(state):
                       annotation_position="bottom left")
     fig.update_layout(
         xaxis_title="Fill volume (L)", yaxis_title="Impeller speed (RPM)",
-        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.6)"),
+        # Dark legend text: the box stays white-ish even in Taipy dark mode.
+        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.75)",
+                    font=dict(color="#2A2E33")),
         margin=dict(l=10, r=10, t=30, b=10))
     state.bp_t1_plot = fig
 

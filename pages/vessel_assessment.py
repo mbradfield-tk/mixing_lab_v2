@@ -727,14 +727,15 @@ def _build_envelope(state, t_rxn: float):
             y=np.concatenate([y_hi, y_lo[::-1]]),
             fill="toself", fillcolor="rgba(92,102,112,0.22)",
             line={"width": 0}, hoverinfo="skip", showlegend=False), row=r, col=c)
-        # Max-volume boundary (solid) and min-volume boundary (dotted).
+        # Max-volume boundary (solid) and min-volume boundary (dotted) — mid
+        # gray stays visible on both the light and dark chart backgrounds.
         fig.add_trace(go.Scatter(
-            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#000000"},
+            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#808080"},
             name=f"V_max = {v_max:.0f} L", legendgroup="vmax",
             showlegend=first), row=r, col=c)
         fig.add_trace(go.Scatter(
             x=n_arr, y=y_lo, mode="lines",
-            line={"width": 2, "color": "#000000", "dash": "dot"},
+            line={"width": 2, "color": "#808080", "dash": "dot"},
             name=f"V_min = {v_min:.0f} L", legendgroup="vmin",
             showlegend=first), row=r, col=c)
         # Current operating point (red star).
@@ -757,7 +758,9 @@ def _build_envelope(state, t_rxn: float):
     _legend_y = 1 + 45 / _plot_area
     fig.update_layout(
         height=fig_height, margin={"t": _t_margin, "b": 40},
-        plot_bgcolor="rgba(225,37,27,0.06)", paper_bgcolor="white",
+        # No explicit paper/font colors: Taipy swaps the plotly template per
+        # theme, so legends/titles/axes stay legible in both light and dark mode.
+        plot_bgcolor="rgba(225,37,27,0.06)",
         legend={"orientation": "h", "y": _legend_y, "yanchor": "bottom",
                 "x": 0.5, "xanchor": "center"})
     state.va_env_fig = fig

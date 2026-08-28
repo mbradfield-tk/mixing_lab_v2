@@ -22,7 +22,6 @@ REFERENCES (per function)
 """
 
 import numpy as np
-from sympy import symbols, solve
 
 def gas_holdup_calderbank(
     P_V: float,
@@ -115,20 +114,23 @@ def complete_dispersion_flow_rate(
         return np.zeros_like(N, dtype=float) if isinstance(N, np.ndarray) else 0.0
     return 0.2 * np.asarray(N) ** 2 * D**3 * (D / T) ** 0.5 * np.sqrt(D / g)
 
-def gas_holdup_calderbank_symbolic(
+def gas_holdup_calderbank_numeric(
     P_V: float,
     U_s: float,
     rho_C: float,
     sigma: float,
     U_t: float = 0.265,
 ) -> float:
-    """Vessel-averaged gas holdup from the Calderbank correlation (symbolic solution)."""
+    """Vessel-averaged gas holdup from the Calderbank correlation (numpy root solver).
+
+    Solves x*(x - a) - B = 0 for x = sqrt(holdup) via numpy.roots and
+    returns the square of the positive root.
+    """
     if P_V < 0 or U_s <= 0 or rho_C <= 0 or sigma <= 0 or U_t <= 0:
         return 0.0
 
     a = np.sqrt(U_s / U_t)
     B = 0.000216 * (P_V**0.4 * rho_C**0.2 / sigma**0.6) * a
-    x = symbols('x', positive=True)
-    eq = x * (x - a) - B
-    sol = solve(eq, x)
-    return float(sol[0]**2) if sol else 0.0
+    roots = np.roots([1.0, -a, -B])  # x^2 - a*x - B = 0
+    positive = [r.real for r in roots if abs(r.imag) < 1e-12 and r.real > 0]
+    return float(max(positive) ** 2) if positive else 0.0

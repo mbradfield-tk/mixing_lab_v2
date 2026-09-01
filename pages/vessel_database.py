@@ -361,6 +361,9 @@ def _fill_caption(res: dict) -> str:
         base = (f"Liquid surface at **{res['level_mm']:+.0f} mm** relative to the bottom "
                 f"tangent line ({res['fill_pct']:.0f}% of the {res['total_L']:,.1f} L "
                 f"brim-full volume).")
+        area = res.get("contact_area_m2")
+        if area is not None:
+            base += f" Wetted contact area ≈ **{area:,.2f} m²**."
     warns = res.get("warnings") or []
     if warns:
         base += "\n\n⚠️ **Impeller–wall interference:** " + " ".join(warns)

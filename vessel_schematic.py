@@ -27,6 +27,8 @@ import pandas as pd
 from matplotlib.patches import Arc
 import matplotlib.pyplot as plt
 
+from utils.calculations.heat_transfer import estimate_jacket_area
+
 _IMP_COLORS = ["#1976D2", "#F57C00", "#388E3C"]
 _IMP_SOLIDITY = 0.20  # fraction of the swept impeller disc that is solid metal
 
@@ -205,7 +207,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         msg = ("<!DOCTYPE html><html><body style='font-family:sans-serif;"
                "color:#8a6d3b;padding:12px;'>Insufficient geometry data "
                "(needs tank ID and height) to draw a schematic.</body></html>")
-        return {"html": msg, "aspect": 1.4, "total_L": 0.0, "level_mm": None, "fill_pct": None}
+        return {"html": msg, "aspect": 1.4, "total_L": 0.0, "level_mm": None, "fill_pct": None,
+                "contact_area_m2": None}
 
     R, H = geom["R"], geom["H"]
     bot_depth, top_depth = geom["bot_depth"], geom["top_depth"]
@@ -217,10 +220,13 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # Liquid surface height from the fill volume (invert the capacity curve).
     level = None
     fill_pct = None
+    contact_area_m2 = None
     if fill_L is not None and fill_L > 0 and total_L > 0:
         fill_L = min(float(fill_L), total_L)
         level = float(np.interp(fill_L / 1000.0, geom["cap_grid"], geom["z_grid"]))
         fill_pct = fill_L / total_L * 100.0
+        # Wetted wall area (m^2), measured from the true bottom of the dish.
+        contact_area_m2 = estimate_jacket_area(geom["D"], level + bot_depth, geom["bottom"])
 
     lowest_imp_y = min((c[1] for c in impellers), default=0.0)
 
@@ -418,6 +424,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         "total_L": total_L,
         "level_mm": (level * 1000.0) if level is not None else None,
         "fill_pct": fill_pct,
+        "contact_area_m2": contact_area_m2,
         "warnings": warnings,
         "wall_cut": bool(warnings),
     }

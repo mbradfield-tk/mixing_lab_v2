@@ -9,7 +9,5 @@ __pycache__/
 *.bat
 
 # Local scripts
-scripts/plot_nmin_c_alpha.py
 scripts/plot_gas_dispersion_limits.py
-scripts/plot_nmin_vs_vhb.py
 utils/calculations/gas_liquid.py

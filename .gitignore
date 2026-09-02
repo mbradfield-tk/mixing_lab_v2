@@ -10,3 +10,4 @@ __pycache__/
 
 # Local scripts
 scripts/plot_gas_dispersion_limits.py
+utils/calculations/gas_liquid.py

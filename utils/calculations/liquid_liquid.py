@@ -91,6 +91,17 @@ def minimum_dispersion_speed(D_imp: float, sigma_LL: float,
     C = 1.03
     return C * (sigma_LL / (rho_c * D_imp**3))**0.5 * (1.0 + 2.5 * phi_d)
 
+def n_min_van_heuven_beek(d_imp: float, phi: float, rho_c: float,
+                          rho_d: float, mu_c: float, sigma: float) -> float:
+    """Van Heuven & Beek (1971) minimum emulsification speed, rev/s."""
+    d_rho = abs(rho_d - rho_c)
+    if d_rho <= 0 or d_imp <= 0:
+        return np.nan
+    rho_m = phi * rho_d + (1.0 - phi) * rho_c
+    return (3.28 * (G * d_rho)**0.385 * mu_c**0.0769 * sigma**0.0769
+            * (1.0 + 2.5 * phi)**0.897 / (d_imp**0.769 * rho_m**0.538))
+
+
 
 def liquid_liquid_mass_transfer(d32: float, D_mol: float,
                                 rho_c: float, mu_c: float,

@@ -1,0 +1,13 @@
+﻿# VS Code settings
+.vscode/
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Batch files
+*.bat
+
+# Local scripts
+scripts/plot_gas_dispersion_limits.py
+utils/calculations/gas_liquid.py

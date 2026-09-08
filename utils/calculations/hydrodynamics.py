@@ -42,11 +42,11 @@ def power_number_correlation(Re: float, Np_turb: float = 5.0) -> float:
     """
     Simplified Power-number model (turbulent plateau).
     Np ≈ Np_turb for Re > ~10 000; laminar correction for low Re.
-    """
-    if Re < 10:
-        return 70 / Re          # laminar
-    elif Re < 10000:
-        return Np_turb * (Re / 10000)**0.18  # transitional (approx)
+    # """
+    # if Re < 10:
+    #     return 70 / Re          # laminar
+    # elif Re < 10000:
+    #     return Np_turb * (Re / 10000)**0.18  # transitional (approx)
     return Np_turb              # turbulent
 
 

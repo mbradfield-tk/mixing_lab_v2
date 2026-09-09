@@ -157,6 +157,27 @@ ms_bourne_meta_caption = ""
 # ---------------------------------------------------------------------------
 ms_kinetics_avail = ms_kinetics_options[0]
 ms_reaction = reaction_options[0] if reaction_options else ""
+ms_rxn_order_options = ["0", "1", "2", "pseudo-1", "pseudo-2"]
+
+
+def _kin_defaults(name: str) -> dict:
+    """Database values for the editable reaction-conditions summary."""
+    row = _reaction_row(name) if name else pd.Series(dtype=object)
+    order = str(row.get("order", "1") or "1")
+    if order not in ms_rxn_order_options:
+        order = "1"
+    return {"order": order, "k": _sf(row.get("k_value")), "C0": _sf(row.get("C0_mol_L")),
+            "t_rxn": _sf(row.get("t_rxn_s")), "T": _sf(row.get("T_C"), 25.0),
+            "dH": _sf(row.get("delta_H_kJ_mol"))}
+
+
+_kd0 = _kin_defaults(ms_reaction)
+ms_rxn_order = _kd0["order"]
+ms_rxn_k = _kd0["k"]
+ms_rxn_c0 = _kd0["C0"]
+ms_rxn_trxn = _kd0["t_rxn"]
+ms_rxn_T = _kd0["T"]
+ms_rxn_dh = _kd0["dH"]
 ms_semi_batch = "Off"
 ms_semi_batch_options = ["Off", "On"]
 ms_kinetics_md = ""
@@ -267,15 +288,13 @@ def _recompute(state):
             "caution", "Bourne results **inconclusive** — Test 1 was not completed, so "
             "experimental mixing sensitivity is undetermined. Complete at least Test 1.")
 
-    # ---- Step 1: kinetics ----------------------------------------------
+    # ---- Step 1: kinetics (user-editable, seeded from the database) -----
     row = _reaction_row(state.ms_reaction)
-    order = str(row.get("order", "1"))
-    k = _sf(row.get("k_value"))
-    C0 = _sf(row.get("C0_mol_L"))
-    t_specified = _sf(row.get("t_rxn_s"))
-    dH = _sf(row.get("delta_H_kJ_mol"))
-    T = _sf(row.get("T_C"), 25.0)
-    solvent = str(row.get("solvent", "") or "")
+    order = str(state.ms_rxn_order or "1")
+    k = _sf(state.ms_rxn_k)
+    C0 = _sf(state.ms_rxn_c0)
+    t_specified = _sf(state.ms_rxn_trxn)
+    dH = _sf(state.ms_rxn_dh)
     rxn_type = str(row.get("type", "") or "")
 
     if t_specified > 0:
@@ -761,17 +780,28 @@ def _build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
 # ---------------------------------------------------------------------------
 def on_ms_reaction_change(state):
     row = _reaction_row(state.ms_reaction)
+    kd = _kin_defaults(state.ms_reaction)
+    state.ms_rxn_order = kd["order"]
+    state.ms_rxn_k = kd["k"]
+    state.ms_rxn_c0 = kd["C0"]
+    state.ms_rxn_trxn = kd["t_rxn"]
+    state.ms_rxn_T = kd["T"]
+    state.ms_rxn_dh = kd["dH"]
     solvent = str(row.get("solvent", "") or "")
-    T = _sf(row.get("T_C"), 25.0)
-    C0 = _sf(row.get("C0_mol_L"))
     # auto-fill volumetric heat capacity from the solvent when known
     if solvent and is_known_solvent(solvent):
         try:
-            p = get_properties(solvent, T, 1.0)
+            p = get_properties(solvent, kd["T"], 1.0)
             state.ms_rho_cp = round(p["rho_kg_m3"] * p["Cp_J_per_kgK"] / 1000.0, 1)
         except Exception:  # noqa: BLE001
             pass
-    state.ms_c0_heat = round(C0, 4) if C0 > 0 else 1.0
+    state.ms_c0_heat = round(kd["C0"], 4) if kd["C0"] > 0 else 1.0
+    _safe_recompute(state)
+
+
+def on_ms_kin_change(state, var_name=None, value=None):
+    if var_name == "ms_rxn_c0" and _sf(state.ms_rxn_c0) > 0:
+        state.ms_c0_heat = round(_sf(state.ms_rxn_c0), 4)
     _safe_recompute(state)
 
 
@@ -866,6 +896,13 @@ def on_ms_reset(state):
     state.ms_bourne_upload = ""
     state.ms_kinetics_avail = ms_kinetics_options[0]
     state.ms_reaction = reaction_options[0] if reaction_options else ""
+    kd = _kin_defaults(state.ms_reaction)
+    state.ms_rxn_order = kd["order"]
+    state.ms_rxn_k = kd["k"]
+    state.ms_rxn_c0 = kd["C0"]
+    state.ms_rxn_trxn = kd["t_rxn"]
+    state.ms_rxn_T = kd["T"]
+    state.ms_rxn_dh = kd["dH"]
     state.ms_semi_batch = "Off"
     state.ms_phases = ["Liquid"]
     state.ms_competing = "— select —"
@@ -967,6 +1004,24 @@ reference timescale for every mechanism below.
 <|{ms_kinetics_avail}|selector|lov={ms_kinetics_options}|dropdown|label=Are kinetics available?|on_change=on_ms_change|>
 
 <|{ms_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction|on_change=on_ms_reaction_change|>
+|>
+
+**Reaction conditions & kinetics** — auto-filled from the database; edit any value to override.
+
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{ms_rxn_order}|selector|lov={ms_rxn_order_options}|dropdown|label=Reaction order|on_change=on_ms_kin_change|>
+
+<|{ms_rxn_k}|number|label=Rate constant k (1/s or L/mol·s)|on_change=on_ms_kin_change|>
+
+<|{ms_rxn_c0}|number|label=C₀ (mol/L)|on_change=on_ms_kin_change|>
+|>
+
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{ms_rxn_trxn}|number|label=t_rxn (s, 0 = derive from k)|on_change=on_ms_kin_change|>
+
+<|{ms_rxn_T}|number|label=Temperature (°C)|on_change=on_ms_kin_change|>
+
+<|{ms_rxn_dh}|number|label=ΔH (kJ/mol)|on_change=on_ms_kin_change|>
 |>
 
 <|{ms_semi_batch}|toggle|lov={ms_semi_batch_options}|label=Semi-batch (fed-batch) process|class_name=onoff-toggle|on_change=on_ms_change|>

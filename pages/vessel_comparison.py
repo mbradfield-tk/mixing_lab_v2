@@ -238,6 +238,46 @@ vc_reaction = reaction_options[0] if reaction_options else ""
 vc_T_cool = 15.0
 vc_viewers_html = _viewers_html(vc_reactors)
 
+# Editable reaction conditions & kinetics (seeded from the database)
+vc_rxn_order_options = ["0", "1", "2", "pseudo-1", "pseudo-2"]
+
+
+def _kin_defaults(name: str) -> dict:
+    row = _reaction_row(name) if name else pd.Series(dtype=object)
+    order = str(row.get("order", "1") or "1")
+    if order not in vc_rxn_order_options:
+        order = "1"
+    return {"order": order, "k": _sf(row.get("k_value")), "C0": _sf(row.get("C0_mol_L")),
+            "t_rxn": _sf(row.get("t_rxn_s")), "dH": _sf(row.get("delta_H_kJ_mol"))}
+
+
+def _derive_trxn(order: str, k: float, C0: float, t_specified: float) -> float:
+    if t_specified > 0:
+        return t_specified
+    if order in ("1", "pseudo-1") and k > 0:
+        return 1.0 / k
+    if order in ("2", "pseudo-2") and k * C0 > 0:
+        return 1.0 / (k * C0)
+    return 1.0
+
+
+def _kin_caption(order: str, k: float, C0: float, t_spec: float, dH: float) -> str:
+    t = _derive_trxn(order, k, C0, t_spec)
+    basis = "specified" if t_spec > 0 else ("derived from k" if k > 0 else "fallback")
+    txt = f"Effective reaction time **t_rxn = {t:.4g} s** ({basis})  •  ΔH = {dH:.1f} kJ/mol"
+    if dH == 0.0:
+        txt += " (heat balance disabled)"
+    return txt
+
+
+_kd0 = _kin_defaults(vc_reaction)
+vc_rxn_order = _kd0["order"]
+vc_rxn_k = _kd0["k"]
+vc_rxn_c0 = _kd0["C0"]
+vc_rxn_trxn = _kd0["t_rxn"]
+vc_rxn_dh = _kd0["dH"]
+vc_rxn_caption = _kin_caption(vc_rxn_order, vc_rxn_k, vc_rxn_c0, vc_rxn_trxn, vc_rxn_dh)
+
 # Section 2: options
 vc_onoff_options = ["Off", "On"]
 
@@ -316,13 +356,27 @@ def on_vc_input_change(state):
 
 
 def on_vc_reaction_change(state):
-    """Auto-select the reaction's solvent + temperature when known."""
+    """Auto-select the reaction's solvent + temperature and refill the editable kinetics."""
     ctx = _reaction_context(state.vc_reaction)
+    kd = _kin_defaults(state.vc_reaction)
+    state.vc_rxn_order = kd["order"]
+    state.vc_rxn_k = kd["k"]
+    state.vc_rxn_c0 = kd["C0"]
+    state.vc_rxn_trxn = kd["t_rxn"]
+    state.vc_rxn_dh = kd["dH"]
+    state.vc_rxn_caption = _kin_caption(kd["order"], kd["k"], kd["C0"], kd["t_rxn"], kd["dH"])
     resolved = resolve_solvent_name(ctx["solvent"]) if ctx["solvent"] else None
     if resolved and resolved in fluid_options:
         state.vc_fluid = resolved
         if ctx["T_C"] > 0:
             state.vc_T = ctx["T_C"]
+    _mark_stale(state)
+
+
+def on_vc_kin_change(state):
+    state.vc_rxn_caption = _kin_caption(
+        str(state.vc_rxn_order or "1"), _sf(state.vc_rxn_k), _sf(state.vc_rxn_c0),
+        _sf(state.vc_rxn_trxn), _sf(state.vc_rxn_dh))
     _mark_stale(state)
 
 
@@ -571,7 +625,12 @@ def on_vc_compute(state):
         return
 
     rho, mu, D_mol, in_range, note = _fluid_props(state.vc_fluid, state.vc_T, state.vc_P)
-    rxn = _reaction_context(state.vc_reaction)
+    # user-editable kinetics override the database values
+    _order = str(state.vc_rxn_order or "1")
+    _k, _C0 = _sf(state.vc_rxn_k), _sf(state.vc_rxn_c0)
+    rxn = {"order": _order, "k": _k, "C0": _C0,
+           "t_rxn": _derive_trxn(_order, _k, _C0, _sf(state.vc_rxn_trxn)),
+           "dH": _sf(state.vc_rxn_dh)}
     incl_p = state.vc_incl_particles == "On" and _sf(state.vc_d50) > 0
     incl_h = rxn["dH"] != 0.0
     gas_on = state.vc_gas_mode == "On"
@@ -1038,6 +1097,24 @@ fluid and reaction system.
 
 <|{vc_T_cool}|number|label=Coolant temperature (°C)|on_change=on_vc_input_change|>
 |>
+
+**Reaction conditions & kinetics** — auto-filled from the database; edit any value to override.
+
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{vc_rxn_order}|selector|lov={vc_rxn_order_options}|dropdown|label=Reaction order|on_change=on_vc_kin_change|>
+
+<|{vc_rxn_k}|number|label=Rate constant k (1/s or L/mol·s)|on_change=on_vc_kin_change|>
+
+<|{vc_rxn_c0}|number|label=C₀ (mol/L)|on_change=on_vc_kin_change|>
+|>
+
+<|layout|columns=1 1|class_name=form-grid|
+<|{vc_rxn_trxn}|number|label=t_rxn (s, 0 = derive from k)|on_change=on_vc_kin_change|>
+
+<|{vc_rxn_dh}|number|label=ΔH (kJ/mol)|on_change=on_vc_kin_change|>
+|>
+
+<|{vc_rxn_caption}|text|mode=markdown|>
 |>
 
 <|part|class_name=va-card|

@@ -17,6 +17,10 @@ from pages import _db_common as db
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 REACTION_CSV = DATA_DIR / "reactions.csv"
 
+# Lightweight gate against accidental edits, matching the Vessel Database.
+ADMIN_USER = "admin"
+ADMIN_PW = "admin_tak_2026"
+
 COLUMNS = [
     "reaction_name", "type", "order", "k_value", "k_units", "C0_mol_L",
     "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "class", "notes", "reaction_scheme",
@@ -69,6 +73,12 @@ rxn_class_options = ["yes", "no"]
 
 reaction_upload = ""
 
+# Admin gate
+admin_authenticated = False
+admin_user = ""
+admin_pw = ""
+admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the databases."
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,10 +122,42 @@ def _searching(state) -> bool:
     return False
 
 
+def _require_admin(state) -> bool:
+    if not state.admin_authenticated:
+        notify(state, "W", "Editing is locked — unlock with admin credentials first.")
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Admin authentication
+# ---------------------------------------------------------------------------
+def on_admin_unlock(state):
+    if (state.admin_user or "").strip() == ADMIN_USER and (state.admin_pw or "") == ADMIN_PW:
+        state.admin_authenticated = True
+        state.admin_status = "🔓 Editing unlocked. Changes save automatically to the CSV."
+        state.admin_pw = ""
+        notify(state, "S", "Admin editing unlocked.")
+    else:
+        state.admin_authenticated = False
+        state.admin_status = "❌ Invalid credentials. Editing remains locked."
+        notify(state, "E", "Invalid admin credentials.")
+
+
+def on_admin_lock(state):
+    state.admin_authenticated = False
+    state.admin_user = ""
+    state.admin_pw = ""
+    state.admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the databases."
+    notify(state, "I", "Editing locked.")
+
+
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
 def on_reaction_edit(state, var_name, payload):
+    if not _require_admin(state):
+        return
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to edit the database.")
         return
@@ -125,6 +167,8 @@ def on_reaction_edit(state, var_name, payload):
 
 
 def on_reaction_delete(state, var_name, payload):
+    if not _require_admin(state):
+        return
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to edit the database.")
         return
@@ -134,6 +178,8 @@ def on_reaction_delete(state, var_name, payload):
 
 
 def on_reaction_add(state, var_name, payload):
+    if not _require_admin(state):
+        return
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to add to the database.")
         return
@@ -196,6 +242,8 @@ def on_reaction_add_row(state):
 
 
 def on_reaction_import(state):
+    if not _require_admin(state):
+        return
     path = state.reaction_upload
     if not path:
         return
@@ -219,23 +267,22 @@ page = Markdown(
 <|{reaction_msg}|text|>
 
 <|part|class_name=va-card|
-## Database
-Edit kinetic data inline — **every change is saved automatically**. Use the
-search box or column filters to narrow the table, the row actions to add or
-delete rows, or the **Add Reaction** form below for a validated entry.
+## Databases
+After unlocking the **Admin** panel, kinetic edits are saved automatically.
+Search and browse remain available while the databases are locked.
 
 <|part|height=18px|>
 
 <|Reaction classes|expandable|expanded=False|
 <|{reaction_class_search}|input|label=Search reaction classes|on_change=on_reaction_class_search|class_name=db-search|>
 
-<|{reaction_class_view_df}|table|editable={reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+<|{reaction_class_view_df}|table|editable={admin_authenticated and reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
 |>
 
 <|Measured kinetics|expandable|expanded=False|
 <|{reaction_measured_search}|input|label=Search measured kinetics|on_change=on_reaction_measured_search|class_name=db-search|>
 
-<|{reaction_measured_view_df}|table|editable={reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+<|{reaction_measured_view_df}|table|editable={admin_authenticated and reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
 |>
 |>
 
@@ -290,7 +337,26 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 <|layout|columns=1 3|
 <|Download CSV|file_download|content={reaction_export}|name=reactions_export.csv|label=Download reaction database|>
 
-<|{reaction_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_reaction_import|extensions=.csv|>
+<|{reaction_upload}|file_selector|label=Import CSV (replaces database)|on_action=on_reaction_import|extensions=.csv|active={admin_authenticated}|>
+|>
+|>
+
+<|part|class_name=va-card|
+## Admin
+<|{admin_status}|text|>
+
+<|part|render={not admin_authenticated}|
+<|layout|columns=230px 230px 150px|
+<|{admin_user}|input|label=Admin username|>
+
+<|{admin_pw}|input|password|label=Admin password|on_action=on_admin_unlock|>
+
+<|Unlock editing|button|on_action=on_admin_unlock|>
+|>
+|>
+
+<|part|render={admin_authenticated}|
+<|Lock editing|button|on_action=on_admin_lock|>
 |>
 |>
 """)

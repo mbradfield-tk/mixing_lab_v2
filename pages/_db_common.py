@@ -99,6 +99,22 @@ def fresh_csv(path: Path, columns: list[str] | None = None) -> pd.DataFrame:
         return df
 
 
+def reaction_names(df: pd.DataFrame, class_value: str | None = None) -> list[str]:
+    """Return sorted reaction names, optionally filtered by class flag.
+
+    ``class=yes`` denotes a general reaction class; every other value denotes
+    measured or project-specific kinetics for backwards-compatible imports.
+    """
+    if "reaction_name" not in df.columns:
+        return []
+    names = df["reaction_name"].dropna().astype(str)
+    if class_value is not None:
+        values = (df["class"].fillna("no").astype(str).str.strip().str.lower()
+                  if "class" in df.columns else pd.Series("no", index=df.index))
+        names = df.loc[values.eq(class_value.lower()), "reaction_name"].dropna().astype(str)
+    return sorted(names.unique().tolist())
+
+
 def csv_bytes(df: pd.DataFrame) -> bytes:
     """Return ``df`` encoded as UTF-8 CSV bytes (for file downloads)."""
     return df.to_csv(index=False).encode("utf-8")
@@ -258,6 +274,8 @@ COLUMN_LABELS: dict[str, str] = {
     "hsp_h": "Hansen δH [MPa^0.5]",
     # --- Reactions ---
     "reaction_name": "Reaction Name",
+    "class": "Reaction Class",
+    "type": "Reaction Type",
     "order": "Reaction Order",
     "k_value": "Rate Constant",
     "k_units": "Rate Constant Units",

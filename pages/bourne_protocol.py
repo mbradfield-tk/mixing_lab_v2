@@ -32,8 +32,10 @@ from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
 from utils.calculations import (
+    average_shear_rate,
     blend_time_turbulent,
     impeller_power,
+    kla_surface,
     kolmogorov_length,
     liquid_height_from_volume,
     micromixing_time_engulfment,
@@ -129,6 +131,18 @@ def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> tuple[float, floa
         r = row.iloc[0]
         return _sf(r.get("rho_kg_m3"), 1000.0), _sf(r.get("mu_Pa_s"), 0.001)
     return 1000.0, 0.001
+
+
+def _fluid_diffusivity(name: str, T_C: float, P_atm: float = 1.0) -> float:
+    """Return molecular diffusivity for the selected fluid in m²/s."""
+    if is_known_solvent(name):
+        p = get_properties(resolve_solvent_name(name) or name, T_C, P_atm)
+        return _sf(p.get("D_mol_m2_s"), 2.3e-9)
+    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
+    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
+    if not row.empty:
+        return _sf(row.iloc[0].get("D_mol_m2_s"), 2.3e-9)
+    return 2.3e-9
 
 
 def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
@@ -344,8 +358,9 @@ bp_t1_pm_center = 0.2    # W/kg (Custom P/m mode)
 bp_t1_rpm_center = _avg_range(_r0, "N_rpm_min", "N_rpm_max", 300.0)  # RPM (Custom RPM mode)
 bp_t1_pm_eff = 0.2       # resolved centre P/m (W/kg), used by Tests 1 & 3
 bp_t1_ctr_info = ""
-bp_t1_hydro_df = pd.DataFrame(columns=["Condition", "N (RPM)", "P/m (W/kg)", "P/V (W/L)",
-                                       "Tip speed (m/s)", "Re", "Blend time (s)",
+bp_t1_hydro_df = pd.DataFrame(columns=["Condition", "N (RPM)", "P/V (W/L)", "P/m (W/kg)",
+                                       "Blend time (s)", "Avg shear rate (1/s)",
+                                       "Tip speed (m/s)", "Re", "kLa_surface (1/s)",
                                        "t_E micro (s)", "η (µm)"])
 bp_t1_kpi_df = _new_kpi_df(1)
 bp_t1_kpi_result_df = _empty_result(1)
@@ -451,6 +466,7 @@ def on_bp_sys_change(state):
 def _build_t1(state):
     D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
     T, H = _blend_geometry(state)
+    D_mol = _fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P)
     nu = mu / rho if rho > 0 else 0.0
     V_m3 = state.bp_v_l / 1000.0
     pm_c, info = _resolve_center_pm(state)
@@ -474,11 +490,13 @@ def _build_t1(state):
         rows.append({
             "Condition": label + note,
             "N (RPM)": f"{n_rpm:,.1f}",
-            "P/m (W/kg)": f"{eps_kg:.4g}",
             "P/V (W/L)": f"{eps / 1000.0:.4g}",
+            "P/m (W/kg)": f"{eps_kg:.4g}",
+            "Blend time (s)": f"{blend_time_turbulent(Np, n_rps, D, T, H):.3g}",
+            "Avg shear rate (1/s)": f"{average_shear_rate(P, mu, V_m3):.3g}",
             "Tip speed (m/s)": f"{tip_speed(n_rps, D):.3g}",
             "Re": f"{reynolds_number(n_rps, D, rho, mu):,.0f}",
-            "Blend time (s)": f"{blend_time_turbulent(Np, n_rps, D, T, H):.3g}",
+            "kLa_surface (1/s)": f"{kla_surface(eps_kg, nu, D_mol, T, V_m3):.3g}",
             "t_E micro (s)": f"{micromixing_time_engulfment(eps_kg, nu):.3g}",
             "η (µm)": f"{kolmogorov_length(nu, eps_kg) * 1e6:.3g}",
         })
@@ -908,6 +926,10 @@ def _kpi_snapshot(res: dict, test: int) -> dict:
 
 def _t1_conditions_snap(state) -> list:
     D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
+    mu = state.bp_mu
+    nu = mu / rho if rho > 0 else 0.0
+    tank_diameter, _ = _blend_geometry(state)
+    D_mol = _fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P)
     V_m3 = state.bp_v_l / 1000.0
     pm_c = state.bp_t1_pm_eff
     out = []
@@ -927,6 +949,9 @@ def _t1_conditions_snap(state) -> list:
             "P/m (W/kg)": eps / rho if rho > 0 else 0.0,
             "P/V (W/L)": eps / 1000.0,
             "Tip speed (m/s)": tip_speed(n_rps, D),
+            "Avg shear rate (1/s)": average_shear_rate(P, mu, V_m3),
+            "kLa_surface (1/s)": kla_surface(eps / rho if rho > 0 else 0.0,
+                                               nu, D_mol, tank_diameter, V_m3),
         })
     return out
 
@@ -1215,7 +1240,7 @@ Track one or more KPIs — add a row per metric. Each is judged sensitive at a
 
 <|part|height=18px|>
 
-<|{bp_t1_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|>
+<|{bp_t1_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 1|button|on_action=on_bp_t1_assess|class_name=compute-btn|>
 
@@ -1249,7 +1274,7 @@ means the reaction is **micromixing**-controlled; sensitivity points to mesomixi
 KPIs carry over from Test 1 — edit the responses (columns: **Slow feed / Centre /
 Fast feed**), add or remove rows as needed.
 
-<|{bp_t2_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t2_kpi_edit|on_add=on_bp_t2_kpi_add|on_delete=on_bp_t2_kpi_delete|width=100%|show_all|>
+<|{bp_t2_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t2_kpi_edit|on_add=on_bp_t2_kpi_add|on_delete=on_bp_t2_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 2|button|on_action=on_bp_t2_assess|class_name=compute-btn|>
 
@@ -1273,7 +1298,7 @@ zones. Insensitivity means **macromixing** controls; sensitivity means mesomixin
 KPIs carry over from Test 2 — edit the responses (columns: **Surface / Mid /
 Impeller**).
 
-<|{bp_t3_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t3_kpi_edit|on_add=on_bp_t3_kpi_add|on_delete=on_bp_t3_kpi_delete|width=100%|show_all|>
+<|{bp_t3_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t3_kpi_edit|on_add=on_bp_t3_kpi_add|on_delete=on_bp_t3_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 3|button|on_action=on_bp_t3_assess|class_name=compute-btn|>
 

@@ -121,7 +121,9 @@ _KNOWN_HOT = ["grignard", "nitration", "sulfonation", "diazotization",
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-reaction_options = sorted(reactions_df["reaction_name"].dropna().astype(str).tolist())
+reaction_class_options = db.reaction_names(reactions_df, "yes")
+reaction_measured_options = db.reaction_names(reactions_df, "no")
+reaction_options = reaction_measured_options or reaction_class_options
 _dh_ref_df = reactions_df[reactions_df["delta_H_kJ_mol"].apply(lambda v: _sf(v) != 0.0)]
 dh_ref_options = sorted(_dh_ref_df["reaction_name"].dropna().astype(str).tolist()) or ["(none available)"]
 
@@ -157,6 +159,7 @@ ms_bourne_meta_caption = ""
 # ---------------------------------------------------------------------------
 ms_kinetics_avail = ms_kinetics_options[0]
 ms_reaction = reaction_options[0] if reaction_options else ""
+ms_reaction_options = reaction_options
 ms_rxn_order_options = ["0", "1", "2", "pseudo-1", "pseudo-2"]
 
 
@@ -169,6 +172,15 @@ def _kin_defaults(name: str) -> dict:
     return {"order": order, "k": _sf(row.get("k_value")), "C0": _sf(row.get("C0_mol_L")),
             "t_rxn": _sf(row.get("t_rxn_s")), "T": _sf(row.get("T_C"), 25.0),
             "dH": _sf(row.get("delta_H_kJ_mol"))}
+
+
+def _sync_reaction_options(state) -> None:
+    """Use measured kinetics for confirmed data and class proxies otherwise."""
+    use_classes = state.ms_kinetics_avail.startswith("Approximate")
+    options = reaction_class_options if use_classes else reaction_measured_options
+    state.ms_reaction_options = options or ["(none available)"]
+    if state.ms_reaction not in state.ms_reaction_options:
+        state.ms_reaction = state.ms_reaction_options[0]
 
 
 _kd0 = _kin_defaults(ms_reaction)
@@ -806,6 +818,11 @@ def on_ms_kin_change(state, var_name=None, value=None):
 
 
 def on_ms_change(state):
+    previous_reaction = state.ms_reaction
+    _sync_reaction_options(state)
+    if state.ms_reaction != previous_reaction:
+        on_ms_reaction_change(state)
+        return
     _safe_recompute(state)
 
 
@@ -896,6 +913,7 @@ def on_ms_reset(state):
     state.ms_bourne_upload = ""
     state.ms_kinetics_avail = ms_kinetics_options[0]
     state.ms_reaction = reaction_options[0] if reaction_options else ""
+    state.ms_reaction_options = reaction_options
     kd = _kin_defaults(state.ms_reaction)
     state.ms_rxn_order = kd["order"]
     state.ms_rxn_k = kd["k"]
@@ -1003,7 +1021,7 @@ reference timescale for every mechanism below.
 <|layout|columns=1 1|class_name=form-grid|
 <|{ms_kinetics_avail}|selector|lov={ms_kinetics_options}|dropdown|label=Are kinetics available?|on_change=on_ms_change|>
 
-<|{ms_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction|on_change=on_ms_reaction_change|>
+<|{ms_reaction}|selector|lov={ms_reaction_options}|dropdown|label=Reaction or proxy class|on_change=on_ms_reaction_change|>
 |>
 
 **Reaction conditions & kinetics** — auto-filled from the database; edit any value to override.

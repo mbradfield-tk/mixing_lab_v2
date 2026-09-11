@@ -218,7 +218,10 @@ reactor_options = reactors_df["reactor_name"].dropna().astype(str).tolist()
 _solvent_names = sorted(SOLVENT_DB.keys())
 _custom_names = fluids_df["fluid_name"].dropna().astype(str).tolist()
 fluid_options = _solvent_names + _custom_names
-reaction_options = reactions_df["reaction_name"].dropna().astype(str).tolist()
+reaction_class_options = db.reaction_names(reactions_df, "yes")
+reaction_measured_options = db.reaction_names(reactions_df, "no")
+reaction_source_options = ["Measured kinetics", "Reaction classes"]
+reaction_options = reaction_measured_options or reaction_class_options
 particle_options = particles_df["particle_name"].dropna().astype(str).tolist()
 scale_solve_options = ["RPM (specify volume)", "Volume (specify RPM)"]
 coal_options = ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"]
@@ -234,7 +237,9 @@ vc_fluid = ("Water" if "Water" in fluid_options
             else (fluid_options[0] if fluid_options else ""))
 vc_T = 25.0
 vc_P = 1.0
-vc_reaction = reaction_options[0] if reaction_options else ""
+vc_reaction_source = reaction_source_options[0]
+vc_reaction_options = reaction_options
+vc_reaction = vc_reaction_options[0] if vc_reaction_options else ""
 vc_T_cool = 15.0
 vc_viewers_html = _viewers_html(vc_reactors)
 
@@ -371,6 +376,14 @@ def on_vc_reaction_change(state):
         if ctx["T_C"] > 0:
             state.vc_T = ctx["T_C"]
     _mark_stale(state)
+
+
+def on_vc_reaction_source_change(state):
+    state.vc_reaction_options = (reaction_class_options if state.vc_reaction_source == "Reaction classes"
+                                 else reaction_measured_options) or ["(none available)"]
+    if state.vc_reaction not in state.vc_reaction_options:
+        state.vc_reaction = state.vc_reaction_options[0]
+    on_vc_reaction_change(state)
 
 
 def on_vc_kin_change(state):
@@ -1093,7 +1106,9 @@ fluid and reaction system.
 |>
 
 <|layout|columns=1 1|class_name=form-grid|
-<|{vc_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction (for Da numbers)|on_change=on_vc_reaction_change|>
+<|{vc_reaction_source}|selector|lov={reaction_source_options}|dropdown|label=Reaction source|on_change=on_vc_reaction_source_change|>
+
+<|{vc_reaction}|selector|lov={vc_reaction_options}|dropdown|label=Reaction (for Da numbers)|on_change=on_vc_reaction_change|>
 
 <|{vc_T_cool}|number|label=Coolant temperature (°C)|on_change=on_vc_input_change|>
 |>

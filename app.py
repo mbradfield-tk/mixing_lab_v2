@@ -527,6 +527,13 @@ button.compute-btn-ok:hover {
 .taipy-table .MuiTableCell-root {
     white-space: nowrap;
 }
+
+/* Bourne Protocol KPI names are free-text fields; keep the first editable cell
+   wide enough for names such as "Particle size (D50)". */
+.bp-kpi-table .MuiTableCell-root:first-of-type,
+.bp-kpi-table .MuiTableCell-root:first-of-type .MuiInputBase-root {
+    min-width: 220px;
+}
 </style>
 
 <|menu|lov={menu_options}|on_action=on_menu_action|label=Mixing Lab|width=260px|class_name=htt-menu|>

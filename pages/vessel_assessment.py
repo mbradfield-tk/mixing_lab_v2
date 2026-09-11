@@ -206,7 +206,10 @@ def _refresh_corr(state):
 # Option lists
 # ---------------------------------------------------------------------------
 reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
-reaction_options = sorted(reactions_df["reaction_name"].dropna().astype(str).unique().tolist())
+reaction_class_options = db.reaction_names(reactions_df, "yes")
+reaction_measured_options = db.reaction_names(reactions_df, "no")
+reaction_source_options = ["Measured kinetics", "Reaction classes"]
+reaction_options = reaction_measured_options or reaction_class_options
 fluid_options = sorted(list_solvents() + fluids_df["fluid_name"].dropna().astype(str).tolist())
 particle_options = sorted(particles_df["particle_name"].dropna().astype(str).unique().tolist())
 
@@ -274,7 +277,9 @@ va_coalescing_options = ["Coalescing", "Non-coalescing"]
 # ---------------------------------------------------------------------------
 # State — Section 3: Reaction
 # ---------------------------------------------------------------------------
-va_reaction = reaction_options[0] if reaction_options else ""
+va_reaction_source = reaction_source_options[0]
+va_reaction_options = reaction_measured_options or reaction_class_options
+va_reaction = va_reaction_options[0] if va_reaction_options else ""
 _x0 = _reaction_row(va_reaction)
 va_order = str(_x0.get("order", "1")) if not _x0.empty else "1"
 va_k = _sf(_x0.get("k_value"), 0.01) if not _x0.empty else 0.01
@@ -392,6 +397,14 @@ def on_va_reaction_change(state):
         _load_fluid(state)
     _mark_stale(state)
     notify(state, "I", "Reaction kinetics loaded.")
+
+
+def on_va_reaction_source_change(state):
+    state.va_reaction_options = (reaction_class_options if state.va_reaction_source == "Reaction classes"
+                                 else reaction_measured_options) or ["(none available)"]
+    if state.va_reaction not in state.va_reaction_options:
+        state.va_reaction = state.va_reaction_options[0]
+    on_va_reaction_change(state)
 
 
 def _load_fluid(state):
@@ -883,7 +896,9 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 
 <|part|class_name=va-card|
 ## 3. Reaction
-<|{va_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction|on_change=on_va_reaction_change|>
+<|{va_reaction_source}|selector|lov={reaction_source_options}|dropdown|label=Reaction source|on_change=on_va_reaction_source_change|>
+
+<|{va_reaction}|selector|lov={va_reaction_options}|dropdown|label=Reaction|on_change=on_va_reaction_change|>
 
 <|{va_rxn_model}|text|mode=markdown|>
 

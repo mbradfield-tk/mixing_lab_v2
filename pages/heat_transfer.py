@@ -47,7 +47,10 @@ reactor_options = sorted(reactors_df["reactor_name"].dropna().unique().tolist())
 # Built-in solvent library plus user custom fluids from fluids.csv.
 _custom_fluid_names = fluids_df["fluid_name"].dropna().astype(str).tolist()
 fluid_options = sorted(set(list_solvents()) | set(_custom_fluid_names))
-reaction_options = sorted(reactions_df["reaction_name"].dropna().unique().tolist())
+reaction_class_options = db.reaction_names(reactions_df, "yes")
+reaction_measured_options = db.reaction_names(reactions_df, "no")
+reaction_source_options = ["Measured kinetics", "Reaction classes"]
+reaction_options = reaction_measured_options or reaction_class_options
 htm_options = list(htm_db.keys())
 nusselt_options = list(NUSSELT_CORRELATIONS.keys())
 wall_options = list(WALL_CONDUCTIVITY.keys())
@@ -151,7 +154,9 @@ ht_mode = HT_MODE_HEAT
 ht_mode_options = [HT_MODE_HEAT, HT_MODE_RXN]
 
 # Reaction kinetics + heat of reaction (mode 2)
-selected_reaction = reaction_options[0] if reaction_options else ""
+selected_reaction_source = reaction_source_options[0]
+selected_reaction_options = reaction_options
+selected_reaction = selected_reaction_options[0] if selected_reaction_options else ""
 _x = _reaction_row(selected_reaction)
 rxn_order_options = ["1", "2", "pseudo-1", "pseudo-2"]
 rxn_order = str(_x.get("order", "2")) if not _x.empty else "2"
@@ -279,6 +284,15 @@ def on_reaction_change(state):
     state.rxn_dH = safe_float(row.get("delta_H_kJ_mol"), state.rxn_dH)
     _refresh_adiabatic(state)
     notify(state, "I", "Reaction kinetics and heat of reaction loaded.")
+
+
+def on_reaction_source_change(state):
+    state.selected_reaction_options = (reaction_class_options
+                                       if state.selected_reaction_source == "Reaction classes"
+                                       else reaction_measured_options) or ["(none available)"]
+    if state.selected_reaction not in state.selected_reaction_options:
+        state.selected_reaction = state.selected_reaction_options[0]
+    on_reaction_change(state)
 
 
 def _refresh_adiabatic(state):
@@ -691,7 +705,9 @@ Pick a reaction to auto-fill its kinetics, or edit the fields directly. The rate
 constant is held fixed (isothermal-kinetics approximation; activation energy is
 not modelled) and the profile runs until 99% conversion.
 <|layout|columns=1 1 1 1 1|
-<|{selected_reaction}|selector|lov={reaction_options}|dropdown|label=Reaction|on_change=on_reaction_change|>
+<|{selected_reaction_source}|selector|lov={reaction_source_options}|dropdown|label=Reaction source|on_change=on_reaction_source_change|>
+
+<|{selected_reaction}|selector|lov={selected_reaction_options}|dropdown|label=Reaction|on_change=on_reaction_change|>
 
 <|{rxn_order}|selector|lov={rxn_order_options}|dropdown|label=Order|>
 

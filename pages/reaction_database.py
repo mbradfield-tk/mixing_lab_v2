@@ -19,15 +19,29 @@ REACTION_CSV = DATA_DIR / "reactions.csv"
 
 COLUMNS = [
     "reaction_name", "type", "order", "k_value", "k_units", "C0_mol_L",
-    "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "notes", "reaction_scheme",
+    "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "class", "notes", "reaction_scheme",
 ]
+
+
+def _normalize_reaction_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure imported/legacy reaction data has a normalized class flag."""
+    result = df.copy()
+    if "class" not in result.columns:
+        insert_at = result.columns.get_loc("notes") if "notes" in result else len(result.columns)
+        result.insert(insert_at, "class", "no")
+    result["class"] = (result["class"].fillna("no").astype(str).str.strip().str.lower()
+                        .replace({"": "no"}))
+    return result
 
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-reaction_df = db.load_csv(REACTION_CSV, COLUMNS)
+reaction_df = _normalize_reaction_df(db.load_csv(REACTION_CSV, COLUMNS))
 reaction_search = ""
-reaction_view_df = reaction_df
+reaction_class_search = ""
+reaction_measured_search = ""
+reaction_class_view_df = reaction_df[reaction_df["class"] == "yes"]
+reaction_measured_view_df = reaction_df[reaction_df["class"] != "yes"]
 reaction_export = db.csv_bytes(reaction_df)
 reaction_msg = f"{len(reaction_df)} reactions in database."
 
@@ -39,6 +53,7 @@ reaction_scheme_text = ""
 # Add-form fields
 rxn_new_name = ""
 rxn_new_type = ""
+rxn_new_class = "no"
 rxn_new_order = "1"
 rxn_new_k = 0.01
 rxn_new_k_units = "1/s"
@@ -50,6 +65,7 @@ rxn_new_dH = 0.0
 rxn_new_notes = ""
 rxn_new_scheme = ""
 rxn_order_options = ["1", "2", "pseudo-1", "pseudo-2", "n/a"]
+rxn_class_options = ["yes", "no"]
 
 reaction_upload = ""
 
@@ -62,17 +78,31 @@ def _persist(state) -> None:
     state.reaction_export = db.csv_bytes(state.reaction_df)
     state.reaction_msg = f"{len(state.reaction_df)} reactions in database."
     state.reaction_scheme_options = ["— none —"] + state.reaction_df["reaction_name"].dropna().astype(str).tolist()
-    state.reaction_view_df = _apply_search(state)
+    _refresh_views(state)
 
 
-def _apply_search(state) -> pd.DataFrame:
-    """Full frame, or a filtered (read-only) view while searching."""
-    query = (state.reaction_search or "").strip()
-    return db.filter_rows(state.reaction_df, query) if query else state.reaction_df
+def _apply_search(df: pd.DataFrame, query: str) -> pd.DataFrame:
+    """Return one reaction subset, optionally filtered by its search text."""
+    return db.filter_rows(df, query) if query.strip() else df
+
+
+def _refresh_views(state) -> None:
+    classes = state.reaction_df[state.reaction_df["class"].astype(str).str.lower() == "yes"]
+    measured = state.reaction_df[state.reaction_df["class"].astype(str).str.lower() != "yes"]
+    state.reaction_class_view_df = _apply_search(classes, state.reaction_class_search)
+    state.reaction_measured_view_df = _apply_search(measured, state.reaction_measured_search)
 
 
 def on_reaction_search(state):
-    state.reaction_view_df = _apply_search(state)
+    _refresh_views(state)
+
+
+def on_reaction_class_search(state):
+    _refresh_views(state)
+
+
+def on_reaction_measured_search(state):
+    _refresh_views(state)
 
 
 def _searching(state) -> bool:
@@ -86,7 +116,8 @@ def _searching(state) -> bool:
 # Handlers
 # ---------------------------------------------------------------------------
 def on_reaction_edit(state, var_name, payload):
-    if _searching(state):
+    if (state.reaction_class_search or state.reaction_measured_search).strip():
+        notify(state, "W", "Clear the search box to edit the database.")
         return
     state.reaction_df = db.apply_edit(state.reaction_df.copy(), payload)
     _persist(state)
@@ -94,7 +125,8 @@ def on_reaction_edit(state, var_name, payload):
 
 
 def on_reaction_delete(state, var_name, payload):
-    if _searching(state):
+    if (state.reaction_class_search or state.reaction_measured_search).strip():
+        notify(state, "W", "Clear the search box to edit the database.")
         return
     state.reaction_df = db.delete_row(state.reaction_df.copy(), payload)
     _persist(state)
@@ -102,9 +134,12 @@ def on_reaction_delete(state, var_name, payload):
 
 
 def on_reaction_add(state, var_name, payload):
-    if _searching(state):
+    if (state.reaction_class_search or state.reaction_measured_search).strip():
+        notify(state, "W", "Clear the search box to add to the database.")
         return
     state.reaction_df = db.add_blank(state.reaction_df.copy(), COLUMNS)
+    state.reaction_df.loc[state.reaction_df.index[-1], "class"] = (
+        "yes" if "class" in str(var_name).lower() else "no")
     _persist(state)
 
 
@@ -150,7 +185,8 @@ def on_reaction_add_row(state):
         "reaction_name": name, "type": state.rxn_new_type, "order": order,
         "k_value": k_val, "k_units": state.rxn_new_k_units, "C0_mol_L": c0_val,
         "t_rxn_s": t_rxn, "T_C": state.rxn_new_T, "solvent": state.rxn_new_solvent,
-        "delta_H_kJ_mol": dh_val, "notes": state.rxn_new_notes,
+        "delta_H_kJ_mol": dh_val, "class": state.rxn_new_class,
+        "notes": state.rxn_new_notes,
         "reaction_scheme": state.rxn_new_scheme,
     }])
     state.reaction_df = db.reset(pd.concat([state.reaction_df, new], ignore_index=True))
@@ -168,7 +204,7 @@ def on_reaction_import(state):
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return
-    state.reaction_df = db.reset(new_df)
+    state.reaction_df = _normalize_reaction_df(db.reset(new_df))
     _persist(state)
     notify(state, "S", f"Imported {len(new_df)} reactions (replaced database).")
 
@@ -190,10 +226,16 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 
 <|part|height=18px|>
 
-<|Reaction database|expandable|expanded=False|
-<|{reaction_search}|input|label=Search reactions|on_change=on_reaction_search|class_name=db-search|>
+<|Reaction classes|expandable|expanded=False|
+<|{reaction_class_search}|input|label=Search reaction classes|on_change=on_reaction_class_search|class_name=db-search|>
 
-<|{reaction_view_df}|table|editable={reaction_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+<|{reaction_class_view_df}|table|editable={reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
+|>
+
+<|Measured kinetics|expandable|expanded=False|
+<|{reaction_measured_search}|input|label=Search measured kinetics|on_change=on_reaction_measured_search|class_name=db-search|>
+
+<|{reaction_measured_view_df}|table|editable={reaction_class_search == "" and reaction_measured_search == ""}|filter|rebuild|on_edit=on_reaction_edit|on_delete=on_reaction_delete|on_add=on_reaction_add|width=100%|page_size=12|>
 |>
 |>
 
@@ -210,6 +252,8 @@ delete rows, or the **Add Reaction** form below for a validated entry.
 <|{rxn_new_name}|input|label=Reaction name *|>
 
 <|{rxn_new_type}|input|label=Type (e.g. Cross-coupling)|>
+
+<|{rxn_new_class}|selector|lov={rxn_class_options}|dropdown|label=Reaction class? (yes/no)|>
 
 <|{rxn_new_order}|selector|lov={rxn_order_options}|dropdown|label=Kinetic order|>
 |>

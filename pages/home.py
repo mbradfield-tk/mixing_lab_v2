@@ -12,7 +12,7 @@ from taipy.gui import Markdown
 from utils.menu_icons import image_thumb_uri, inject_icons
 
 APP_VERSION = "2.1.0"
-RELEASE_DATE = "August 2026"
+RELEASE_DATE = "September 2026"
 
 # App logo, downscaled + cached (displayed ~180px; 360px thumb stays crisp on retina).
 _LOGO_URI = image_thumb_uri(

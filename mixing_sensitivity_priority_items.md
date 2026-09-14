@@ -107,20 +107,28 @@ Completed in the current implementation pass:
     - Use distinct categories for heat-removal risk and heat-input or temperature-collapse risk.
     - Treat reaction-class keywords as prompts for calorimetry, not proof of heat-transfer sensitivity.
 
-19. **Validate hydrodynamic-correlation applicability.**
+19. [~] **Validate hydrodynamic-correlation applicability.**
     - Check Reynolds-number regime, baffling, impeller submergence, liquid height, impeller clearance, non-Newtonian behavior, multiple impellers, gas loading, and solids loading.
+    - Current implementation reports these checks after Vessel Assessment computes the selected correlation; remaining work is to add correlation-specific validity ranges and non-Newtonian rheology inputs.
 
-20. **Treat Test 3 local energy-dissipation ratios as configurable estimates.**
+20. [x] **Treat Test 3 local energy-dissipation ratios as configurable estimates.**
     - Clearly label the current 0.1, 1.0, and 3.0 ratios as illustrative.
     - Allow user-entered, experimentally derived, or CFD-derived local values.
+    - Test 3 now exposes editable surface, mid-tank, and impeller-zone ratios, retaining 0.1, 1.0, and 3.0 as illustrative defaults.
 
 ## Priority 4: Expand Reactor-Process Fit Coverage
 
-21. **Add solids suspension and dissolution assessments.**
+21. [~] **Add solids suspension and dissolution assessments.**
+    - Vessel Assessment now reports suspension state, settling velocity, solid-liquid k_SL, kLa_SL, and Da_SL when solids are enabled.
+    - Remaining work: add an explicit dissolution-rate or solubility-demand input so capacity can be compared with the process demand rather than screened by Da_SL alone.
 
-22. **Add gas-liquid and liquid-solid mass-transfer capacity-to-demand calculations.**
+22. [~] **Add gas-liquid and liquid-solid mass-transfer capacity-to-demand calculations.**
+    - Vessel Assessment now reports kLa / (1/t_rxn) for enabled gas-liquid and solid-liquid transfer paths.
+    - Remaining work: add solubility, phase composition, and concentration driving-force inputs for a full capacity-to-demand calculation.
 
-23. **Add liquid-liquid dispersion and emulsion behavior.**
+23. [~] **Add liquid-liquid dispersion and emulsion behavior.**
+    - Fluid Database Blend now screens immiscible pairs using Weber number, estimated Sauter diameter, minimum dispersion speed, and rest-separation tendency.
+    - Remaining work: add measured interfacial tension, phase-specific rheology, and time-dependent emulsion stability or coalescence data.
 
 24. **Add crystallization and precipitation sensitivity.**
     - Include local supersaturation, nucleation, agglomeration, and particle-size effects.

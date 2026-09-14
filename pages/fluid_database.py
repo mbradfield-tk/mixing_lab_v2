@@ -27,6 +27,10 @@ from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
+from utils.calculations.liquid_liquid import (
+    minimum_dispersion_speed,
+    phase_separation_check,
+)
 from pages import _db_common as db
 from utils.solvent_properties import (
     SOLVENT_DB,
@@ -114,6 +118,12 @@ blend_T = 25.0
 blend_input_df = pd.DataFrame(columns=["Component", "Amount"])
 blend_result_df = pd.DataFrame(columns=["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)"])
 blend_misc_df = pd.DataFrame(columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
+blend_dispersion_speed = 5.0
+blend_dispersion_d = 0.05
+blend_sigma_ll = 0.01
+blend_dispersion_df = pd.DataFrame(columns=[
+    "Pair", "Weber number", "d₃₂ (µm)", "N_min (1/s)", "N/N_min", "Rest separation"
+])
 blend_status = "Select two or more components and enter amounts, then compute."
 
 
@@ -556,6 +566,42 @@ def on_blend_compute(state):
     else:
         state.blend_phase_fig = _build_phase_fig(comp_props, pair_misc)
 
+    # Preliminary liquid-liquid dispersion screen for immiscible pairs. The
+    # user-entered interfacial tension and vessel inputs make the assumptions
+    # explicit; this is not a substitute for an emulsion stability model.
+    state.blend_dispersion_df = pd.DataFrame(columns=blend_dispersion_df.columns)
+    if immiscible_pairs:
+        props_by_name = {cp["name"]: cp for cp in comp_props}
+        dispersion_rows = []
+        for n1, n2 in combinations(comps, 2):
+            if f"{n1} / {n2}" not in immiscible_pairs:
+                continue
+            first, second = props_by_name.get(n1), props_by_name.get(n2)
+            if not first or not second:
+                continue
+            continuous, dispersed = (first, second) if first["vol_frac"] >= second["vol_frac"] else (second, first)
+            pair_fraction = first["vol_frac"] + second["vol_frac"]
+            phi_d = dispersed["vol_frac"] / pair_fraction if pair_fraction > 0 else 0.0
+            sep = phase_separation_check(
+                max(float(state.blend_dispersion_speed), 0.0),
+                max(float(state.blend_dispersion_d), 0.0),
+                max(float(state.blend_dispersion_d) * 20.0, 0.0),
+                continuous["rho_kg_m3"], dispersed["rho_kg_m3"], continuous["mu_Pa_s"],
+                max(float(state.blend_sigma_ll), 0.0), phi_d)
+            n_min = minimum_dispersion_speed(
+                max(float(state.blend_dispersion_d), 0.0),
+                max(float(state.blend_sigma_ll), 0.0),
+                continuous["rho_kg_m3"], phi_d)
+            dispersion_rows.append({
+                "Pair": f"{n1} / {n2}",
+                "Weber number": f"{sep['We']:.3g}",
+                "d₃₂ (µm)": f"{sep['d32 (µm)']:.3g}",
+                "N_min (1/s)": f"{n_min:.3g}",
+                "N/N_min": f"{(float(state.blend_dispersion_speed) / n_min) if n_min > 0 else 0.0:.3g}",
+                "Rest separation": sep["Assessment"],
+            })
+        state.blend_dispersion_df = pd.DataFrame(dispersion_rows, columns=blend_dispersion_df.columns)
+
     if reactive_pairs:
         state.blend_status = (f"⚠️ Reacts chemically on mixing ({_join_pairs(reactive_pairs)}) — "
                               "this is not a physical blend; averaged properties do not apply.")
@@ -701,6 +747,15 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 <|{blend_T}|number|label=Temperature (°C)|>
 |>
 
+### Liquid-liquid dispersion screen
+For immiscible pairs, estimate dispersion stability using the entered operating
+assumptions. Interfacial tension and impeller inputs are screening values.
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{blend_dispersion_speed}|number|label=Impeller speed (1/s)|>
+<|{blend_dispersion_d}|number|label=Impeller diameter (m)|>
+<|{blend_sigma_ll}|number|label=Interfacial tension σ<sub>LL</sub> (N/m)|>
+|>
+
 ### Component amounts
 <|{blend_input_df}|table|editable|rebuild|on_edit=on_blend_amount_edit|width=60%|show_all|>
 
@@ -717,6 +772,11 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 _Screening reflects ~25 °C behaviour; temperature effects (e.g. hexane/methanol UCST ≈ 34 °C) are not modeled._
 
 <|{blend_misc_df}|table|width=100%|show_all|>
+
+<|part|render={len(blend_dispersion_df) > 0}|
+### Dispersion estimate
+<|{blend_dispersion_df}|table|width=100%|show_all|>
+|>
 
 ### Phase stratification
 _Settled (unagitated) liquid levels predicted from pairwise miscibility and phase density —

@@ -502,6 +502,9 @@ bp_t3_result = None
 bp_t3_assessed = False
 bp_t3_sensitive = False
 bp_t3_verdict = ""
+bp_t3_surface_ratio = 0.1
+bp_t3_mid_ratio = 1.0
+bp_t3_impeller_ratio = 3.0
 
 # ---------------------------------------------------------------------------
 # State — summary
@@ -997,7 +1000,13 @@ def _build_t3(state):
     P = impeller_power(Np, rho, n_rps, D)
     eps_avg = (power_per_volume(P, V_m3) / rho) if (V_m3 > 0 and rho > 0) else 0.0
     rows = []
-    for loc, ratio in (("Surface", 0.1), ("Sub-surface (mid)", 1.0), ("Impeller zone", 3.0)):
+    ratios = (
+        ("Surface", _sf(state.bp_t3_surface_ratio, 0.1)),
+        ("Sub-surface (mid)", _sf(state.bp_t3_mid_ratio, 1.0)),
+        ("Impeller zone", _sf(state.bp_t3_impeller_ratio, 3.0)),
+    )
+    for loc, ratio in ratios:
+        ratio = max(ratio, 1e-9)
         eps_loc = ratio * eps_avg
         rows.append({
             "Feed location": loc,
@@ -1492,6 +1501,15 @@ Fast feed**), add or remove rows as needed.
 ## Test 3 — Feed Location
 Hold P/m and feed rate; move the feed point between low- and high-dissipation
 zones. Insensitivity means **macromixing** controls; sensitivity means mesomixing.
+
+The local dissipation ratios below are illustrative defaults. Replace them with
+measured or CFD-derived values when available.
+
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{bp_t3_surface_ratio}|number|label=Surface ε_loc/ε_avg|on_change=on_bp_t3_recalc|>
+<|{bp_t3_mid_ratio}|number|label=Mid ε_loc/ε_avg|on_change=on_bp_t3_recalc|>
+<|{bp_t3_impeller_ratio}|number|label=Impeller ε_loc/ε_avg|on_change=on_bp_t3_recalc|>
+|>
 
 <|Recalculate conditions|button|on_action=on_bp_t3_recalc|>
 

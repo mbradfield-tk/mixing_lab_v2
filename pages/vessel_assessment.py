@@ -29,6 +29,9 @@ from utils.calculations import (
     liquid_height_from_volume,
     mesomixing_time,
     particle_suspension_criterion,
+    settling_velocity,
+    solid_liquid_kla,
+    solid_liquid_mass_transfer,
     reaction_rate_mol_per_s,
     zwietering_njs,
 )
@@ -346,7 +349,10 @@ _HYDRO_ROWS = [
 va_status = "Set inputs and click Compute Assessment."
 va_hydro_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_dam_df = pd.DataFrame(columns=["Type", "Damköhler", "Value", "Regime"])
+va_mt_df = pd.DataFrame(columns=["Transfer path", "kLa (1/s)", "Demand 1/t_rxn (1/s)",
+                                 "Capacity / demand", "Screening"])
 va_assess = ""
+va_corr_applicability = ""
 va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_result_ready = False
@@ -524,6 +530,71 @@ def on_va_save_results(state):
 # ---------------------------------------------------------------------------
 # Core compute
 # ---------------------------------------------------------------------------
+def _correlation_applicability(state, hydro: dict) -> str:
+    """Summarize applicability checks for the selected hydro correlations."""
+    row = _reactor_row(state.va_reactor)
+    checks = []
+    warnings = []
+
+    reynolds = _sf(hydro.get("Re"), 0.0)
+    if reynolds <= 0:
+        warnings.append("Reynolds regime unavailable")
+    elif reynolds < 10:
+        warnings.append(f"laminar regime (Re = {reynolds:.3g}); turbulent correlations are not applicable")
+    elif reynolds < 1e4:
+        warnings.append(f"transitional regime (Re = {reynolds:.3g}); correlation uncertainty is elevated")
+    else:
+        checks.append(f"turbulent regime (Re = {reynolds:,.0f})")
+
+    tank_d = _sf(state.va_d_tank)
+    imp_d = _sf(state.va_d_imp)
+    d_ratio = imp_d / tank_d if tank_d > 0 else 0.0
+    if 0.2 <= d_ratio <= 0.7:
+        checks.append(f"impeller/tank diameter ratio = {d_ratio:.3f}")
+    else:
+        warnings.append(f"impeller/tank diameter ratio = {d_ratio:.3f} is outside the typical 0.2–0.7 range")
+
+    h_max = _sf(row.get("H_max_m"), _sf(row.get("H_m"), tank_d))
+    dish = str(row.get("bottom_dish", "") or "")
+    h_liq = liquid_height_from_volume(_sf(state.va_v_l), tank_d, h_max, dish)
+    submergence = h_liq / imp_d if imp_d > 0 else 0.0
+    if submergence >= 1.0:
+        checks.append(f"liquid height/impeller diameter = {submergence:.2f}")
+    else:
+        warnings.append(f"liquid height/impeller diameter = {submergence:.2f}; impeller submergence is limited")
+
+    baffles = str(row.get("baffles", "") or "").strip()
+    if baffles:
+        checks.append(f"baffling recorded ({baffles})")
+    else:
+        warnings.append("baffling is not recorded; confirm the vessel configuration")
+
+    clearance = _sf(row.get("imp1_clearance_m"), 0.0)
+    clearance_ratio = clearance / tank_d if tank_d > 0 else 0.0
+    if clearance > 0:
+        checks.append(f"impeller clearance/tank diameter = {clearance_ratio:.3f}")
+    else:
+        warnings.append("impeller clearance is not recorded")
+
+    impeller_count = _sf(row.get("impeller_count"), 1.0)
+    if impeller_count > 1:
+        warnings.append(f"multiple impellers ({impeller_count:.0f}); single-impeller correlations need review")
+    else:
+        checks.append("single impeller")
+
+    warnings.append("Newtonian-fluid assumption applies; non-Newtonian rheology requires a dedicated correlation")
+    checks.append("gas loading included" if state.va_gas_mode == "On" else "no gas loading")
+    if state.va_sl_mode == "On":
+        checks.append("solids loading enabled; verify particle-concentration range")
+    else:
+        checks.append("no solids loading")
+
+    lines = ["**Correlation applicability:** " + "; ".join(checks) + "."]
+    if warnings:
+        lines.append("**Review required:** " + "; ".join(warnings) + ".")
+    return "\n\n".join(lines)
+
+
 def _hydro_at(state, n_rpm: float, v_l: float) -> dict:
     """Run the hydro engine at a given RPM and fill volume using the selected
     correlation source and gas settings."""
@@ -549,6 +620,7 @@ def on_va_compute(state):
         return
 
     hydro = _hydro_at(state, state.va_n_rpm, state.va_v_l)
+    state.va_corr_applicability = _correlation_applicability(state, hydro)
 
     # Solid-liquid suspension (optional)
     kla_sl = 0.0
@@ -561,11 +633,24 @@ def on_va_compute(state):
         n_js_rpm = n_js_rps * 60.0
         n_rps = state.va_n_rpm / 60.0
         assess = particle_suspension_criterion(n_rps, n_js_rps)
+        v_t = settling_velocity(d_p, state.va_rho_p, state.va_rho, state.va_mu,
+                                state.va_phi)
+        k_sl = solid_liquid_mass_transfer(
+            d_p, v_t, state.va_rho, state.va_mu, state.va_dmol)
+        # Convert wt-% solids to an approximate suspended volume fraction for
+        # the specific-area estimate used by the kLa_SL correlation.
+        x_mass = max(_sf(state.va_x_wt), 0.0) / 100.0
+        phi_s = (x_mass * state.va_rho / state.va_rho_p
+                 if state.va_rho_p > 0 else 0.0)
+        kla_sl = solid_liquid_kla(k_sl, d_p, phi_s)
         state.va_sl_df = pd.DataFrame([
             {"Parameter": "Just-suspended speed N_js", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "Operating speed N", "Value": f"{state.va_n_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "N / N_js", "Value": f"{(state.va_n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
             {"Parameter": "Suspension state", "Value": assess, "Units": "–"},
+            {"Parameter": "Settling velocity v_t", "Value": f"{v_t:.3g}", "Units": "m/s"},
+            {"Parameter": "Solid-liquid k_SL", "Value": f"{k_sl:.3g}", "Units": "m/s"},
+            {"Parameter": "Solid-liquid kLa_SL", "Value": f"{kla_sl:.3g}", "Units": "1/s"},
         ])
     else:
         state.va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
@@ -580,6 +665,34 @@ def on_va_compute(state):
     dam = compute_damkohler_numbers(
         hydro["Blend time 95% (s)"], hydro["Micromix time t_E (s)"], t_rxn,
         kLa=kla_da, kLa_surface=klasurf_da, kLa_SL=kla_sl)
+
+    # Preliminary capacity-to-kinetic-demand screen. A full mass-transfer
+    # demand still needs solubility, driving-force, and phase-composition data.
+    mt_rows = []
+    demand_rate = 1.0 / t_rxn if t_rxn > 0 else 0.0
+    transfer_paths = []
+    if state.va_gas_mode == "On":
+        transfer_paths.append(("Gas-liquid", hydro["kLa (1/s)"]))
+    if state.va_sl_mode == "On":
+        transfer_paths.append(("Solid-liquid", kla_sl))
+    for path, kla_value in transfer_paths:
+        ratio = kla_value / demand_rate if demand_rate > 0 else 0.0
+        if kla_value <= 0:
+            screening = "Unknown — kLa unavailable"
+        elif ratio < 1.0:
+            screening = "Potentially transfer-limited"
+        elif ratio < 10.0:
+            screening = "Capacity comparable to demand"
+        else:
+            screening = "Capacity exceeds kinetic demand"
+        mt_rows.append({
+            "Transfer path": path,
+            "kLa (1/s)": f"{kla_value:.3g}",
+            "Demand 1/t_rxn (1/s)": f"{demand_rate:.3g}",
+            "Capacity / demand": f"{ratio:.3g}",
+            "Screening": screening,
+        })
+    state.va_mt_df = pd.DataFrame(mt_rows, columns=va_mt_df.columns)
 
     # Hydrodynamics KPI table
     state.va_hydro_df = pd.DataFrame(
@@ -941,13 +1054,22 @@ for the selected vessel are offered.
 ### Hydrodynamics
 <|{va_hydro_df}|table|width=100%|show_all|>
 
+<|{va_corr_applicability}|text|mode=markdown|>
+
 ### Mixing sensitivity (Damköhler)
 <|{va_assess}|text|mode=markdown|>
 
 <|{va_dam_df}|table|width=100%|show_all|>
 
+<|part|render={len(va_mt_df) > 0}|
+### Mass-transfer capacity versus kinetic demand
+The capacity ratio is a preliminary screen using **kLa / (1/t<sub>rxn</sub>)**.
+Confirm the result with solubility, phase composition, and concentration driving-force data.
+<|{va_mt_df}|table|width=100%|show_all|>
+|>
+
 <|part|render={va_sl_mode == "On"}|
-### Solid suspension
+### Solid suspension and dissolution
 <|{va_sl_df}|table|width=100%|show_all|>
 |>
 

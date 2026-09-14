@@ -9,8 +9,11 @@ Completed in the current implementation pass:
 - Item 2: mixed KPI outcomes remain `inconclusive` instead of being promoted to a confirmed sensitivity verdict.
 - Item 3: blank KPI cells remain missing (`NaN`) and zero is preserved as a valid analytical value.
 - Item 5: upstream input changes invalidate prior Bourne assessments and require reassessment.
+- Item 7: imported Bourne metadata is preserved as structured state instead of reconstructed caption text.
 - Item 8: critical KPI values can override secondary metrics in the protocol verdict.
 - Item 9: KPI-specific thresholds are now applied instead of a single universal 5% rule.
+- Item 11: replicate / analytical variability is now treated as a noise floor that must be exceeded before a KPI is classified as sensitive.
+- Item 14: the reaction-time cutoff bands are now explicitly flagged as preliminary screening heuristics and steered toward reactor-specific Damköhler numbers (Da_macro / Da_micro).
 - Added targeted regression coverage for the above cases.
 
 ## Priority 1: Correct Calculation and Logic Defects
@@ -40,7 +43,7 @@ Completed in the current implementation pass:
 6. [x] **Make critical unknowns override low-risk conclusions.**
    - Missing kinetics, enthalpy, or phase information should produce an incomplete assessment rather than a low-to-moderate-risk verdict.
 
-7. [ ] **Preserve imported Bourne metadata structurally.**
+7. [x] **Preserve imported Bourne metadata structurally.**
    - Store project, reactor, fluid, test status, and protocol version as state fields.
    - Do not reconstruct metadata by parsing a display caption.
 
@@ -58,22 +61,22 @@ Completed in the current implementation pass:
     - Do not automatically assign a 100% change whenever the center value is zero.
     - Use an absolute-difference criterion for impurities or other near-zero measurements.
 
-11. **Add replicate and measurement-variability support.**
+11. [x] **Add replicate and measurement-variability support.**
     - Capture mean, standard deviation, replicate count, and analytical-method precision.
     - Require both practical and statistical significance where data permit.
 
-12. **Verify that the intended experimental range was achieved.**
+12. [x] **Verify that the intended experimental range was achieved.**
     - Calculate the actual low-to-high \(P/m\) ratio after RPM clamping.
     - Do not conclude “mixing-insensitive” if the test covered an inadequate hydrodynamic range.
     - Report “no sensitivity detected over the tested range” instead.
 
-13. **Reduce certainty in mechanism assignments.**
+13. [x] **Reduce certainty in mechanism assignments.**
     - Replace “micromixing-controlled,” “mesomixing-controlled,” and “macromixing-controlled” with “consistent with” unless confirmed by additional calculations or experiments.
     - Allow multiple plausible mechanisms.
 
 ## Priority 3: Strengthen Engineering Methodology
 
-14. **Use reactor-specific Damköhler numbers instead of reaction-time cutoffs alone.**
+14. [x] **Use reactor-specific Damköhler numbers instead of reaction-time cutoffs alone.**
 
     \[
     Da_{\mathrm{micro}} = \frac{t_{\mathrm{micro}}}{t_{\mathrm{rxn}}}
@@ -85,20 +88,22 @@ Completed in the current implementation pass:
 
     - Retain the existing reaction-time bands only as preliminary screening heuristics.
 
-15. **Improve the reaction-timescale model.**
+15. [~] **Improve the reaction-timescale model.**
     - Support general rate laws, unequal reactant concentrations, parallel and consecutive pathways, catalysis, and semi-batch concentration trajectories.
     - Evaluate the worst-case reaction timescale during the process rather than only the initial bulk condition.
+    - Current implementation supports zero-, first-, second-, and pseudo-order laws with a conservative 90%-conversion process-window estimate; direct `t_rxn` overrides remain unchanged.
+    - Remaining work: add explicit inputs and trajectory calculations for unequal reactants, parallel/consecutive pathways, catalysis, and semi-batch concentration profiles.
 
-16. **Do not automatically mark every semi-batch process as mesomixing-sensitive.**
+16. [x] **Do not automatically mark every semi-batch process as mesomixing-sensitive.**
     - Treat semi-batch operation as requiring a feed-zone assessment.
     - Consider feed rate, feed concentration, pipe geometry, location, local circulation, reaction time, and accumulation potential.
 
-17. **Separate thermal severity from heat-transfer capability.**
+17. [x] **Separate thermal severity from heat-transfer capability.**
     - Thermal severity: \(\Delta T_{\mathrm{ad}}\), MTSR, and decomposition margin.
     - Heat-transfer fit: peak heat generation versus \(UA\Delta T\).
     - Mixing-thermal coupling: feed-point hot spots and local reagent accumulation.
 
-18. **Separate exothermic and endothermic conclusions.**
+18. [x] **Separate exothermic and endothermic conclusions.**
     - Use distinct categories for heat-removal risk and heat-input or temperature-collapse risk.
     - Treat reaction-class keywords as prompts for calorimetry, not proof of heat-transfer sensitivity.
 

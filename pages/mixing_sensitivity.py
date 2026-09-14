@@ -120,6 +120,137 @@ def _sensitive_kpi_phrase(test_rows) -> str:
     return ", ".join(names) if names else "the tracked response(s)"
 
 
+def _mesomixing_risk(competing: str, is_semi_batch: bool) -> tuple[bool, bool]:
+    """Return (mesomixing-sensitive, requires-feed-zone-assessment).
+
+    Semi-batch operation is a feed-zone risk, but not automatically a confirmed
+    mesomixing sensitivity. The user must still assess the feed conditions and
+    test data before the sensitivity is elevated.
+    """
+    meso_sensitive = competing in ("Yes", "Not sure")
+    require_feed_zone = is_semi_batch and not meso_sensitive
+    return meso_sensitive, require_feed_zone
+
+
+def _damkohler_screening_note(t_rxn: float) -> str:
+    """Return the preliminary screening note for reaction-time heuristics.
+
+    The legacy time bands are retained as a quick screen only; the engineering
+    decision should be confirmed with reactor-specific Damköhler numbers.
+    """
+    if not np.isfinite(t_rxn) or t_rxn <= 0:
+        return ("Reaction time is unavailable, so this is only a qualitative screening. "
+                "Compute reactor-specific Da_macro / Da_micro on the Vessel Assessment page to "
+                "resolve the actual mixing sensitivity.")
+    if t_rxn < 0.1:
+        basis = "very fast"
+    elif t_rxn < 1.0:
+        basis = "fast"
+    elif t_rxn < 10.0:
+        basis = "moderate"
+    else:
+        basis = "slow"
+    return (
+        f"This {basis}-reaction classification is only a preliminary screening heuristic; "
+        "the actual mechanism should be checked with reactor-specific Damköhler numbers "
+        "(Da_macro and Da_micro) on the Vessel Assessment page."
+    )
+
+
+def _reaction_timescale_profile(order: str, k: float, C0: float,
+                                t_specified: float = 0.0) -> tuple[float, float, str]:
+    """Return initial and conservative 90%-conversion reaction times.
+
+    The second value is used for a process-window screen when kinetics are
+    derived from ``k`` and ``C0``. A directly specified ``t_rxn`` is retained
+    as-is because its conversion basis is unknown.
+    """
+    if t_specified > 0:
+        return t_specified, t_specified, "specified directly"
+    if k <= 0:
+        return 0.0, 0.0, ""
+
+    normalized_order = str(order)
+    if normalized_order in ("1", "pseudo-1"):
+        initial = 1.0 / k
+        worst = 2.302585093 / k
+        basis = "1/k; 90% conversion = 2.303/k"
+    elif normalized_order in ("2", "pseudo-2") and C0 > 0:
+        initial = 1.0 / (k * C0)
+        worst = 9.0 / (k * C0)
+        basis = "1/(k·C₀); 90% conversion = 9/(k·C₀)"
+    elif normalized_order == "0" and C0 > 0:
+        initial = C0 / k
+        worst = 0.9 * C0 / k
+        basis = "C₀/k; 90% conversion = 0.9·C₀/k"
+    else:
+        return 0.0, 0.0, "fallback (order/C₀ incomplete)"
+    return initial, worst, basis
+
+
+def _heat_transfer_summary(abs_dH: float, dt_ad: float | None = None, *,
+                          dH_eff: float | None = None) -> str:
+    """Return a narrative that separates thermal severity from heat-transfer fit.
+
+    Thermal severity asks whether the reaction can generate a dangerous
+    temperature excursion; heat-transfer capability asks whether the jacket/heat
+    removal system can remove or supply the heat. The message distinguishes
+    exothermic and endothermic outcomes.
+    """
+    signed = abs_dH
+    if dH_eff is not None:
+        signed = dH_eff
+    if signed < 0:
+        sign = "exothermic"
+        mag = abs(signed)
+    else:
+        sign = "endothermic"
+        mag = abs(signed)
+
+    if dt_ad is None:
+        if mag < 20:
+            return ("Thermal severity: low; heat-transfer capability is likely manageable. "
+                    f"This is a mild {sign} reaction and the system should be checked with a "
+                    "heat balance, but no severe thermal excursion is indicated.")
+        if mag < 50:
+            return ("Thermal severity: moderate; heat-transfer capability should be confirmed. "
+                    f"The {sign} profile is not trivial and should be checked with a heat balance "
+                    "and cooling/heating duty analysis.")
+        return ("Thermal severity: high; heat-transfer capability requires explicit review. "
+                f"This {sign} reaction warrants a detailed heat-balance check for cooling or "
+                "heat input adequacy.")
+
+    if sign == "exothermic":
+        if dt_ad >= 200:
+            return ("Thermal severity: very high; runaway potential is significant. "
+                    "Cooling capacity and emergency relief / quench strategy must be reviewed. "
+                    "This is separate from the heat-transfer capability check: the issue is the "
+                    "ability to reject heat, not merely whether the jacket is sized for average duty.")
+        if dt_ad >= 50:
+            return ("Thermal severity: high; runaway risk is material and cooling/heat-removal "
+                "capacity must be reviewed. The exothermic load is large enough that cooling "
+                "duty and upset response are critical, separate from the nominal heat-transfer "
+                "capability calculation.")
+        if dt_ad >= 20:
+            return ("Thermal severity: moderate; exothermic load is manageable but must be "
+                    "checked against cooling capacity. Separate the thermal severity from the "
+                    "heat-transfer capability calculation for the final design review.")
+        return ("Thermal severity: low; the exothermic profile is modest and heat-transfer "
+                "capability is likely adequate, though a heat balance should still be checked.")
+
+    if dt_ad >= 50:
+        return ("Thermal severity: significant endothermic demand; review heat input and temperature "
+                "stability, not just the cooling duty. Heat-transfer capability is distinct from "
+                "the required heating capacity, and an endothermic process may need extra heat input "
+                "to avoid temperature collapse.")
+    if dt_ad >= 20:
+        return ("Thermal severity: moderate endothermic load; confirm heat input and circulation "
+                "capacity. This is separate from heat-transfer capability: the key question is "
+                "whether the system can supply enough heat to maintain temperature.")
+    return ("Thermal severity: low; endothermic loading is modest and heat-transfer capability "
+            "is likely adequate, although the heating system should still be reviewed for duty.")
+
+
 _KNOWN_HOT = ["grignard", "nitration", "sulfonation", "diazotization",
               "polymerization", "hydrogenation", "oxidation"]
 
@@ -158,6 +289,7 @@ ms_bourne_tests = ["Test 1"]
 ms_bourne_upload = ""
 ms_step0_assess = ""
 ms_bourne_findings_df = pd.DataFrame(columns=["Test", "Finding", "Sensitive KPI(s)"])
+ms_bourne_meta = {}
 ms_bourne_meta_caption = ""
 
 # ---------------------------------------------------------------------------
@@ -278,6 +410,12 @@ def _recompute(state):
     # results for the default inputs on page load).
     if not getattr(state, "ms_started", False):
         return
+    required = [
+        "ms_reaction", "ms_kinetics_avail", "ms_phases", "ms_competing",
+        "ms_dh_action", "ms_rho_cp", "ms_c0_heat",
+    ]
+    if not all(hasattr(state, name) for name in required):
+        return
     # ---- Step 0: Bourne pre-screen -------------------------------------
     b_sensitive, b_mechs, b_done = _bourne_derive(state)
     test_rows = state.ms_bourne_findings_df.to_dict("records") if not state.ms_bourne_findings_df.empty else []
@@ -318,25 +456,8 @@ def _recompute(state):
     dH = _sf(state.ms_rxn_dh)
     rxn_type = str(row.get("type", "") or "")
 
-    if t_specified > 0:
-        t_rxn = t_specified
-        t_basis = "specified directly"
-    elif k > 0:
-        if order in ("1", "pseudo-1"):
-            t_rxn = 1.0 / k
-            t_basis = f"1/k = 1/{k:.4g} s⁻¹"
-        elif order in ("2", "pseudo-2") and C0 > 0:
-            t_rxn = 1.0 / (k * C0)
-            t_basis = f"1/(k·C₀) = 1/({k:.4g}×{C0:.4g})"
-        elif order == "0" and C0 > 0:
-            t_rxn = C0 / k
-            t_basis = f"C₀/k = {C0:.4g}/{k:.4g} (zero-order depletion time)"
-        else:
-            t_rxn = 1.0
-            t_basis = "fallback (order/C₀ incomplete)"
-    else:
-        t_rxn = 0.0
-        t_basis = ""
+    t_rxn, t_rxn_worst, t_basis = _reaction_timescale_profile(
+        order, k, C0, t_specified)
 
     using_approx = state.ms_kinetics_avail.startswith("Approximate")
     kinetics_declined = state.ms_kinetics_avail.startswith("No")
@@ -353,12 +474,18 @@ def _recompute(state):
     if t_rxn > 0:
         state.ms_kinetics_md = (
             f"**Kinetic model** (order {order}): {law}\n\n"
-            f"Characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({t_basis}). "
-            "This is the reaction time constant used in the Damköhler number "
-            "(the e-folding time, not the half-life).")
+            f"Initial characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({t_basis}). "
+            + (f"For a 90% conversion process window, use **{t_rxn_worst:.4g} s** as the "
+                    "conservative timescale. " if t_rxn_worst != t_rxn else "")
+                + "This is the reaction time constant used in the Damköhler number "
+                "(the e-folding time, not the half-life).")
     else:
         state.ms_kinetics_md = ("⚠️ Cannot determine a characteristic reaction time - "
                     "check k, C₀ and t_rxn in the Reaction Database.")
+
+        # Use the process-window estimate for downstream mixing comparisons. The
+        # initial value remains visible above so the conservatism is auditable.
+        t_rxn = t_rxn_worst
 
     if kinetics_declined:
         state.ms_step1_assess = _amd(
@@ -404,9 +531,7 @@ def _recompute(state):
     # ---- Step 3: competing reactions -----------------------------------
     competing = state.ms_competing
     competing_set = competing in ("Yes", "No", "Not sure")
-    meso_sensitive = competing in ("Yes", "Not sure")
-    if is_semi_batch and not meso_sensitive:
-        meso_sensitive = True
+    meso_sensitive, require_feed_zone = _mesomixing_risk(competing, is_semi_batch)
     if not competing_set:
         state.ms_step3_assess = _amd("caution", "Select an option to continue.")
     elif competing == "Yes":
@@ -417,10 +542,11 @@ def _recompute(state):
         state.ms_step3_assess = _amd(
             "warning", "Treat as **potentially sensitive** until confirmed - a Bourne Protocol "
             "screen resolves whether micro/mesomixing affects selectivity.")
-    elif is_semi_batch:
+    elif require_feed_zone:
         state.ms_step3_assess = _amd(
             "warning", "No competing reactions, but this is a **semi-batch** process - "
-            "mesomixing (feed-plume dispersion) is always relevant at the feed point.")
+            "run a feed-zone assessment (feed rate/time and location) before assuming "
+            "mesomixing is controlling.")
     else:
         state.ms_step3_assess = _amd(
             "ok", "**No competing reactions** in a batch process - micro/mesomixing unlikely "
@@ -456,14 +582,14 @@ def _recompute(state):
         dh_estimated = using_approx
 
     abs_dH = abs(dH_eff)
-    heat_sensitive = False
+    heat_limiting = False
     heat_flagged_type = any(t in rxn_type.lower() for t in _KNOWN_HOT)
 
     if has_enthalpy:
         if state.ms_c0_heat > 0 and state.ms_rho_cp > 0:
             dt_ad = abs_dH * state.ms_c0_heat * 1000.0 / state.ms_rho_cp
         heat_flag = abs_dH >= 50 or (dt_ad is not None and dt_ad >= 50)
-        heat_sensitive = heat_flag or heat_flagged_type
+        heat_limiting = heat_flag or heat_flagged_type
         sign = "exothermic" if dH_eff < 0 else "endothermic"
         if abs_dH >= 100:
             intensity, heat_kind = "Highly", "critical"
@@ -480,7 +606,7 @@ def _recompute(state):
         msg = ", ".join(parts) + "."
         if heat_flag:
             duty = "cooling" if dH_eff < 0 else "heating"
-            msg += (" Heat transfer is **likely sensitive** - run a heat balance (Vessel "
+            msg += (" Heat transfer is **likely limiting** - run a heat balance (Vessel "
                     f"Assessment) to confirm adequate {duty} capacity (Q_rxn vs Q_jacket).")
         if heat_flagged_type:
             msg += (f" Reaction type **{rxn_type}** is commonly strongly exothermic - heat "
@@ -488,26 +614,18 @@ def _recompute(state):
         if dh_estimated:
             msg += (" The ΔH used here is **estimated** (proxy/similar reaction) - measure it "
                     "by reaction calorimetry to confirm this screening.")
-        state.ms_step4_assess = _amd("critical" if heat_sensitive else heat_kind, msg)
+        state.ms_step4_assess = _amd("critical" if heat_limiting else heat_kind, msg)
         if dt_ad is not None:
-            if dH_eff > 0:
-                sev = ("🟡 Endothermic - runaway is not applicable; ΔT_ad is the adiabatic "
-                       "temperature *drop*, so sufficient heat input is needed to hold temperature.")
-            elif dt_ad >= 200:
-                sev = "🔴 Very high - loss of cooling could drive a runaway; assess MTSR vs T_D24 (Stoessel)."
-            elif dt_ad >= 50:
-                sev = "🔴 High - strong cooling and feed-rate control required."
-            elif dt_ad >= 20:
-                sev = "🟡 Moderate - manageable with adequate cooling; verify the heat balance at scale."
-            else:
-                sev = "🟢 Low - runaway unlikely, though feed-point hot spots may still occur."
-            state.ms_dt_ad_caption = (f"ΔT_ad = |ΔH|·C₀·1000/(ρ·Cp) ≈ **{dt_ad:.0f} K**  -  {sev}")
+            state.ms_dt_ad_caption = (
+                f"ΔT_ad = |ΔH|·C₀·1000/(ρ·Cp) ≈ **{dt_ad:.0f} K**  -  "
+                f"{_heat_transfer_summary(abs_dH, dt_ad, dH_eff=dH_eff)}"
+            )
         else:
             state.ms_dt_ad_caption = "Enter C₀ and ρ·Cp above to estimate ΔT_ad."
     else:
         if state.ms_dh_action == "Perform calorimetry - measure ΔH experimentally":
             state.ms_step4_assess = _amd(
-                "caution", "Heat-transfer risk **cannot be evaluated without ΔH** - measure it "
+                "caution", "Heat-transfer limitation **cannot be evaluated without ΔH** - measure it "
                 "by reaction calorimetry (RC1 / µRC), add it to the Reaction Database, and "
                 "return here.")
         elif not heat_resolved:
@@ -525,23 +643,24 @@ def _recompute(state):
             state.ms_step5_assess = _amd(
                 "critical", "**Very fast reaction** - micromixing-sensitive in most reactor "
                 "configurations. Local turbulent energy dissipation near the impeller, feed "
-                "location, and tip speed are critical.")
+                "location, and tip speed are critical. " + _damkohler_screening_note(t_rxn))
             micro_likely = True
         elif t_rxn < 1.0:
             state.ms_step5_assess = _amd(
                 "warning", "**Fast reaction** - micromixing likely relevant in larger vessels "
-                "where local ε at the feed point decreases. Confirm with Damköhler analysis.")
+                "where local ε at the feed point decreases. Confirm with Damköhler analysis. "
+                + _damkohler_screening_note(t_rxn))
             micro_likely = True
         elif t_rxn < 10:
             state.ms_step5_assess = _amd(
                 "caution", "**Moderate reaction** - micromixing less likely to dominate, but "
                 "macromixing (blend time) could matter in larger vessels. Check blend time vs "
-                "t_rxn.")
+                "t_rxn. " + _damkohler_screening_note(t_rxn))
             micro_likely = False
         else:
             state.ms_step5_assess = _amd(
                 "ok", "**Slow reaction** - mixing is unlikely to limit the reaction in "
-                "well-agitated vessels.")
+                "well-agitated vessels. " + _damkohler_screening_note(t_rxn))
             micro_likely = False
     else:
         state.ms_trxn_caption = ""
@@ -558,13 +677,13 @@ def _recompute(state):
     findings = _build_findings(
         b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
         meso_sensitive, competing, is_semi_batch, multiphase, phases,
-        has_enthalpy, heat_sensitive, dH_eff, dt_ad, kinetics_known, using_approx,
+        has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known, using_approx,
         dh_estimated)
     verdict, verdict_kind = _build_verdict(
         b_sensitive, b_mechs, b_done, findings, competing)
     next_steps = _build_next_steps(
         b_sensitive, b_mechs, using_approx, micro_likely, t_rxn, meso_sensitive,
-        multiphase, has_enthalpy, heat_sensitive, is_semi_batch, kinetics_known,
+        multiphase, has_enthalpy, heat_limiting, is_semi_batch, kinetics_known,
         kinetics_declined, dh_estimated)
 
     state.ms_ready = bool(kinetics_resolved and phases and competing_set and heat_resolved)
@@ -593,7 +712,7 @@ def _recompute(state):
         "dT_ad": dt_ad, "phases": phases, "findings": findings, "next_steps": next_steps,
         "bourne_result": bourne_txt, "bourne_tests": test_rows,
         "bourne_mechanism": b_mechs[0] if b_mechs else "",
-        "bourne_meta": _ms_meta_from_caption(state.ms_bourne_meta_caption),
+        "bourne_meta": dict(getattr(state, "ms_bourne_meta", {}) or {}),
         "competing": competing if competing_set else "Not assessed",
         "overall_verdict": _strip_md(verdict), "using_approximate": using_approx,
         "dh_estimated": dh_estimated, "is_semi_batch": is_semi_batch,
@@ -601,7 +720,15 @@ def _recompute(state):
 
 
 def _ms_meta_from_caption(_caption: str) -> dict:
-    return {}
+    if not _caption:
+        return {}
+    meta = {}
+    for part in _caption.split("  •  "):
+        match = re.search(r"\*\*(.+?):\*\*\s*(.+)", part)
+        if match:
+            key, value = match.groups()
+            meta[key.strip().lower().replace(" ", "_")] = value.strip()
+    return meta
 
 
 def _strip_md(text: str) -> str:
@@ -613,7 +740,7 @@ def _strip_md(text: str) -> str:
 # ---------------------------------------------------------------------------
 def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                     meso_sensitive, competing, is_semi_batch, multiphase, phases,
-                    has_enthalpy, heat_sensitive, dH_eff, dt_ad, kinetics_known,
+                    has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known,
                     using_approx=False, dh_estimated=False):
     findings: list[tuple[str, str, str]] = []
     kpi_phrase = _sensitive_kpi_phrase(test_rows)
@@ -710,23 +837,24 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
                          f"Single phase ({phase_lbl}) - no interphase transport."))
 
     # Heat transfer
-    if has_enthalpy and heat_sensitive:
+    if has_enthalpy and heat_limiting:
         detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
         if dt_ad is not None:
             detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
         duty = "cooling" if dH_eff < 0 else "heating"
-        status = "🔴 Likely sensitive (estimated ΔH)" if dh_estimated else "🔴 Likely sensitive"
+        status = ("🔴 Likely heat-transfer-limited (estimated ΔH)" if dh_estimated
+              else "🔴 Likely heat-transfer-limited")
         note = " ΔH is estimated - confirm it by reaction calorimetry." if dh_estimated else ""
         findings.append(("Heat transfer", status,
                          f"{detail} - run a heat balance to confirm adequate {duty} capacity.{note}"))
-    elif has_enthalpy and not heat_sensitive and dh_estimated:
+    elif has_enthalpy and not heat_limiting and dh_estimated:
         detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
         if dt_ad is not None:
             detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
         findings.append(("Heat transfer", "🟡 Manageable (estimated ΔH)",
                          f"{detail} - modest thermal load, but the ΔH is estimated. Measure it "
                          "by reaction calorimetry to confirm."))
-    elif has_enthalpy and not heat_sensitive:
+    elif has_enthalpy and not heat_limiting:
         detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
         if dt_ad is not None:
             detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
@@ -816,7 +944,7 @@ def _build_verdict(b_sensitive, b_mechs, b_done, findings, competing):
 
 
 def _build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
-                      meso_sensitive, multiphase, has_enthalpy, heat_sensitive, is_semi_batch,
+                      meso_sensitive, multiphase, has_enthalpy, heat_limiting, is_semi_batch,
                       kinetics_known, kinetics_declined, dh_estimated=False):
     steps: list[dict] = []
     if b_sensitive is None:
@@ -853,7 +981,7 @@ def _build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
     if multiphase:
         steps.append({"Area": "Mass transfer",
                       "Recommended action": "Assess Da_GL / Da_SL on the Vessel Assessment page."})
-    if has_enthalpy and heat_sensitive:
+    if has_enthalpy and heat_limiting:
         steps.append({"Area": "Heat transfer",
                       "Recommended action": "Run a heat balance (Vessel Assessment) to quantify "
                       "Q_gen vs Q_cool."})
@@ -962,9 +1090,21 @@ def on_ms_bourne_import(state):
         v = (d.get(fld) or "").strip()
         if v:
             meta_bits.append(f"**{lbl}:** {v}")
+    state.ms_bourne_meta = {
+        "project_name": (d.get("project_name") or "").strip(),
+        "reactor": (d.get("reactor") or "").strip(),
+        "fluid": (d.get("fluid") or "").strip(),
+        "test_status": (d.get("test_status") or "").strip(),
+        "protocol_version": (d.get("protocol_version") or "").strip(),
+    }
+    state.ms_bourne_meta = {k: v for k, v in state.ms_bourne_meta.items() if v}
     state.ms_bourne_meta_caption = "Imported Bourne results - " + "  •  ".join(meta_bits) if meta_bits else ""
     notify(state, "S", "Bourne results imported.")
-    _recompute(state)
+    if all(hasattr(state, field) for field in [
+        "ms_started", "ms_reaction", "ms_kinetics_avail", "ms_phases",
+        "ms_competing", "ms_dh_action", "ms_rho_cp", "ms_c0_heat",
+    ]):
+        _recompute(state)
 
 
 def on_ms_export_pdf(state):
@@ -973,7 +1113,7 @@ def on_ms_export_pdf(state):
         return
     try:
         snap = dict(state._ms_cache)
-        snap["bourne_meta"] = _ms_meta_from_caption(state.ms_bourne_meta_caption)
+        snap["bourne_meta"] = dict(getattr(state, "ms_bourne_meta", {}) or {})
         state.ms_pdf_bytes = build_protocol_pdf(snap)
         state.ms_pdf_name = report_filename("Sensitivity_Protocol", state.ms_reaction)
         state.ms_pdf_ready = True
@@ -986,6 +1126,15 @@ def on_ms_init(state):
     """Start (or refresh) the assessment once the user has set the inputs."""
     state.ms_started = True
     on_ms_reaction_change(state)
+
+
+def on_ms_update_assessment(state):
+    """Re-run the assessment while preserving all current user inputs."""
+    state.ms_started = True
+    state.ms_pdf_ready = False
+    state.ms_pdf_bytes = b""
+    _safe_recompute(state)
+    notify(state, "S", "Assessment updated with the current inputs.")
 
 
 def on_ms_reset(state):
@@ -1025,6 +1174,7 @@ def on_ms_reset(state):
     state.ms_trxn_caption = ""
     state.ms_dt_ad_caption = ""
     state.ms_show_dh_action = False
+    state.ms_bourne_meta = {}
     state.ms_bourne_meta_caption = ""
     state.ms_bourne_findings_df = pd.DataFrame(columns=["Test", "Finding", "Sensitive KPI(s)"])
     state.ms_findings_df = pd.DataFrame(columns=["Sensitivity Type", "Finding"])
@@ -1066,7 +1216,10 @@ of the page.** No results are shown until you do.
 |>
 
 <|part|render={ms_started}|
+<|layout|columns=1 1|class_name=form-grid|
+<|Update assessment|button|on_action=on_ms_update_assessment|class_name=compute-btn|>
 <|Reset assessment|button|on_action=on_ms_reset|class_name=compute-btn|>
+|>
 |>
 
 <|part|height=18px|>
@@ -1103,8 +1256,9 @@ have run the Bourne Protocol, enter the outcome (or import its results CSV).
 
 <|part|class_name=va-card|
 ## Step 1 - Reaction Kinetics
-The characteristic reaction time **t<sub>rxn</sub>** (1/k or 1/(k·C₀)) is the Damköhler
-reference timescale for every mechanism below.
+The characteristic reaction time **t<sub>rxn</sub>** is the Damköhler reference timescale
+for every mechanism below. When derived from k and C₀, the protocol uses a conservative
+90% conversion process-window estimate rather than only the initial rate.
 
 <|part|height=18px|>
 

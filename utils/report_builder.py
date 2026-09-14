@@ -1192,7 +1192,7 @@ def _bourne_later_test_responses(pdf, responses, short_labels,
             "status", "sensitive" if n_sensitive > 0 else "not_sensitive")
         if _status == "not_sensitive":
             colour, verdict = "GREEN", insensitive_text
-        elif _status == "may_be_sensitive":
+        elif _status in ("may_be_sensitive", "inconclusive"):
             colour, verdict = "AMBER", may_text
         else:
             colour, verdict = "RED", sensitive_text
@@ -1580,7 +1580,7 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
                 if _status == "not_sensitive":
                     _verdict = "Mixing does NOT matter -- process insensitive to impeller speed"
                     colour = "GREEN"
-                elif _status == "may_be_sensitive":
+                elif _status in ("may_be_sensitive", "inconclusive"):
                     _verdict = "Mixing MAY matter -- proceed to Test 2 with caution"
                     colour = "AMBER"
                 else:

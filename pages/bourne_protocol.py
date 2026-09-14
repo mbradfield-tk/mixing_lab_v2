@@ -145,16 +145,52 @@ def _fluid_diffusivity(name: str, T_C: float, P_atm: float = 1.0) -> float:
     return 2.3e-9
 
 
-def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
-    """Return (max % change from centre, sensitive?)."""
-    if center == 0:
-        span = max(abs(low), abs(high))
+def _assess_with_threshold(low: float, center: float, high: float,
+                          threshold: float = _SENS_THRESHOLD) -> tuple[float, bool]:
+    """Return (max % change from centre, sensitive?) for a specific KPI threshold.
+
+    For near-zero centers, use an absolute-difference criterion rather than a
+    blanket 100% rule so small but analytically real changes are still detected
+    without over-classifying every near-zero measurement as 100% different.
+    """
+    if abs(center) <= 1e-12:
+        span = max(abs(low), abs(center), abs(high))
         if span == 0:
             return 0.0, False
-        max_pct = 100.0
-        return max_pct, True
+        base = max(1.0, span)
+        max_pct = max(abs(v - center) / base * 100.0 for v in (low, center, high))
+        return max_pct, max_pct >= threshold
     max_pct = max(abs(v - center) / abs(center) * 100.0 for v in (low, center, high))
-    return max_pct, max_pct >= _SENS_THRESHOLD
+    return max_pct, max_pct >= threshold
+
+
+def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
+    """Return (max % change from centre, sensitive?) using the default threshold."""
+    return _assess_with_threshold(low, center, high, _SENS_THRESHOLD)
+
+
+def _kpi_threshold(name: str) -> float:
+    """Return a KPI-specific sensitivity threshold in percent."""
+    text = str(name or "").lower()
+    if any(term in text for term in ("impurity", "particle size", "d50", "size")):
+        return 10.0
+    if any(term in text for term in ("yield", "conversion", "purity", "selectivity")):
+        return 5.0
+    return _SENS_THRESHOLD
+
+
+def _kpi_criticality(name: str) -> str:
+    """Classify KPI importance: critical vs secondary.
+
+    Impurity or selectivity-type KPIs are treated as critical because they
+    directly affect product quality and safety decisions; yield and purity-like
+    process metrics are treated as secondary unless the protocol specifically
+    identifies them as a dominant risk driver.
+    """
+    text = str(name or "").lower()
+    if any(term in text for term in ("impurity", "selectivity")):
+        return "critical"
+    return "secondary"
 
 
 def _n_for_pm(pm_wkg: float, V_m3: float, Np: float, D: float) -> float:
@@ -198,15 +234,15 @@ KPI_COLUMNS = {
 
 
 def _new_kpi_df(test: int, seed_names=(("Yield", "%"),)) -> pd.DataFrame:
-    """Build a fresh KPI response table for a test with zeroed responses."""
+    """Build a fresh KPI response table for a test with missing responses."""
     low, ctr, high = KPI_COLUMNS[test]
-    rows = [{"KPI": n, "Unit": u, low: 0.0, ctr: 0.0, high: 0.0}
+    rows = [{"KPI": n, "Unit": u, low: np.nan, ctr: np.nan, high: np.nan}
             for n, u in seed_names]
     return pd.DataFrame(rows)
 
 
 def _mirror_kpis(src_df: pd.DataFrame, test: int) -> pd.DataFrame:
-    """Copy KPI names/units from an upstream test, zeroing the responses."""
+    """Copy KPI names/units from an upstream test, leaving the responses empty."""
     names = [(str(r.get("KPI", "") or "Yield").strip() or "Yield",
               str(r.get("Unit", "") or "").strip())
              for _, r in src_df.iterrows()]
@@ -223,31 +259,52 @@ def _empty_result(test: int) -> pd.DataFrame:
 def _assess_kpis(df: pd.DataFrame, test: int):
     """Assess a KPI response table; return a result dict or None if no data.
 
-    Each KPI is judged sensitive at a >= ``_SENS_THRESHOLD`` % change from its
-    centre value. Rows with no data (all three responses zero) are skipped. The
-    overall verdict uses a majority vote across KPIs.
+    Blank cells remain missing values rather than zeroes. Mixed KPI outcomes are
+    treated as inconclusive instead of being promoted to a confirmed sensitivity
+    verdict.
     """
     low, ctr, high = KPI_COLUMNS[test]
     results = []
     for _, r in df.iterrows():
-        lo, ce, hi = _sf(r.get(low)), _sf(r.get(ctr)), _sf(r.get(high))
+        lo = _sf(r.get(low))
+        ce = _sf(r.get(ctr))
+        hi = _sf(r.get(high))
+
+        if pd.isna(lo) and pd.isna(ce) and pd.isna(hi):
+            continue
         if lo == 0.0 and ce == 0.0 and hi == 0.0:
             continue
+
         name = (str(r.get("KPI", "") or "KPI").strip() or "KPI")
         unit = str(r.get("Unit", "") or "").strip()
-        max_pct, sensitive = _assess(lo, ce, hi)
-        results.append({"name": name, "unit": unit, "low": lo, "ctr": ce,
-                        "high": hi, "max_pct": max_pct, "sensitive": sensitive})
+        threshold = _kpi_threshold(name)
+        max_pct, sensitive = _assess_with_threshold(lo, ce, hi, threshold)
+        results.append({
+            "name": name,
+            "unit": unit,
+            "low": lo,
+            "ctr": ce,
+            "high": hi,
+            "max_pct": max_pct,
+            "sensitive": sensitive,
+            "threshold": threshold,
+            "criticality": _kpi_criticality(name),
+        })
     if not results:
         return None
     n_total = len(results)
     n_sensitive = sum(1 for r in results if r["sensitive"])
-    if n_sensitive == 0:
+    critical_sensitive = any(
+        r["sensitive"] for r in results if r["criticality"] == "critical"
+    )
+    if critical_sensitive:
+        status = "sensitive"
+    elif n_sensitive == 0:
         status = "not_sensitive"
-    elif n_sensitive > n_total / 2:
+    elif n_sensitive == n_total:
         status = "sensitive"
     else:
-        status = "may_be_sensitive"
+        status = "inconclusive"
     table = pd.DataFrame([{
         "KPI": f'{r["name"]} ({r["unit"]})' if r["unit"] else r["name"],
         low: f'{r["low"]:g}', ctr: f'{r["ctr"]:g}', high: f'{r["high"]:g}',
@@ -258,20 +315,20 @@ def _assess_kpis(df: pd.DataFrame, test: int):
         f'{r["name"]} ({r["max_pct"]:.1f}%)' for r in results if r["sensitive"])
     return {
         "results": results, "n_total": n_total, "n_sensitive": n_sensitive,
-        "status": status, "sensitive": status != "not_sensitive",
+        "status": status, "sensitive": status == "sensitive",
         "sensitive_names": sens_names, "table": table,
     }
 
 
 def _kpi_prefix(res: dict) -> str:
-    """Leading verdict sentence summarising the majority-vote KPI outcome."""
+    """Leading verdict sentence summarising the KPI outcome."""
     n, N = res["n_sensitive"], res["n_total"]
     thr = _SENS_THRESHOLD
     if res["status"] == "sensitive":
         return (f"⚠️ **Sensitive** — {n} of {N} KPI(s) changed ≥ {thr:.0f}% "
                 f"({res['sensitive_names']}).")
-    if res["status"] == "may_be_sensitive":
-        return (f"⚠️ **Possibly sensitive** — only {n} of {N} KPI(s) changed "
+    if res["status"] in ("may_be_sensitive", "inconclusive"):
+        return (f"⚠️ **Inconclusive** — only {n} of {N} KPI(s) changed "
                 f"≥ {thr:.0f}% ({res['sensitive_names']}); mixed signal.")
     return f"✅ **Not sensitive** — no KPI changed ≥ {thr:.0f}% across {N} KPI(s)."
 
@@ -427,6 +484,42 @@ bp_sens_csv_name = "Bourne_for_Sensitivity.csv"
 bp_sens_csv_ready = False
 
 
+def _invalidate_assessments(state):
+    """Clear all prior protocol verdicts when the inputs change."""
+    state.bp_t1_assessed = False
+    state.bp_t1_sensitive = False
+    state.bp_t1_result = None
+    state.bp_t1_verdict = ""
+    state.bp_t1_kpi_result_df = _empty_result(1)
+    state.bp_show_t2 = False
+
+    state.bp_t2_assessed = False
+    state.bp_t2_sensitive = False
+    state.bp_t2_result = None
+    state.bp_t2_verdict = ""
+    state.bp_t2_kpi_result_df = _empty_result(2)
+    state.bp_show_t3 = False
+
+    state.bp_t3_assessed = False
+    state.bp_t3_sensitive = False
+    state.bp_t3_result = None
+    state.bp_t3_verdict = ""
+    state.bp_t3_kpi_result_df = _empty_result(3)
+
+    state.bp_pdf_ready = False
+    state.bp_sens_csv_ready = False
+    state.bp_show_summary = False
+    state.bp_summary = ""
+
+    if getattr(state, "bp_started", True):
+        state.bp_status = (
+            "System or response inputs changed — previous Bourne assessments are invalid. "
+            "Reassessment required: please redo the protocol from Test 1."
+        )
+    else:
+        state.bp_status = "Define the system, then click Start Protocol."
+
+
 # ---------------------------------------------------------------------------
 # Change handlers
 # ---------------------------------------------------------------------------
@@ -445,10 +538,15 @@ def on_bp_reactor_change(state):
     rid = _reactor_id(state.bp_reactor)
     state.bp_viewer_html = build_vessel_viewer_html(rid, VIEWER_H)
     state.bp_media_caption = media_caption(rid)
+    _invalidate_assessments(state)
+    _build_t1(state)
+    _build_t2(state)
+    _build_t3(state)
 
 
 def _load_fluid(state):
     state.bp_rho, state.bp_mu = _fluid_props(state.bp_fluid, state.bp_T, state.bp_P)
+    _invalidate_assessments(state)
 
 
 def on_bp_fluid_change(state):
@@ -605,6 +703,7 @@ def on_bp_start(state):
 
 
 def on_bp_t1_recalc(state):
+    _invalidate_assessments(state)
     _build_t1(state)
 
 
@@ -645,38 +744,47 @@ def on_bp_t1_adj_delete(state, var_name, payload):
 # --- KPI table editing -----------------------------------------------------
 def on_bp_t1_kpi_edit(state, var_name, payload):
     state.bp_t1_kpi_df = db.apply_edit(state.bp_t1_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def on_bp_t1_kpi_add(state, var_name, payload):
     state.bp_t1_kpi_df = _append_kpi(state.bp_t1_kpi_df, 1)
+    _invalidate_assessments(state)
 
 
 def on_bp_t1_kpi_delete(state, var_name, payload):
     state.bp_t1_kpi_df = db.delete_row(state.bp_t1_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def on_bp_t2_kpi_edit(state, var_name, payload):
     state.bp_t2_kpi_df = db.apply_edit(state.bp_t2_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def on_bp_t2_kpi_add(state, var_name, payload):
     state.bp_t2_kpi_df = _append_kpi(state.bp_t2_kpi_df, 2)
+    _invalidate_assessments(state)
 
 
 def on_bp_t2_kpi_delete(state, var_name, payload):
     state.bp_t2_kpi_df = db.delete_row(state.bp_t2_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def on_bp_t3_kpi_edit(state, var_name, payload):
     state.bp_t3_kpi_df = db.apply_edit(state.bp_t3_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def on_bp_t3_kpi_add(state, var_name, payload):
     state.bp_t3_kpi_df = _append_kpi(state.bp_t3_kpi_df, 3)
+    _invalidate_assessments(state)
 
 
 def on_bp_t3_kpi_delete(state, var_name, payload):
     state.bp_t3_kpi_df = db.delete_row(state.bp_t3_kpi_df.copy(), payload)
+    _invalidate_assessments(state)
 
 
 def _append_kpi(df: pd.DataFrame, test: int) -> pd.DataFrame:
@@ -743,9 +851,9 @@ def _build_t2(state):
         rate_c = vol / t_c
     rows = []
     for label, tf, note in (
-        ("Fast (3× rate)", t_c / 3.0, "Short feed → tests inertial-convective break-up"),
-        ("Centre", t_c, "Reference feed rate"),
         ("Slow (1/3× rate)", t_c * 3.0, "Long feed → approaches well-mixed limit"),
+        ("Centre", t_c, "Reference feed rate"),
+        ("Fast (3× rate)", t_c / 3.0, "Short feed → tests inertial-convective break-up"),
     ):
         rows.append({
             "Condition": label,
@@ -757,6 +865,7 @@ def _build_t2(state):
 
 
 def on_bp_t2_recalc(state):
+    _invalidate_assessments(state)
     _build_t2(state)
 
 
@@ -809,6 +918,7 @@ def _build_t3(state):
 
 
 def on_bp_t3_recalc(state):
+    _invalidate_assessments(state)
     _build_t3(state)
 
 
@@ -1021,8 +1131,8 @@ def _dominant_and_conclusions(state):
         n, N = res["n_sensitive"], res["n_total"]
         if res["status"] == "sensitive":
             return f"**Sensitive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
-        if res["status"] == "may_be_sensitive":
-            return f"**Possibly sensitive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
+        if res["status"] in ("may_be_sensitive", "inconclusive"):
+            return f"**Inconclusive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
         return f"**Not sensitive** (0/{N} KPIs)"
 
     conclusions = []

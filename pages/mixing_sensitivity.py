@@ -76,7 +76,13 @@ _TEST_PURPOSE = {1: "impeller speed", 2: "feed rate/time", 3: "feed location"}
 
 
 def _remaining_tests(done_tests, needed=(2, 3)) -> list[int]:
-    return [t for t in needed if t not in (done_tests or [])]
+    if done_tests is None:
+        return list(needed)
+    if isinstance(done_tests, bool):
+        done_tests = [] if not done_tests else list(needed)
+    if not isinstance(done_tests, (list, tuple, set)):
+        done_tests = []
+    return [t for t in needed if t not in set(done_tests)]
 
 
 def _fmt_tests(nums) -> str:
@@ -769,6 +775,11 @@ def _build_verdict(b_sensitive, b_mechs, b_done, findings, competing):
                 f"(kinetics, phases, feed strategy) and {rem_action}."), "critical"
 
     if b_sensitive is False:
+        if n_unknown >= 1:
+            return (f"🟡 **Incomplete assessment** - {n_unknown} item(s) could not be evaluated "
+                    "(e.g. missing kinetics or ΔH), so a low-risk verdict cannot be confirmed. "
+                    "Resolve the unknowns or run a Bourne pre-screen for a direct experimental "
+                    "answer."), "warning"
         if red_mechs:
             return (f"🟡 **Possible scale-dependent sensitivity** - the Bourne pre-screen showed "
                     f"no sensitivity at lab scale, but the assessment flags **{_join_mechs(red_mechs)}** "
@@ -791,15 +802,15 @@ def _build_verdict(b_sensitive, b_mechs, b_done, findings, competing):
         return (f"🟡 **Moderate mixing sensitivity risk** - **{_join_mechs(red_mechs)}** is likely "
                 "to be sensitive. Investigate this mechanism and run a Bourne pre-screen to "
                 "confirm whether a sensitivity is present experimentally."), "warning"
-    if n_yellow >= 1:
-        return ("🟡 **Low-to-moderate mixing sensitivity risk** - no mechanisms are flagged as "
-                "likely sensitive, but some require verification at scale. Run a Bourne "
-                "pre-screen for a direct experimental answer."), "warning"
     if n_unknown >= 1:
         return (f"🟡 **Incomplete assessment** - {n_unknown} item(s) could not be evaluated "
                 "(e.g. missing kinetics or ΔH), so a low-risk verdict cannot be confirmed. "
                 "Resolve the unknowns or run a Bourne pre-screen for a direct experimental "
                 "answer."), "warning"
+    if n_yellow >= 1:
+        return ("🟡 **Low-to-moderate mixing sensitivity risk** - no mechanisms are flagged as "
+                "likely sensitive, but some require verification at scale. Run a Bourne "
+                "pre-screen for a direct experimental answer."), "warning"
     return ("🟢 **Low mixing sensitivity risk** - no mixing mechanisms are expected to limit this "
             "reaction under typical operating conditions."), "ok"
 

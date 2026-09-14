@@ -128,6 +128,7 @@ Completed in the current implementation pass:
 
 23. [~] **Add liquid-liquid dispersion and emulsion behavior.**
     - Fluid Database Blend now screens immiscible pairs using Weber number, estimated Sauter diameter, minimum dispersion speed, and rest-separation tendency.
+    - `utils/calculations/liquid_liquid.py` now has validated finite-input handling, drag-corrected droplet settling, a reusable capacity-ratio helper, and a consolidated `dispersion_screen()` API; the Van Heuven–Beek minimum-speed path is fixed.
     - Remaining work: add measured interfacial tension, phase-specific rheology, and time-dependent emulsion stability or coalescence data.
 
 24. **Add crystallization and precipitation sensitivity.**

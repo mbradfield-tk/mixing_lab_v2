@@ -483,9 +483,9 @@ def _recompute(state):
         state.ms_kinetics_md = ("⚠️ Cannot determine a characteristic reaction time - "
                     "check k, C₀ and t_rxn in the Reaction Database.")
 
-        # Use the process-window estimate for downstream mixing comparisons. The
-        # initial value remains visible above so the conservatism is auditable.
-        t_rxn = t_rxn_worst
+    # Use the process-window estimate for downstream mixing comparisons. The
+    # initial value remains visible above so the conservatism is auditable.
+    t_rxn = t_rxn_worst
 
     if kinetics_declined:
         state.ms_step1_assess = _amd(

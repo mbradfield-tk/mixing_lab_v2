@@ -120,6 +120,7 @@ blend_result_df = pd.DataFrame(columns=["Component", "Vol %", "Mass %", "ρ (kg/
 blend_misc_df = pd.DataFrame(columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
 blend_dispersion_speed = 5.0
 blend_dispersion_d = 0.05
+blend_dispersion_h = 1.0
 blend_sigma_ll = 0.01
 blend_dispersion_df = pd.DataFrame(columns=[
     "Pair", "Weber number", "d₃₂ (µm)", "N_min (1/s)", "N/N_min", "Rest separation"
@@ -585,7 +586,7 @@ def on_blend_compute(state):
             sep = phase_separation_check(
                 max(float(state.blend_dispersion_speed), 0.0),
                 max(float(state.blend_dispersion_d), 0.0),
-                max(float(state.blend_dispersion_d) * 20.0, 0.0),
+                max(float(state.blend_dispersion_h), 0.0),
                 continuous["rho_kg_m3"], dispersed["rho_kg_m3"], continuous["mu_Pa_s"],
                 max(float(state.blend_sigma_ll), 0.0), phi_d)
             n_min = minimum_dispersion_speed(
@@ -750,9 +751,10 @@ rules (log-mixing viscosity, volume-additive density, etc.).
 ### Liquid-liquid dispersion screen
 For immiscible pairs, estimate dispersion stability using the entered operating
 assumptions. Interfacial tension and impeller inputs are screening values.
-<|layout|columns=1 1 1|class_name=form-grid|
+<|layout|columns=1 1 1 1|class_name=form-grid|
 <|{blend_dispersion_speed}|number|label=Impeller speed (1/s)|>
 <|{blend_dispersion_d}|number|label=Impeller diameter (m)|>
+<|{blend_dispersion_h}|number|label=Separation height (m)|>
 <|{blend_sigma_ll}|number|label=Interfacial tension σ<sub>LL</sub> (N/m)|>
 |>
 

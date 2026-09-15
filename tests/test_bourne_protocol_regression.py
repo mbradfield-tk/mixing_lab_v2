@@ -25,9 +25,9 @@ from pages.mixing_sensitivity import (
 from utils.calculations.mixing_times import blend_time_turbulent
 
 
-def test_blend_time_decreases_as_flow_number_increases():
-    slow = blend_time_turbulent(Np=5.0, N=1.0, D=0.2, T=1.5, H=1.0, Nq=0.5)
-    fast = blend_time_turbulent(Np=5.0, N=1.0, D=0.2, T=1.5, H=1.0, Nq=1.5)
+def test_blend_time_decreases_as_power_number_increases():
+    slow = blend_time_turbulent(Np=0.5, N=1.0, D=0.2, T=1.5, H=1.0)
+    fast = blend_time_turbulent(Np=5.0, N=1.0, D=0.2, T=1.5, H=1.0)
     assert fast < slow
     assert slow > 0.0
 

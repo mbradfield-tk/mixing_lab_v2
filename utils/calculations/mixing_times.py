@@ -53,26 +53,15 @@ EPSILON_MAX_X_DEFAULT = 15.0
 
 def blend_time_turbulent(
     Np: float, N: float, D: float, T: float, H: float,
-    Nq: float | None = None,
 ) -> float:
     """
     Macro-blend time to 95% homogeneity in the turbulent regime.
 
-    Use the circulation-flow form of the Grenville relation, which is tied to the
-    impeller flow number Nq rather than the power number Np. A higher Nq implies
-    a larger circulation rate and therefore a shorter blend time.
+    Po^(1/3) N theta_95 D^2 / (T^1.5 H^0.5) = 5.20
     """
-    if Nq is None or (isinstance(Nq, float) and np.isnan(Nq)):
-        Nq = 0.79
-    if N <= 0 or D <= 0 or T <= 0 or H <= 0 or Nq <= 0:
-        return np.inf
-    # Circulation-flow approximation: Q = Nq * N * D^3. The blend-time scale is
-    # proportional to the vessel circulation time, so increasing Nq decreases the
-    # predicted blend time.
-    denominator = Nq * N * D**3
+    denominator = Np ** (1.0 / 3.0) * N * D**2
     if denominator == 0:
         return np.inf
-    # Retain the geometric scaling from the published turbulent blend-time form.
     return GRENVILLE_CONSTANT * T**1.5 * H**0.5 / denominator
 
 

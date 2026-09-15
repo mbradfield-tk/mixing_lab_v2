@@ -1383,7 +1383,7 @@ controlled by local turbulence near the impeller and feed point, while macromixi
 describes the time needed to homogenize the whole vessel.
 
 The estimates below compare micromixing time **t<sub>E</sub> ≈ 17.3·√(ν/ε)** and bulk
-blend time **θ<sub>95</sub> = 5.2·V/(N<sub>Q</sub>·N·D³)** with the reaction time.
+blend time **θ<sub>95</sub> = 5.2·T^1.5·H^0.5/(N<sub>p</sub>^(1/3)·N·D²)** with the reaction time.
 
 <|part|render={ms_step5_assess != ""}|class_name=result-box|
 <|{ms_trxn_caption}|text|mode=markdown|>

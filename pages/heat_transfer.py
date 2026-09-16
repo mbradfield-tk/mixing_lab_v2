@@ -194,6 +194,11 @@ corr_df = pd.DataFrame(columns=["Correlation", "Nu", "h_i (W/m2.K)", "U (W/m2.K)
 htm_compare_df = pd.DataFrame(columns=["Medium", "h_o (W/m2.K)", "U (W/m2.K)", "UA (W/K)", "Time (min)", "In range"])
 summary_df = pd.DataFrame(columns=["Metric", "Value"])
 result_ready = False
+rxn_summary_csv = b""
+kpi_csv = b""
+corr_csv = b""
+htm_compare_csv = b""
+summary_csv = b""
 
 temp_fig = go.Figure()
 temp_fig.update_layout(title="Batch Temperature Profile", xaxis_title="Time (min)", yaxis_title="Temperature (C)")
@@ -216,6 +221,16 @@ ua_vol_fig.update_layout(title="UA vs Volume", xaxis_title="Liquid volume (L)", 
 # ---------------------------------------------------------------------------
 def _time_factor(unit: str) -> float:
     return {"Seconds": 1.0, "Minutes": 60.0, "Hours": 3600.0}.get(unit, 60.0)
+
+
+def _build_csv_exports(state):
+    """Refresh CSV download content from the current heat-transfer tables."""
+    empty = pd.DataFrame()
+    state.rxn_summary_csv = db.csv_bytes(getattr(state, "rxn_summary_df", empty))
+    state.kpi_csv = db.csv_bytes(getattr(state, "kpi_df", empty))
+    state.corr_csv = db.csv_bytes(getattr(state, "corr_df", empty))
+    state.htm_compare_csv = db.csv_bytes(getattr(state, "htm_compare_df", empty))
+    state.summary_csv = db.csv_bytes(getattr(state, "summary_df", empty))
 
 
 def on_reactor_change(state):
@@ -380,6 +395,7 @@ def _compute_reaction(state):
     state.rxn_fig = fig
     state.rxn_summary_df = result.summary
     state.rxn_result_ready = True
+    _build_csv_exports(state)
 
     _complete = ("not reached" if not np_is_finite(result.t_complete_s)
                  else f"{result.t_complete_s / 60.0:.2f} min")
@@ -490,6 +506,7 @@ def on_compute(state):
 
     _build_resistance_breakdown(state, result)
     _build_ua_sweeps(state)
+    _build_csv_exports(state)
 
     analytical_txt = "Infinity" if not pd.notna(result.time_analytical_s) or not np_is_finite(result.time_analytical_s) else f"{result.time_analytical_s/60.0:.2f} min"
     state.status_message = (
@@ -727,6 +744,8 @@ not modelled) and the profile runs until 99% conversion.
 <|part|class_name=va-card|
 ## 3. Core KPIs
 <|{kpi_df}|table|width=100%|>
+
+<|Download core KPIs CSV|file_download|content={kpi_csv}|name=heat_transfer_core_kpis.csv|label=Download core KPIs CSV|>
 |>
 
 <|part|class_name=va-card|
@@ -758,13 +777,19 @@ UA versus stir speed at the selected volume, and versus volume at the selected s
 ### Nusselt correlation comparison
 <|{corr_df}|table|width=100%|rebuild|>
 
+<|Download correlation comparison CSV|file_download|content={corr_csv}|name=heat_transfer_correlations.csv|label=Download correlation comparison CSV|>
+
 ### Heat transfer medium comparison
 <|{htm_compare_df}|table|width=100%|rebuild|>
+
+<|Download medium comparison CSV|file_download|content={htm_compare_csv}|name=heat_transfer_media.csv|label=Download medium comparison CSV|>
 |>
 
 <|part|class_name=va-card|
 ## 8. Summary
 <|{summary_df}|table|width=100%|>
+
+<|Download summary CSV|file_download|content={summary_csv}|name=heat_transfer_summary.csv|label=Download summary CSV|>
 |>
 |>
 
@@ -777,6 +802,8 @@ batch would reach with no cooling).
 
 ## Reaction and Heat-Transfer Summary
 <|{rxn_summary_df}|table|width=100%|>
+
+<|Download reaction summary CSV|file_download|content={rxn_summary_csv}|name=heat_transfer_reaction_summary.csv|label=Download reaction summary CSV|>
 |>
 """
 

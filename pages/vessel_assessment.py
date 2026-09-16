@@ -359,6 +359,11 @@ va_result_ready = False
 va_env_fig = go.Figure()
 va_compute_class = "compute-btn"   # red until an assessment is run; blue after
 va_stale = False                   # True when inputs change after a run
+va_hydro_csv = b""
+va_dam_csv = b""
+va_mt_csv = b""
+va_sl_csv = b""
+va_heat_csv = b""
 
 va_pdf_bytes = b""
 va_pdf_name = "Vessel_Assessment.pdf"
@@ -463,6 +468,16 @@ def on_va_env_change(state):
     if t_rxn > 0:
         _build_envelope(state, t_rxn)
         state.va_pdf_ready = False
+
+
+def _build_csv_exports(state):
+    """Refresh CSV download content from the current assessment tables."""
+    empty = pd.DataFrame()
+    state.va_hydro_csv = db.csv_bytes(getattr(state, "va_hydro_df", empty))
+    state.va_dam_csv = db.csv_bytes(getattr(state, "va_dam_df", empty))
+    state.va_mt_csv = db.csv_bytes(getattr(state, "va_mt_df", empty))
+    state.va_sl_csv = db.csv_bytes(getattr(state, "va_sl_df", empty))
+    state.va_heat_csv = db.csv_bytes(getattr(state, "va_heat_df", empty))
 
 
 def on_va_export_pdf(state):
@@ -764,6 +779,7 @@ def on_va_compute(state):
         state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
+    _build_csv_exports(state)
 
     state._va_cache = {
         "hydro": hydro, "dam": dam, "t_rxn": t_rxn,
@@ -1054,6 +1070,10 @@ for the selected vessel are offered.
 ### Hydrodynamics
 <|{va_hydro_df}|table|width=100%|show_all|>
 
+<|part|render={not va_stale}|
+<|Download hydrodynamics CSV|file_download|content={va_hydro_csv}|name=vessel_assessment_hydrodynamics.csv|label=Download hydrodynamics CSV|>
+|>
+
 <|{va_corr_applicability}|text|mode=markdown|>
 
 ### Mixing sensitivity (Damköhler)
@@ -1061,20 +1081,36 @@ for the selected vessel are offered.
 
 <|{va_dam_df}|table|width=100%|show_all|>
 
+<|part|render={not va_stale}|
+<|Download Damköhler CSV|file_download|content={va_dam_csv}|name=vessel_assessment_damkohler.csv|label=Download Damköhler CSV|>
+|>
+
 <|part|render={len(va_mt_df) > 0}|
 ### Mass-transfer capacity versus kinetic demand
 The capacity ratio is a preliminary screen using **kLa / (1/t<sub>rxn</sub>)**.
 Confirm the result with solubility, phase composition, and concentration driving-force data.
 <|{va_mt_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download mass-transfer CSV|file_download|content={va_mt_csv}|name=vessel_assessment_mass_transfer.csv|label=Download mass-transfer CSV|>
+|>
 |>
 
 <|part|render={va_sl_mode == "On"}|
 ### Solid suspension and dissolution
 <|{va_sl_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download solids CSV|file_download|content={va_sl_csv}|name=vessel_assessment_solids.csv|label=Download solids CSV|>
+|>
 |>
 
 ### Heat balance
 <|{va_heat_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download heat-balance CSV|file_download|content={va_heat_csv}|name=vessel_assessment_heat_balance.csv|label=Download heat-balance CSV|>
+|>
 |>
 
 <|part|class_name=va-card|

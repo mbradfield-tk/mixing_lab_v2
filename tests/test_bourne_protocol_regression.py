@@ -12,6 +12,7 @@ from pages.bourne_protocol import (
     _build_t2,
     _invalidate_assessments,
     _new_kpi_df,
+    _refresh_table_csv_exports,
 )
 from pages.mixing_sensitivity import (
     _build_verdict,
@@ -37,6 +38,23 @@ def test_blank_kpi_values_are_missing_not_zeroed():
     assert pd.isna(df.loc[0, "Low speed"])
     assert pd.isna(df.loc[0, "Centre"])
     assert pd.isna(df.loc[0, "High speed"])
+
+
+def test_bourne_table_exports_reflect_current_results():
+    state = SimpleNamespace(
+        bp_t1_hydro_df=pd.DataFrame({"Condition": ["Centre"], "P/m (W/kg)": [0.2]}),
+        bp_t1_adj_result_df=pd.DataFrame(),
+        bp_t1_kpi_result_df=pd.DataFrame({"KPI": ["Yield"], "Sensitive?": ["Yes"]}),
+        bp_t2_cond_df=pd.DataFrame(),
+        bp_t2_kpi_result_df=pd.DataFrame(),
+        bp_t3_cond_df=pd.DataFrame(),
+        bp_t3_kpi_result_df=pd.DataFrame(),
+    )
+
+    _refresh_table_csv_exports(state)
+
+    assert b"P/m (W/kg)" in state.bp_t1_conditions_csv
+    assert b"Yield" in state.bp_t1_results_csv
 
 
 def test_mixed_kpi_signal_is_inconclusive_not_confirmed_sensitive():

@@ -116,8 +116,10 @@ n_rpm = _avg_range(_r, "N_rpm_min", "N_rpm_max", 300.0)
 np_in = safe_float(_r.get("Np"), 1.27)
 v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
-h_liquid = liquid_height_from_volume(v_l, d_tank, h_max)
-a_ht = estimate_jacket_area(d_tank, h_liquid, str(_r.get("bottom_dish", "")))
+h_liquid = liquid_height_from_volume(
+    v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
+a_ht = estimate_jacket_area(
+    d_tank, h_liquid, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -252,8 +254,10 @@ def _refresh_area(state):
     """Recompute the jacket heat-transfer area from the current liquid volume."""
     row = _reactor_row(state.selected_reactor)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
-    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val)
-    state.a_ht = estimate_jacket_area(state.d_tank, h, str(row.get("bottom_dish", "")))
+    dish = str(row.get("bottom_dish", ""))
+    dish_height = safe_float(row.get("H_bottom_dish_m"))
+    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, dish, dish_height)
+    state.a_ht = estimate_jacket_area(state.d_tank, h, dish, dish_height)
 
 
 def on_v_l_change(state):
@@ -575,6 +579,7 @@ def _build_ua_sweeps(state) -> None:
     row = _reactor_row(state.selected_reactor)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
     bottom = str(row.get("bottom_dish", ""))
+    dish_height = safe_float(row.get("H_bottom_dish_m"))
     base = _shared_ht_data(state)
 
     # (1) UA vs stir speed at the current volume (A held constant).
@@ -604,8 +609,9 @@ def _build_ua_sweeps(state) -> None:
     vmin = max(vmin, 1e-6)
     vol_range = np.linspace(vmin, vmax, 40)
     ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
-                                             liquid_height_from_volume(vol, state.d_tank, h_max_val),
-                                             bottom)
+                                             liquid_height_from_volume(
+                                                 vol, state.d_tank, h_max_val, bottom, dish_height),
+                                             bottom, dish_height)
               for vol in vol_range]
     fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
                                 line={"color": "#1f77b4", "width": 2}, name="UA"))

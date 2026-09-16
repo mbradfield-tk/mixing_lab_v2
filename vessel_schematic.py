@@ -109,7 +109,9 @@ def _geometry(row: pd.Series) -> dict | None:
         return None
     R = D / 2.0
     bottom, top = _s(row, "bottom_dish"), _s(row, "top_dish")
-    bot_depth, top_depth = _dish_depth(bottom, R), _dish_depth(top, R)
+    measured_bottom_depth = _f(row, "H_bottom_dish_m")
+    bot_depth = measured_bottom_depth if measured_bottom_depth > 0 else _dish_depth(bottom, R)
+    top_depth = _dish_depth(top, R)
     bot_shape, top_shape = _dish_shape(bottom), _dish_shape(top)
     n_imp = int(_f(row, "impeller_count", 1) or 1)
     n_imp = max(1, min(3, n_imp))
@@ -226,7 +228,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         level = float(np.interp(fill_L / 1000.0, geom["cap_grid"], geom["z_grid"]))
         fill_pct = fill_L / total_L * 100.0
         # Wetted wall area (m^2), measured from the true bottom of the dish.
-        contact_area_m2 = estimate_jacket_area(geom["D"], level + bot_depth, geom["bottom"])
+        contact_area_m2 = estimate_jacket_area(
+            geom["D"], level + bot_depth, geom["bottom"], geom["bot_depth"])
 
     lowest_imp_y = min((c[1] for c in impellers), default=0.0)
 

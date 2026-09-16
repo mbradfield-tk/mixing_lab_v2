@@ -52,34 +52,46 @@ def cone_depth(D_tank: float, dish_type: str = "", default_angle_deg: float = 45
     return (D_tank / 2.0) * np.tan(np.radians(ang))
 
 
-def dish_geometry(D_tank: float, dish_type: str = "") -> tuple[float, float]:
-    """Return (V_dish_m3, h_dish_m) for a vessel bottom dish."""
+def dish_geometry(D_tank: float, dish_type: str = "",
+                  dish_height_m: float | None = None) -> tuple[float, float]:
+    """Return (V_dish_m3, h_dish_m) for a vessel bottom dish.
+
+    A positive ``dish_height_m`` takes precedence over the dish-type estimate.
+    Curved profiles use a height-fitted ellipsoidal-cap approximation, matching
+    the vessel schematic model.
+    """
     if D_tank <= 0:
         return 0.0, 0.0
 
     dish = str(dish_type).lower().strip() if dish_type else ""
 
+    measured_height = float(dish_height_m or 0.0)
     if "conic" in dish:
-        h_dish = cone_depth(D_tank, dish)
+        h_dish = measured_height if measured_height > 0 else cone_depth(D_tank, dish)
         V_dish = np.pi / 12 * D_tank**2 * h_dish
-    elif "torisph" in dish or "din" in dish or "dished" in dish:
-        h_dish = 0.1935 * D_tank
-        V_dish = 0.0847 * D_tank**3
     else:
-        h_dish = D_tank / 4
-        V_dish = np.pi * D_tank**3 / 24
+        if measured_height > 0:
+            h_dish = measured_height
+            V_dish = np.pi * D_tank**2 * h_dish / 6.0
+        elif "torisph" in dish or "din" in dish or "dished" in dish:
+            h_dish = 0.1935 * D_tank
+            V_dish = 0.0847 * D_tank**3
+        else:
+            h_dish = D_tank / 4
+            V_dish = np.pi * D_tank**3 / 24
 
     return V_dish, h_dish
 
 
 def liquid_height_from_volume(V_L_litres: float, D_tank: float,
-                              H_max: float, dish_type: str = "") -> float:
+                              H_max: float, dish_type: str = "",
+                              dish_height_m: float | None = None) -> float:
     """Compute liquid height (m) from fill volume, accounting for bottom dish."""
     if D_tank <= 0 or V_L_litres <= 0:
         return 0.0
 
     V_L_m3 = V_L_litres / 1000.0
-    V_dish, h_dish = dish_geometry(D_tank, dish_type)
+    V_dish, h_dish = dish_geometry(D_tank, dish_type, dish_height_m)
     A_cs = np.pi / 4 * D_tank**2
 
     if V_L_m3 <= V_dish and V_dish > 0:

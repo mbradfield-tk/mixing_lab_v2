@@ -522,11 +522,13 @@ def _corner_and_curves(names, ctx):
         V_max = _sf(r.get("V_L_max")) or _sf(r.get("V_L")) or V_geo
         V_min = _sf(r.get("V_L_min")) or V_max
         dish = str(r.get("bottom_dish", "") or "")
+        dish_height = _sf(r.get("H_bottom_dish_m"))
 
         info = {
             "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max, "Np": Np, "Nq": Nq,
             "N_lo": N_lo, "N_hi": N_hi, "V_max_L": V_max, "V_min_L": V_min,
             "rpm_max": rpm_max, "bottom_dish": dish, "scale": scale,
+            "bottom_dish_height": dish_height,
             "shell_material": str(r.get("shell_material", "") or ""),
             "lining_material": str(r.get("lining_material", "") or ""),
             "wall_thickness_mm": _sf(r.get("wall_thickness_mm")),
@@ -577,7 +579,8 @@ def _corner_and_curves(names, ctx):
 def _point(name, info, N, V_L, ctx, part_static) -> dict:
     """Full hydro + Da (+ particle + heat) values at one (RPM, volume) point."""
     rho, mu, D_mol = ctx["rho"], ctx["mu"], ctx["D_mol"]
-    H_v = liquid_height_from_volume(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
+    H_v = liquid_height_from_volume(
+        V_L, info["D_tank"], info["H_max"], info["bottom_dish"], info["bottom_dish_height"])
     h, _src = compute_reactor_hydro_with_mode(
         "Literature", name, N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
         rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
@@ -622,7 +625,8 @@ def _point(name, info, N, V_L, ctx, part_static) -> dict:
     if ctx["incl_heat"]:
         r_mol_s = reaction_rate_mol_per_s(ctx["order"], ctx["k"], ctx["C0"], V_L)
         Q_gen = heat_generation_rate(ctx["dH"], r_mol_s)
-        A_ht = estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+        A_ht = estimate_jacket_area(
+            info["D_tank"], H_v, info["bottom_dish"], info["bottom_dish_height"])
         U_ht, _w = estimate_U_detailed(
             N_rps=N, D_imp=info["D_imp"], D_tank=info["D_tank"], rho=rho, mu=mu,
             material=info["shell_material"], lining_material=info["lining_material"],
@@ -639,7 +643,8 @@ def _point(name, info, N, V_L, ctx, part_static) -> dict:
 
 def _hydro_only(name, info, N, V_L, ctx) -> dict:
     """Hydro dict at one point (used by the scale-up solver)."""
-    H_v = liquid_height_from_volume(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
+    H_v = liquid_height_from_volume(
+        V_L, info["D_tank"], info["H_max"], info["bottom_dish"], info["bottom_dish_height"])
     h, _src = compute_reactor_hydro_with_mode(
         "Literature", name, N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
         rho=ctx["rho"], mu=ctx["mu"], Np=info["Np"], Nq=info["Nq"],
@@ -654,6 +659,7 @@ def _reactor_geo(name):
         "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max,
         "Np": _sf(r.get("Np"), 1.27), "Nq": _sf(r.get("Nq"), 0.79),
         "bottom_dish": str(r.get("bottom_dish", "") or ""),
+        "bottom_dish_height": _sf(r.get("H_bottom_dish_m")),
     }
 
 

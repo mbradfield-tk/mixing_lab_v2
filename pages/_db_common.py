@@ -206,6 +206,7 @@ COLUMN_LABELS: dict[str, str] = {
     "H_m": "Tank Height [m]",
     "H_max_m": "Max Liquid Height [m]",
     "D_imp_m": "Impeller Diameter [m]",
+    "H_bottom_dish_m": "Bottom Dish Height [m]",
     "impeller_type": "Impeller Type",
     "Np": "Power Number",
     "Nq": "Flow Number",

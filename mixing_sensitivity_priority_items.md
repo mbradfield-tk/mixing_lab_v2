@@ -18,10 +18,12 @@ Completed in the current implementation pass:
 
 ## Priority 1: Correct Calculation and Logic Defects
 
-1. [x] **Verify the blend-time calculation uses flow number \(N_Q\), not power number \(N_P\).**
+1. [x] **Verify the blend-time calculation form.** *(Resolved: reverted to the power-number form.)*
    - Inspect `blend_time_turbulent()` in `utils.calculations`.
-   - Update both the Test 1 table and report calculations.
-   - Add a unit test confirming that increasing \(N_Q\) decreases predicted blend time.
+   - The \(N_Q\)-based circulation form was reverted: it was dimensionally inconsistent
+     (returns s/m, not s) and the Grenville 5.2 coefficient is only valid for the
+     published form \( \theta_{95} = 5.2\,T^{1.5}H^{0.5} / (N_P^{1/3} N D^2) \), which is now in use.
+   - A unit test confirms that increasing \(N_P\) decreases predicted blend time.
 
 2. [x] **Preserve “possibly sensitive” as an inconclusive result.**
    - Do not export a mixed KPI response as confirmed sensitivity.

@@ -115,9 +115,10 @@ d_imp = safe_float(_r.get("D_imp_m"), 0.05)
 n_rpm = _avg_range(_r, "N_rpm_min", "N_rpm_max", 300.0)
 np_in = safe_float(_r.get("Np"), 1.27)
 v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
-h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
-h_liquid = liquid_height_from_volume(v_l, d_tank, h_max)
-a_ht = estimate_jacket_area(d_tank, h_liquid, str(_r.get("bottom_dish", "")))
+h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("L_tan_tan_m"), 0.2))
+_bottom0 = str(_r.get("bottom_dish", ""))
+h_liquid = liquid_height_from_volume(v_l, d_tank, h_max, _bottom0)
+a_ht = estimate_jacket_area(d_tank, h_liquid, _bottom0)
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -236,9 +237,10 @@ def on_reactor_change(state):
 def _refresh_area(state):
     """Recompute the jacket heat-transfer area from the current liquid volume."""
     row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
-    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val)
-    state.a_ht = estimate_jacket_area(state.d_tank, h, str(row.get("bottom_dish", "")))
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
+    bottom = str(row.get("bottom_dish", ""))
+    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, bottom)
+    state.a_ht = estimate_jacket_area(state.d_tank, h, bottom)
 
 
 def on_v_l_change(state):
@@ -556,7 +558,7 @@ def _build_resistance_breakdown(state, result) -> None:
 def _build_ua_sweeps(state) -> None:
     """UA vs stir speed (area fixed) and UA vs volume (U fixed) around the op-point."""
     row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
     bottom = str(row.get("bottom_dish", ""))
     base = _shared_ht_data(state)
 
@@ -587,7 +589,7 @@ def _build_ua_sweeps(state) -> None:
     vmin = max(vmin, 1e-6)
     vol_range = np.linspace(vmin, vmax, 40)
     ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
-                                             liquid_height_from_volume(vol, state.d_tank, h_max_val),
+                                             liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom),
                                              bottom)
               for vol in vol_range]
     fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",

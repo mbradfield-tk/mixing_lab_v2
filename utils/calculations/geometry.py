@@ -62,7 +62,15 @@ def dish_geometry(D_tank: float, dish_type: str = "") -> tuple[float, float]:
     if "conic" in dish:
         h_dish = cone_depth(D_tank, dish)
         V_dish = np.pi / 12 * D_tank**2 * h_dish
-    elif "torisph" in dish or "din" in dish or "dished" in dish:
+    elif "hemi" in dish or "round" in dish:
+        # hemispherical head: depth = R, volume = 2/3 pi R^3
+        h_dish = D_tank / 2
+        V_dish = np.pi * D_tank**3 / 12
+    elif "dished" in dish:
+        # shallow spherical cap, depth 0.1 D (consistent with the schematic heuristic 0.2 R)
+        h_dish = 0.10 * D_tank
+        V_dish = np.pi * h_dish * (3 * (D_tank / 2) ** 2 + h_dish**2) / 6
+    elif "torisph" in dish or "din" in dish:
         h_dish = 0.1935 * D_tank
         V_dish = 0.0847 * D_tank**3
     else:

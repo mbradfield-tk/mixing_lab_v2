@@ -98,19 +98,35 @@ def _dish_shape(dish_type: str) -> str:
     return "curved"
 
 
+def _bottom_dish_depth(row: pd.Series, dish_type: str, radius: float) -> float:
+    """Bottom-dish height (m): CSV H_bot_dish_m, else H_max_m - L_tan_tan_m, else type heuristic."""
+    depth = _f(row, "H_bot_dish_m", float("nan"))
+    if not np.isfinite(depth):
+        h_max, l_tt = _f(row, "H_max_m"), _f(row, "L_tan_tan_m")
+        depth = h_max - l_tt if h_max > 0 and l_tt > 0 else float("nan")
+    if np.isfinite(depth) and depth >= 0:
+        return depth
+    return _dish_depth(dish_type, radius)
+
+
 # ---------------------------------------------------------------------------
 # Geometry + capacity curve
 # ---------------------------------------------------------------------------
 def _geometry(row: pd.Series) -> dict | None:
     """Return the drawable geometry + cumulative capacity curve, or None."""
     D = _f(row, "D_tank_m")
-    H = _f(row, "H_m")
+    H = _f(row, "L_tan_tan_m")  # straight-wall (tan-tan) length
     if D <= 0 or H <= 0:
         return None
     R = D / 2.0
     bottom, top = _s(row, "bottom_dish"), _s(row, "top_dish")
-    bot_depth, top_depth = _dish_depth(bottom, R), _dish_depth(top, R)
     bot_shape, top_shape = _dish_shape(bottom), _dish_shape(top)
+    top_depth = _dish_depth(top, R)
+    # Bottom-dish height comes from the CSV (H_bot_dish_m = H_max_m - L_tan_tan_m);
+    # the dish-type heuristic is only a fallback when H_max_m is missing.
+    bot_depth = _bottom_dish_depth(row, bottom, R)
+    if bot_depth > 0 and bot_shape == "flat":
+        bot_shape = "curved"
     n_imp = int(_f(row, "impeller_count", 1) or 1)
     n_imp = max(1, min(3, n_imp))
 

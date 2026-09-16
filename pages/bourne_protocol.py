@@ -107,7 +107,7 @@ def _blend_geometry(state) -> tuple[float, float]:
     """Return tank diameter and current liquid height in metres."""
     row = _reactor_row(state.bp_reactor)
     tank_diameter = _sf(row.get("D_tank_m"))
-    max_height = _sf(row.get("H_max_m"), _sf(row.get("H_m")))
+    max_height = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m")))
     dish = str(row.get("bottom_dish", "") or "")
     liquid_height = liquid_height_from_volume(
         state.bp_v_l, tank_diameter, max_height, dish,

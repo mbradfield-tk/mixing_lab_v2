@@ -189,12 +189,15 @@ def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "") -> floa
     return A_dish_full + np.pi * D_tank * max(H - h_dish, 0.0)
 
 
-def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float) -> float:
-    if V_L <= 0 or D_tank <= 0:
-        return 0.0
-    V_m3 = V_L / 1000.0
-    H = V_m3 / (np.pi * (D_tank / 2) ** 2)
-    return min(H, H_max) if H_max > 0 else H
+def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float, bottom_dish: str = "") -> float:
+    """Liquid height (m) from fill volume, accounting for the bottom dish.
+
+    Delegates to :func:`utils.calculations.geometry.liquid_height_from_volume` so the
+    heat-transfer page uses the same dish-aware geometry as the other calculation pages.
+    """
+    from utils.calculations.geometry import liquid_height_from_volume as _dish_aware
+
+    return _dish_aware(V_L, D_tank, H_max, bottom_dish)
 
 
 def impeller_power(Np: float, rho: float, N_rps: float, D_imp: float) -> float:

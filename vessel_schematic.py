@@ -98,13 +98,24 @@ def _dish_shape(dish_type: str) -> str:
     return "curved"
 
 
+def _bottom_dish_depth(row: pd.Series, dish_type: str, radius: float) -> float:
+    """Bottom-dish height (m): CSV H_bot_dish_m, else H_max_m - L_tan_tan_m, else type heuristic."""
+    depth = _f(row, "H_bot_dish_m", float("nan"))
+    if not np.isfinite(depth):
+        h_max, l_tt = _f(row, "H_max_m"), _f(row, "L_tan_tan_m")
+        depth = h_max - l_tt if h_max > 0 and l_tt > 0 else float("nan")
+    if np.isfinite(depth) and depth >= 0:
+        return depth
+    return _dish_depth(dish_type, radius)
+
+
 # ---------------------------------------------------------------------------
 # Geometry + capacity curve
 # ---------------------------------------------------------------------------
 def _geometry(row: pd.Series) -> dict | None:
     """Return the drawable geometry + cumulative capacity curve, or None."""
     D = _f(row, "D_tank_m")
-    H = _f(row, "H_m")
+    H = _f(row, "L_tan_tan_m")  # straight-wall (tan-tan) length
     if D <= 0 or H <= 0:
         return None
     R = D / 2.0
@@ -113,6 +124,12 @@ def _geometry(row: pd.Series) -> dict | None:
     bot_depth = measured_bottom_depth if measured_bottom_depth > 0 else _dish_depth(bottom, R)
     top_depth = _dish_depth(top, R)
     bot_shape, top_shape = _dish_shape(bottom), _dish_shape(top)
+    top_depth = _dish_depth(top, R)
+    # Bottom-dish height comes from the CSV (H_bot_dish_m = H_max_m - L_tan_tan_m);
+    # the dish-type heuristic is only a fallback when H_max_m is missing.
+    bot_depth = _bottom_dish_depth(row, bottom, R)
+    if bot_depth > 0 and bot_shape == "flat":
+        bot_shape = "curved"
     n_imp = int(_f(row, "impeller_count", 1) or 1)
     n_imp = max(1, min(3, n_imp))
 
@@ -238,7 +255,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     tol = R * 1e-3
     warnings: list[str] = []
     wall_hit: set[int] = set()
-    for idx, (d_i, cy_i, h_i, _c_i, _t_i) in enumerate(impellers):
+    for idx, (d_i, cy_i, h_i, _c_i, t_i) in enumerate(impellers):
         r_i = d_i / 2.0
         zb, zt = cy_i - h_i / 2.0, cy_i + h_i / 2.0
         local_r = min(radius_at(z) for z in np.linspace(zb, zt, 12))
@@ -246,6 +263,15 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             warnings.append(f"Impeller {idx + 1}: ⌀{d_i * 1000:.0f} mm exceeds the tank ID "
                             f"⌀{geom['D'] * 1000:.0f} mm.")
             wall_hit.add(idx)
+        elif "chevron" in t_i.lower():
+            # For a chevron, we assume the blade angle matches the cone angle and
+            # therefore the only meaningful wall check is whether the underside has
+            # positive clearance above the dish bottom.
+            clearance = (cy_i - h_i / 2.0) + bot_depth
+            if clearance <= tol:
+                warnings.append(f"Impeller {idx + 1}: the blade (⌀{d_i * 1000:.0f} mm) cuts into "
+                                "the dish wall at its height.")
+                wall_hit.add(idx)
         elif r_i > local_r + tol:
             warnings.append(f"Impeller {idx + 1}: the blade (⌀{d_i * 1000:.0f} mm) cuts into "
                             "the dish wall at its height.")
@@ -333,26 +359,30 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                 v_drop = r_imp * (bot_depth / R)
             else:
                 v_drop = max(h_imp, r_imp * 0.5)
-            half_v = (v_drop + h_imp) / 2.0
+            # Anchor the bottom centre vertex at the blade underside, i.e. the
+            # recorded off-bottom clearance (cy - h_imp/2 = -bot_depth + clearance).
+            base = cy - h_imp / 2.0
             pts = [
-                (-r_imp, cy + half_v),
-                (0.0, cy + half_v - v_drop),
-                (r_imp, cy + half_v),
-                (r_imp, cy + half_v - h_imp),
-                (0.0, cy - half_v),
-                (-r_imp, cy + half_v - h_imp),
+                (-r_imp, base + v_drop + h_imp),
+                (0.0, base + h_imp),
+                (r_imp, base + v_drop + h_imp),
+                (r_imp, base + v_drop),
+                (0.0, base),
+                (-r_imp, base + v_drop),
             ]
+            lab_y = base + (v_drop + h_imp) / 2.0  # centre of the drawn V for the label
             ax.add_patch(patches.Polygon(pts, closed=True, facecolor=color,
                                          edgecolor=edge, alpha=0.7, lw=elw, zorder=4))
         else:
+            lab_y = cy
             ax.add_patch(patches.FancyBboxPatch(
                 (-r_imp, cy - h_imp / 2.0), d_imp, h_imp,
                 boxstyle="round,pad=0.002", facecolor=color, edgecolor=edge,
                 alpha=0.7, lw=elw, zorder=4))
         # Leader line + label
-        ax.plot([r_imp, R + right_pad * 0.12], [cy, cy],
+        ax.plot([r_imp, R + right_pad * 0.12], [lab_y, lab_y],
                 color=color, lw=0.6, alpha=0.5, zorder=3)
-        ax.text(R + right_pad * 0.15, cy, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
+        ax.text(R + right_pad * 0.15, lab_y, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
                 fontsize=10, fontweight="bold", va="center", ha="left", color=color)
 
     # Shaft

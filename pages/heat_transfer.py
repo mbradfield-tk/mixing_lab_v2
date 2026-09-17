@@ -115,6 +115,10 @@ d_imp = safe_float(_r.get("D_imp_m"), 0.05)
 n_rpm = _avg_range(_r, "N_rpm_min", "N_rpm_max", 300.0)
 np_in = safe_float(_r.get("Np"), 1.27)
 v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
+h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("L_tan_tan_m"), 0.2))
+_bottom0 = str(_r.get("bottom_dish", ""))
+h_liquid = liquid_height_from_volume(v_l, d_tank, h_max, _bottom0)
+a_ht = estimate_jacket_area(d_tank, h_liquid, _bottom0)
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(
     v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
@@ -253,6 +257,10 @@ def on_reactor_change(state):
 def _refresh_area(state):
     """Recompute the jacket heat-transfer area from the current liquid volume."""
     row = _reactor_row(state.selected_reactor)
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
+    bottom = str(row.get("bottom_dish", ""))
+    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, bottom)
+    state.a_ht = estimate_jacket_area(state.d_tank, h, bottom)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
     dish = str(row.get("bottom_dish", ""))
     dish_height = safe_float(row.get("H_bottom_dish_m"))
@@ -577,7 +585,7 @@ def _build_resistance_breakdown(state, result) -> None:
 def _build_ua_sweeps(state) -> None:
     """UA vs stir speed (area fixed) and UA vs volume (U fixed) around the op-point."""
     row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
     bottom = str(row.get("bottom_dish", ""))
     dish_height = safe_float(row.get("H_bottom_dish_m"))
     base = _shared_ht_data(state)
@@ -609,6 +617,8 @@ def _build_ua_sweeps(state) -> None:
     vmin = max(vmin, 1e-6)
     vol_range = np.linspace(vmin, vmax, 40)
     ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
+                                             liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom),
+                                             bottom)
                                              liquid_height_from_volume(
                                                  vol, state.d_tank, h_max_val, bottom, dish_height),
                                              bottom, dish_height)

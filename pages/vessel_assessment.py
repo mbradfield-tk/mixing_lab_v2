@@ -569,7 +569,7 @@ def _correlation_applicability(state, hydro: dict) -> str:
     else:
         warnings.append(f"impeller/tank diameter ratio = {d_ratio:.3f} is outside the typical 0.2–0.7 range")
 
-    h_max = _sf(row.get("H_max_m"), _sf(row.get("H_m"), tank_d))
+    h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), tank_d))
     dish = str(row.get("bottom_dish", "") or "")
     dish_height = _sf(row.get("H_bottom_dish_m"))
     h_liq = liquid_height_from_volume(
@@ -616,7 +616,7 @@ def _hydro_at(state, n_rpm: float, v_l: float) -> dict:
     """Run the hydro engine at a given RPM and fill volume using the selected
     correlation source and gas settings."""
     row = _reactor_row(state.va_reactor)
-    h_max = _sf(row.get("H_max_m"), _sf(row.get("H_m"), state.va_d_tank))
+    h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
     dish = str(row.get("bottom_dish", "") or "")
     dish_height = _sf(row.get("H_bottom_dish_m"))
     h_liq = liquid_height_from_volume(
@@ -760,7 +760,7 @@ def on_va_compute(state):
         r_mol_s = reaction_rate_mol_per_s(state.va_order, state.va_k, state.va_c0, state.va_v_l)
         q_gen = heat_generation_rate(state.va_dH, r_mol_s)
         row = _reactor_row(state.va_reactor)
-        h_max = _sf(row.get("H_max_m"), _sf(row.get("H_m"), state.va_d_tank))
+        h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
         dish = str(row.get("bottom_dish", "") or "")
         dish_height = _sf(row.get("H_bottom_dish_m"))
         h_liq = liquid_height_from_volume(

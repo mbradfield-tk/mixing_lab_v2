@@ -499,7 +499,10 @@ def _corner_and_curves(names, ctx):
 
     for name in names:
         r = _reactor_row(name)
-        D_imp, D_tank, H_max = _sf(r.get("D_imp_m")), _sf(r.get("D_tank_m")), _sf(r.get("H_m"))
+        D_imp, D_tank = _sf(r.get("D_imp_m")), _sf(r.get("D_tank_m"))
+        # Max fill height caps the liquid level; tan-tan length is only an
+        # approximation used when H_max_m is not recorded.
+        H_max = _sf(r.get("H_max_m"), _sf(r.get("L_tan_tan_m")))
         Np, Nq = _sf(r.get("Np"), 1.27), _sf(r.get("Nq"), 0.79)
         scale = str(r.get("scale", "") or "")
         if D_imp <= 0 or D_tank <= 0 or H_max <= 0:
@@ -654,7 +657,8 @@ def _hydro_only(name, info, N, V_L, ctx) -> dict:
 
 def _reactor_geo(name):
     r = _reactor_row(name)
-    D_imp, D_tank, H_max = _sf(r.get("D_imp_m")), _sf(r.get("D_tank_m")), _sf(r.get("H_m"))
+    D_imp, D_tank = _sf(r.get("D_imp_m")), _sf(r.get("D_tank_m"))
+    H_max = _sf(r.get("H_max_m"), _sf(r.get("L_tan_tan_m")))
     return {
         "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max,
         "Np": _sf(r.get("Np"), 1.27), "Nq": _sf(r.get("Nq"), 0.79),

@@ -550,6 +550,23 @@ _add(SolventData(
           "Properties from CRC / Zaytsev & Aseyev.",
 ))
 
+# ─── Anisol ─────────────────────────────────────────────────────
+# Refs: Dynochem
+_add(SolventData(
+    name="Anisole", cas="100-66-3", mw=108.14,
+    mp_C=-37.0, bp_C=154.0,
+    rho_25=990.56, drho_dT=-0.93668,
+    mu_25=1.02313e-3, Ea_mu=11030,
+    sig_25=0.0349653, dsig_dT=-1.2273e-4,
+    D_ref_25=1.3424e-9,
+    Cp_25=1847.51, dCp_dT=2.3294,
+    k_25=0.156, dk_dT=-2.6477e-4,
+    hsp_d=0, hsp_p=0, hsp_h=0,
+    aliases=("Anisole", "Methoxybenzene"),
+    notes="Anisole, also known as methoxybenzene. "
+          "Properties from Dynochem.",
+))
+
 
 # ---------------------------------------------------------------------------
 # Property computation

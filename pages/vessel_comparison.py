@@ -150,8 +150,14 @@ def _display(p: str) -> str:
     return _DISPLAY_NAMES.get(p, p)
 
 
-def _solve_root(f, lo: float, hi: float, tol: float, maxit: int = 200):
-    """Bracketed bisection root-finder (returns None when no sign change)."""
+def _solve_root(f, lo: float, hi: float, x_tol: float, f_tol: float = 0.0, maxit: int = 200):
+    """Bracketed bisection root-finder (returns None when no sign change).
+
+    ``x_tol`` bounds the search-interval width (in the solved variable's
+    units, e.g. RPM or L). ``f_tol`` separately bounds the residual (in the
+    target parameter's units) so small-magnitude targets (e.g. P/V in W/L,
+    Da numbers) aren't falsely reported as converged by a loose absolute tol.
+    """
     flo, fhi = f(lo), f(hi)
     if flo == 0:
         return lo
@@ -162,7 +168,7 @@ def _solve_root(f, lo: float, hi: float, tol: float, maxit: int = 200):
     for _ in range(maxit):
         mid = 0.5 * (lo + hi)
         fmid = f(mid)
-        if abs(fmid) < tol or (hi - lo) < tol:
+        if abs(fmid) <= f_tol or (hi - lo) < x_tol:
             return mid
         if flo * fmid < 0:
             hi, fhi = mid, fmid
@@ -338,6 +344,14 @@ vc_scale_df = pd.DataFrame()
 vc_scale_full_df = pd.DataFrame()
 vc_scale_pct_df = pd.DataFrame()
 vc_impact_df = pd.DataFrame()
+vc_summary_csv = b""
+vc_detail_csv = b""
+vc_rpm_ref_csv = b""
+vc_heat_csv = b""
+vc_scale_csv = b""
+vc_scale_full_csv = b""
+vc_scale_pct_csv = b""
+vc_impact_csv = b""
 
 vc_pdf_bytes = b""
 vc_pdf_name = "Vessel_Comparison.pdf"
@@ -461,6 +475,18 @@ def on_vc_env_change(state):
     _build_env_fig(state)
 
 
+def _build_csv_exports(state):
+    """Refresh CSV download content from the current comparison tables."""
+    state.vc_summary_csv = db.csv_bytes(state.vc_summary_df)
+    state.vc_detail_csv = db.csv_bytes(state.vc_detail_df)
+    state.vc_rpm_ref_csv = db.csv_bytes(state.vc_rpm_ref_df)
+    state.vc_heat_csv = db.csv_bytes(state.vc_heat_df)
+    state.vc_scale_csv = db.csv_bytes(state.vc_scale_df)
+    state.vc_scale_full_csv = db.csv_bytes(state.vc_scale_full_df)
+    state.vc_scale_pct_csv = db.csv_bytes(state.vc_scale_pct_df)
+    state.vc_impact_csv = db.csv_bytes(state.vc_impact_df)
+
+
 # ---------------------------------------------------------------------------
 # Core compute
 # ---------------------------------------------------------------------------
@@ -499,11 +525,13 @@ def _corner_and_curves(names, ctx):
         V_max = _sf(r.get("V_L_max")) or _sf(r.get("V_L")) or V_geo
         V_min = _sf(r.get("V_L_min")) or V_max
         dish = str(r.get("bottom_dish", "") or "")
+        dish_height = _sf(r.get("H_bottom_dish_m"))
 
         info = {
             "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max, "Np": Np, "Nq": Nq,
             "N_lo": N_lo, "N_hi": N_hi, "V_max_L": V_max, "V_min_L": V_min,
             "rpm_max": rpm_max, "bottom_dish": dish, "scale": scale,
+            "bottom_dish_height": dish_height,
             "shell_material": str(r.get("shell_material", "") or ""),
             "lining_material": str(r.get("lining_material", "") or ""),
             "wall_thickness_mm": _sf(r.get("wall_thickness_mm")),
@@ -554,7 +582,8 @@ def _corner_and_curves(names, ctx):
 def _point(name, info, N, V_L, ctx, part_static) -> dict:
     """Full hydro + Da (+ particle + heat) values at one (RPM, volume) point."""
     rho, mu, D_mol = ctx["rho"], ctx["mu"], ctx["D_mol"]
-    H_v = liquid_height_from_volume(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
+    H_v = liquid_height_from_volume(
+        V_L, info["D_tank"], info["H_max"], info["bottom_dish"], info["bottom_dish_height"])
     h, _src = compute_reactor_hydro_with_mode(
         "Literature", name, N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
         rho=rho, mu=mu, Np=info["Np"], Nq=info["Nq"],
@@ -599,7 +628,8 @@ def _point(name, info, N, V_L, ctx, part_static) -> dict:
     if ctx["incl_heat"]:
         r_mol_s = reaction_rate_mol_per_s(ctx["order"], ctx["k"], ctx["C0"], V_L)
         Q_gen = heat_generation_rate(ctx["dH"], r_mol_s)
-        A_ht = estimate_jacket_area(info["D_tank"], H_v, info["bottom_dish"])
+        A_ht = estimate_jacket_area(
+            info["D_tank"], H_v, info["bottom_dish"], info["bottom_dish_height"])
         U_ht, _w = estimate_U_detailed(
             N_rps=N, D_imp=info["D_imp"], D_tank=info["D_tank"], rho=rho, mu=mu,
             material=info["shell_material"], lining_material=info["lining_material"],
@@ -616,7 +646,8 @@ def _point(name, info, N, V_L, ctx, part_static) -> dict:
 
 def _hydro_only(name, info, N, V_L, ctx) -> dict:
     """Hydro dict at one point (used by the scale-up solver)."""
-    H_v = liquid_height_from_volume(V_L, info["D_tank"], info["H_max"], info["bottom_dish"])
+    H_v = liquid_height_from_volume(
+        V_L, info["D_tank"], info["H_max"], info["bottom_dish"], info["bottom_dish_height"])
     h, _src = compute_reactor_hydro_with_mode(
         "Literature", name, N=N, D_imp=info["D_imp"], D_tank=info["D_tank"], H=H_v,
         rho=ctx["rho"], mu=ctx["mu"], Np=info["Np"], Nq=info["Nq"],
@@ -632,6 +663,7 @@ def _reactor_geo(name):
         "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max,
         "Np": _sf(r.get("Np"), 1.27), "Nq": _sf(r.get("Nq"), 0.79),
         "bottom_dish": str(r.get("bottom_dish", "") or ""),
+        "bottom_dish_height": _sf(r.get("H_bottom_dish_m")),
     }
 
 
@@ -710,6 +742,7 @@ def on_vc_compute(state):
     _build_heat_summary(state, env_df, reactor_info, ctx)
     _build_scaling(state, names, reactor_info, ctx)
     _build_impact(state, env_df, present, ctx)
+    _build_csv_exports(state)
 
     state.vc_pdf_ready = False
     state.vc_ready = True
@@ -905,7 +938,8 @@ def _build_scaling(state, names, reactor_info, ctx):
                 return _hydro_only(_name, _info, rpm / 60.0, _V, ctx).get(param, np.nan) - target_value
 
             lo, hi = max(rpm_min, 0.5), rpm_max * 1.5
-            root = _solve_root(_f, lo, hi, tol=0.01)
+            f_tol = max(abs(target_value) * 1e-4, 1e-9)
+            root = _solve_root(_f, lo, hi, x_tol=0.01, f_tol=f_tol)
             if root is None:
                 v_lo = _hydro_only(name, info, lo / 60.0, V_L, ctx).get(param, np.nan)
                 v_hi = _hydro_only(name, info, hi / 60.0, V_L, ctx).get(param, np.nan)
@@ -932,7 +966,8 @@ def _build_scaling(state, names, reactor_info, ctx):
                 return _hydro_only(_name, _info, _N, vol, ctx).get(param, np.nan) - target_value
 
             lo, hi = max(V_min * 0.5, 0.001), V_max * 1.2
-            root = _solve_root(_f, lo, hi, tol=0.001)
+            f_tol = max(abs(target_value) * 1e-4, 1e-9)
+            root = _solve_root(_f, lo, hi, x_tol=0.001, f_tol=f_tol)
             if root is None:
                 v_lo = _hydro_only(name, info, N, lo, ctx).get(param, np.nan)
                 v_hi = _hydro_only(name, info, N, hi, ctx).get(param, np.nan)
@@ -1241,8 +1276,16 @@ Each row shows the range across the 4 corner conditions (min/max RPM × min/max 
 
 <|{vc_summary_df}|table|width=100%|show_all|rebuild|>
 
+<|part|render={not vc_stale}|
+<|Download summary CSV|file_download|content={vc_summary_csv}|name=vessel_comparison_summary.csv|label=Download summary CSV|>
+|>
+
 <|Full 4-corner detail|expandable|expanded=False|
 <|{vc_detail_df}|table|width=100%|page_size=16|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download detail CSV|file_download|content={vc_detail_csv}|name=vessel_comparison_detail.csv|label=Download detail CSV|>
+|>
 |>
 |>
 
@@ -1251,6 +1294,10 @@ Each row shows the range across the 4 corner conditions (min/max RPM × min/max 
 Translates a percentage of each vessel's maximum RPM (the chart x-axis) to actual RPM.
 
 <|{vc_rpm_ref_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download stir-speed CSV|file_download|content={vc_rpm_ref_csv}|name=vessel_comparison_stir_speed.csv|label=Download stir-speed CSV|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -1270,6 +1317,10 @@ mixing-sensitivity thresholds.
 Evaluated at each vessel's max-RPM / max-volume corner.
 
 <|{vc_heat_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download heat-balance CSV|file_download|content={vc_heat_csv}|name=vessel_comparison_heat_balance.csv|label=Download heat-balance CSV|>
+|>
 |>
 
 <|part|render={len(vc_scale_df) > 0}|class_name=va-card|
@@ -1278,12 +1329,24 @@ Matched operating conditions that hold the chosen parameter constant relative to
 
 <|{vc_scale_df}|table|width=100%|show_all|rebuild|>
 
+<|part|render={not vc_stale}|
+<|Download matching CSV|file_download|content={vc_scale_csv}|name=vessel_comparison_matching.csv|label=Download matching CSV|>
+|>
+
 <|Full parameter comparison at matched conditions|expandable|expanded=False|
 <|{vc_scale_full_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download matched-parameters CSV|file_download|content={vc_scale_full_csv}|name=vessel_comparison_matched_parameters.csv|label=Download matched-parameters CSV|>
+|>
 |>
 
 <|Percentage difference vs. basis vessel|expandable|expanded=False|
 <|{vc_scale_pct_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download scale-up differences CSV|file_download|content={vc_scale_pct_csv}|name=vessel_comparison_scale_up_differences.csv|label=Download scale-up differences CSV|>
+|>
 |>
 |>
 
@@ -1292,6 +1355,10 @@ Matched operating conditions that hold the chosen parameter constant relative to
 Ratios use the midpoint (average of the 4 corners) for each parameter, relative to the first selected vessel.
 
 <|{vc_impact_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download impact CSV|file_download|content={vc_impact_csv}|name=vessel_comparison_impact.csv|label=Download impact CSV|>
+|>
 |>
 
 <|part|class_name=va-card|

@@ -359,6 +359,11 @@ va_result_ready = False
 va_env_fig = go.Figure()
 va_compute_class = "compute-btn"   # red until an assessment is run; blue after
 va_stale = False                   # True when inputs change after a run
+va_hydro_csv = b""
+va_dam_csv = b""
+va_mt_csv = b""
+va_sl_csv = b""
+va_heat_csv = b""
 
 va_pdf_bytes = b""
 va_pdf_name = "Vessel_Assessment.pdf"
@@ -465,6 +470,16 @@ def on_va_env_change(state):
         state.va_pdf_ready = False
 
 
+def _build_csv_exports(state):
+    """Refresh CSV download content from the current assessment tables."""
+    empty = pd.DataFrame()
+    state.va_hydro_csv = db.csv_bytes(getattr(state, "va_hydro_df", empty))
+    state.va_dam_csv = db.csv_bytes(getattr(state, "va_dam_df", empty))
+    state.va_mt_csv = db.csv_bytes(getattr(state, "va_mt_df", empty))
+    state.va_sl_csv = db.csv_bytes(getattr(state, "va_sl_df", empty))
+    state.va_heat_csv = db.csv_bytes(getattr(state, "va_heat_df", empty))
+
+
 def on_va_export_pdf(state):
     """Generate a PDF report of the current assessment (incl. the envelope chart)."""
     if not state.va_result_ready:
@@ -556,7 +571,9 @@ def _correlation_applicability(state, hydro: dict) -> str:
 
     h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), tank_d))
     dish = str(row.get("bottom_dish", "") or "")
-    h_liq = liquid_height_from_volume(_sf(state.va_v_l), tank_d, h_max, dish)
+    dish_height = _sf(row.get("H_bottom_dish_m"))
+    h_liq = liquid_height_from_volume(
+        _sf(state.va_v_l), tank_d, h_max, dish, dish_height)
     submergence = h_liq / imp_d if imp_d > 0 else 0.0
     if submergence >= 1.0:
         checks.append(f"liquid height/impeller diameter = {submergence:.2f}")
@@ -601,7 +618,9 @@ def _hydro_at(state, n_rpm: float, v_l: float) -> dict:
     row = _reactor_row(state.va_reactor)
     h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
     dish = str(row.get("bottom_dish", "") or "")
-    h_liq = liquid_height_from_volume(v_l, state.va_d_tank, h_max, dish)
+    dish_height = _sf(row.get("H_bottom_dish_m"))
+    h_liq = liquid_height_from_volume(
+        v_l, state.va_d_tank, h_max, dish, dish_height)
     v_s, coal = _gas_params(state)
     mode_key = _CORR_LABEL_TO_KEY.get(state.va_corr_mode, "Literature")
     hydro, _sources = compute_reactor_hydro_with_mode(
@@ -743,8 +762,10 @@ def on_va_compute(state):
         row = _reactor_row(state.va_reactor)
         h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
         dish = str(row.get("bottom_dish", "") or "")
-        h_liq = liquid_height_from_volume(state.va_v_l, state.va_d_tank, h_max, dish)
-        area = estimate_jacket_area(state.va_d_tank, h_liq, dish)
+        dish_height = _sf(row.get("H_bottom_dish_m"))
+        h_liq = liquid_height_from_volume(
+            state.va_v_l, state.va_d_tank, h_max, dish, dish_height)
+        area = estimate_jacket_area(state.va_d_tank, h_liq, dish, dish_height)
         u_val, _warn = estimate_U_detailed(
             N_rps=state.va_n_rpm / 60.0, D_imp=state.va_d_imp, D_tank=state.va_d_tank,
             rho=state.va_rho, mu=state.va_mu,
@@ -764,6 +785,7 @@ def on_va_compute(state):
         state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
+    _build_csv_exports(state)
 
     state._va_cache = {
         "hydro": hydro, "dam": dam, "t_rxn": t_rxn,
@@ -1054,6 +1076,10 @@ for the selected vessel are offered.
 ### Hydrodynamics
 <|{va_hydro_df}|table|width=100%|show_all|>
 
+<|part|render={not va_stale}|
+<|Download hydrodynamics CSV|file_download|content={va_hydro_csv}|name=vessel_assessment_hydrodynamics.csv|label=Download hydrodynamics CSV|>
+|>
+
 <|{va_corr_applicability}|text|mode=markdown|>
 
 ### Mixing sensitivity (Damköhler)
@@ -1061,20 +1087,36 @@ for the selected vessel are offered.
 
 <|{va_dam_df}|table|width=100%|show_all|>
 
+<|part|render={not va_stale}|
+<|Download Damköhler CSV|file_download|content={va_dam_csv}|name=vessel_assessment_damkohler.csv|label=Download Damköhler CSV|>
+|>
+
 <|part|render={len(va_mt_df) > 0}|
 ### Mass-transfer capacity versus kinetic demand
 The capacity ratio is a preliminary screen using **kLa / (1/t<sub>rxn</sub>)**.
 Confirm the result with solubility, phase composition, and concentration driving-force data.
 <|{va_mt_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download mass-transfer CSV|file_download|content={va_mt_csv}|name=vessel_assessment_mass_transfer.csv|label=Download mass-transfer CSV|>
+|>
 |>
 
 <|part|render={va_sl_mode == "On"}|
 ### Solid suspension and dissolution
 <|{va_sl_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download solids CSV|file_download|content={va_sl_csv}|name=vessel_assessment_solids.csv|label=Download solids CSV|>
+|>
 |>
 
 ### Heat balance
 <|{va_heat_df}|table|width=100%|show_all|>
+
+<|part|render={not va_stale}|
+<|Download heat-balance CSV|file_download|content={va_heat_csv}|name=vessel_assessment_heat_balance.csv|label=Download heat-balance CSV|>
+|>
 |>
 
 <|part|class_name=va-card|

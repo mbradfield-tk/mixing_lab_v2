@@ -75,7 +75,8 @@ def heat_generation_rate(delta_H_kJ_mol: float, r_mol_per_s: float) -> float:
 # ---------------------------------------------------------------------------
 
 def estimate_jacket_area(D_tank: float, H: float,
-                         bottom_dish: str = "") -> float:
+                         bottom_dish: str = "",
+                         bottom_dish_height_m: float | None = None) -> float:
     """Estimate jacketed heat-transfer area (m²) wetted by the liquid."""
     if D_tank <= 0 or H <= 0:
         return 0.0
@@ -83,19 +84,20 @@ def estimate_jacket_area(D_tank: float, H: float,
     A_flat = np.pi / 4 * D_tank**2
     dish = str(bottom_dish).lower() if bottom_dish else ""
 
+    measured_height = float(bottom_dish_height_m or 0.0)
     if "ellip" in dish:
-        h_dish = D_tank / 4
+        h_dish = measured_height if measured_height > 0 else D_tank / 4
         A_dish_full = 1.084 * D_tank**2   # 2:1 semi-ellipsoidal head, exact spheroid area
     elif "torisph" in dish or "din" in dish:
-        h_dish = 0.1935 * D_tank
+        h_dish = measured_height if measured_height > 0 else 0.1935 * D_tank
         A_dish_full = 0.99 * D_tank**2    # Klöpper head (DIN 28011) surface area
     elif "conic" in dish:
-        h_dish = cone_depth(D_tank, dish)
+        h_dish = measured_height if measured_height > 0 else cone_depth(D_tank, dish)
         R = D_tank / 2.0
         # Wetted cone = lateral surface area = A_flat * sqrt(1 + (h/R)^2).
         A_dish_full = A_flat * np.sqrt(1.0 + (h_dish / R) ** 2) if R > 0 else A_flat
     else:
-        h_dish = 0.0
+        h_dish = measured_height
         A_dish_full = A_flat
 
     if h_dish > 0 and H < h_dish:

@@ -166,23 +166,25 @@ def _cone_depth(D_tank: float, dish_type: str = "", default_angle_deg: float = 4
     return (D_tank / 2.0) * np.tan(np.radians(_parse_cone_angle_deg(dish_type, default_angle_deg)))
 
 
-def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "") -> float:
+def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "",
+                         bottom_dish_height_m: float | None = None) -> float:
     if D_tank <= 0 or H <= 0:
         return 0.0
     A_flat = np.pi / 4 * D_tank**2
     dish = (bottom_dish or "").lower()
+    measured_height = float(bottom_dish_height_m or 0.0)
     if "ellip" in dish:
-        h_dish = D_tank / 4
+        h_dish = measured_height if measured_height > 0 else D_tank / 4
         A_dish_full = 1.084 * D_tank**2   # 2:1 semi-ellipsoidal head, exact spheroid area
     elif "torisph" in dish or "din" in dish:
-        h_dish = 0.1935 * D_tank
+        h_dish = measured_height if measured_height > 0 else 0.1935 * D_tank
         A_dish_full = 0.99 * D_tank**2    # Klöpper head (DIN 28011) surface area
     elif "conic" in dish:
-        h_dish = _cone_depth(D_tank, dish)
+        h_dish = measured_height if measured_height > 0 else _cone_depth(D_tank, dish)
         r = D_tank / 2.0
         A_dish_full = A_flat * np.sqrt(1.0 + (h_dish / r) ** 2) if r > 0 else A_flat
     else:
-        h_dish = 0.0
+        h_dish = measured_height
         A_dish_full = A_flat
     if h_dish > 0 and H < h_dish:
         return (H / h_dish) * A_dish_full
@@ -198,6 +200,30 @@ def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float, bottom_di
     from utils.calculations.geometry import liquid_height_from_volume as _dish_aware
 
     return _dish_aware(V_L, D_tank, H_max, bottom_dish)
+def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float,
+                              bottom_dish: str = "",
+                              bottom_dish_height_m: float | None = None) -> float:
+    if V_L <= 0 or D_tank <= 0:
+        return 0.0
+    V_m3 = V_L / 1000.0
+    dish = (bottom_dish or "").lower()
+    measured_height = float(bottom_dish_height_m or 0.0)
+    if "conic" in dish:
+        h_dish = measured_height if measured_height > 0 else _cone_depth(D_tank, dish)
+        V_dish = np.pi * D_tank**2 * h_dish / 12.0
+    elif measured_height > 0:
+        h_dish = measured_height
+        V_dish = np.pi * D_tank**2 * h_dish / 6.0
+    elif "torisph" in dish or "din" in dish or "dished" in dish:
+        h_dish = 0.1935 * D_tank
+        V_dish = 0.0847 * D_tank**3
+    else:
+        h_dish = D_tank / 4
+        V_dish = np.pi * D_tank**3 / 24.0
+    area = np.pi * (D_tank / 2.0) ** 2
+    H = (V_m3 / V_dish * h_dish if V_m3 <= V_dish and V_dish > 0
+         else h_dish + (V_m3 - V_dish) / area)
+    return min(H, H_max) if H_max > 0 else H
 
 
 def impeller_power(Np: float, rho: float, N_rps: float, D_imp: float) -> float:

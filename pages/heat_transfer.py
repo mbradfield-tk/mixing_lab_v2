@@ -119,6 +119,11 @@ h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("L_tan_tan_m"), 0.2))
 _bottom0 = str(_r.get("bottom_dish", ""))
 h_liquid = liquid_height_from_volume(v_l, d_tank, h_max, _bottom0)
 a_ht = estimate_jacket_area(d_tank, h_liquid, _bottom0)
+h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
+h_liquid = liquid_height_from_volume(
+    v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
+a_ht = estimate_jacket_area(
+    d_tank, h_liquid, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -195,6 +200,11 @@ corr_df = pd.DataFrame(columns=["Correlation", "Nu", "h_i (W/m2.K)", "U (W/m2.K)
 htm_compare_df = pd.DataFrame(columns=["Medium", "h_o (W/m2.K)", "U (W/m2.K)", "UA (W/K)", "Time (min)", "In range"])
 summary_df = pd.DataFrame(columns=["Metric", "Value"])
 result_ready = False
+rxn_summary_csv = b""
+kpi_csv = b""
+corr_csv = b""
+htm_compare_csv = b""
+summary_csv = b""
 
 temp_fig = go.Figure()
 temp_fig.update_layout(title="Batch Temperature Profile", xaxis_title="Time (min)", yaxis_title="Temperature (C)")
@@ -219,6 +229,16 @@ def _time_factor(unit: str) -> float:
     return {"Seconds": 1.0, "Minutes": 60.0, "Hours": 3600.0}.get(unit, 60.0)
 
 
+def _build_csv_exports(state):
+    """Refresh CSV download content from the current heat-transfer tables."""
+    empty = pd.DataFrame()
+    state.rxn_summary_csv = db.csv_bytes(getattr(state, "rxn_summary_df", empty))
+    state.kpi_csv = db.csv_bytes(getattr(state, "kpi_df", empty))
+    state.corr_csv = db.csv_bytes(getattr(state, "corr_df", empty))
+    state.htm_compare_csv = db.csv_bytes(getattr(state, "htm_compare_df", empty))
+    state.summary_csv = db.csv_bytes(getattr(state, "summary_df", empty))
+
+
 def on_reactor_change(state):
     row = _reactor_row(state.selected_reactor)
     state.d_tank = safe_float(row.get("D_tank_m"), state.d_tank)
@@ -241,6 +261,11 @@ def _refresh_area(state):
     bottom = str(row.get("bottom_dish", ""))
     h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, bottom)
     state.a_ht = estimate_jacket_area(state.d_tank, h, bottom)
+    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    dish = str(row.get("bottom_dish", ""))
+    dish_height = safe_float(row.get("H_bottom_dish_m"))
+    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, dish, dish_height)
+    state.a_ht = estimate_jacket_area(state.d_tank, h, dish, dish_height)
 
 
 def on_v_l_change(state):
@@ -382,6 +407,7 @@ def _compute_reaction(state):
     state.rxn_fig = fig
     state.rxn_summary_df = result.summary
     state.rxn_result_ready = True
+    _build_csv_exports(state)
 
     _complete = ("not reached" if not np_is_finite(result.t_complete_s)
                  else f"{result.t_complete_s / 60.0:.2f} min")
@@ -492,6 +518,7 @@ def on_compute(state):
 
     _build_resistance_breakdown(state, result)
     _build_ua_sweeps(state)
+    _build_csv_exports(state)
 
     analytical_txt = "Infinity" if not pd.notna(result.time_analytical_s) or not np_is_finite(result.time_analytical_s) else f"{result.time_analytical_s/60.0:.2f} min"
     state.status_message = (
@@ -560,6 +587,7 @@ def _build_ua_sweeps(state) -> None:
     row = _reactor_row(state.selected_reactor)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
     bottom = str(row.get("bottom_dish", ""))
+    dish_height = safe_float(row.get("H_bottom_dish_m"))
     base = _shared_ht_data(state)
 
     # (1) UA vs stir speed at the current volume (A held constant).
@@ -591,6 +619,9 @@ def _build_ua_sweeps(state) -> None:
     ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
                                              liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom),
                                              bottom)
+                                             liquid_height_from_volume(
+                                                 vol, state.d_tank, h_max_val, bottom, dish_height),
+                                             bottom, dish_height)
               for vol in vol_range]
     fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
                                 line={"color": "#1f77b4", "width": 2}, name="UA"))
@@ -729,6 +760,8 @@ not modelled) and the profile runs until 99% conversion.
 <|part|class_name=va-card|
 ## 3. Core KPIs
 <|{kpi_df}|table|width=100%|>
+
+<|Download core KPIs CSV|file_download|content={kpi_csv}|name=heat_transfer_core_kpis.csv|label=Download core KPIs CSV|>
 |>
 
 <|part|class_name=va-card|
@@ -760,13 +793,19 @@ UA versus stir speed at the selected volume, and versus volume at the selected s
 ### Nusselt correlation comparison
 <|{corr_df}|table|width=100%|rebuild|>
 
+<|Download correlation comparison CSV|file_download|content={corr_csv}|name=heat_transfer_correlations.csv|label=Download correlation comparison CSV|>
+
 ### Heat transfer medium comparison
 <|{htm_compare_df}|table|width=100%|rebuild|>
+
+<|Download medium comparison CSV|file_download|content={htm_compare_csv}|name=heat_transfer_media.csv|label=Download medium comparison CSV|>
 |>
 
 <|part|class_name=va-card|
 ## 8. Summary
 <|{summary_df}|table|width=100%|>
+
+<|Download summary CSV|file_download|content={summary_csv}|name=heat_transfer_summary.csv|label=Download summary CSV|>
 |>
 |>
 
@@ -779,6 +818,8 @@ batch would reach with no cooling).
 
 ## Reaction and Heat-Transfer Summary
 <|{rxn_summary_df}|table|width=100%|>
+
+<|Download reaction summary CSV|file_download|content={rxn_summary_csv}|name=heat_transfer_reaction_summary.csv|label=Download reaction summary CSV|>
 |>
 """
 

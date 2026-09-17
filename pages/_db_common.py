@@ -208,6 +208,7 @@ COLUMN_LABELS: dict[str, str] = {
     "H_bot_dish_m": "Bottom Dish Height [m]",
     "H_m": "Full Height [m]",
     "D_imp_m": "Impeller Diameter [m]",
+    "H_bottom_dish_m": "Bottom Dish Height [m]",
     "impeller_type": "Impeller Type",
     "Np": "Power Number",
     "Nq": "Flow Number",

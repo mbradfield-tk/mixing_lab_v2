@@ -109,8 +109,9 @@ def _blend_geometry(state) -> tuple[float, float]:
     tank_diameter = _sf(row.get("D_tank_m"))
     max_height = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m")))
     dish = str(row.get("bottom_dish", "") or "")
+    dish_height = _sf(row.get("H_bottom_dish_m"))
     liquid_height = liquid_height_from_volume(
-        state.bp_v_l, tank_diameter, max_height, dish,
+        state.bp_v_l, tank_diameter, max_height, dish, dish_height,
     )
     return tank_diameter, liquid_height
 
@@ -522,6 +523,27 @@ bp_sens_csv_bytes = b""
 bp_sens_csv_name = "Bourne_for_Sensitivity.csv"
 bp_sens_csv_ready = False
 
+# Table CSV downloads (separate from the structured Sensitivity handoff CSV).
+bp_t1_conditions_csv = b""
+bp_t1_adjustments_csv = b""
+bp_t1_results_csv = b""
+bp_t2_conditions_csv = b""
+bp_t2_results_csv = b""
+bp_t3_conditions_csv = b""
+bp_t3_results_csv = b""
+
+
+def _refresh_table_csv_exports(state):
+    """Refresh downloadable CSV content for the current protocol tables."""
+    empty = pd.DataFrame()
+    state.bp_t1_conditions_csv = db.csv_bytes(getattr(state, "bp_t1_hydro_df", empty))
+    state.bp_t1_adjustments_csv = db.csv_bytes(getattr(state, "bp_t1_adj_result_df", empty))
+    state.bp_t1_results_csv = db.csv_bytes(getattr(state, "bp_t1_kpi_result_df", empty))
+    state.bp_t2_conditions_csv = db.csv_bytes(getattr(state, "bp_t2_cond_df", empty))
+    state.bp_t2_results_csv = db.csv_bytes(getattr(state, "bp_t2_kpi_result_df", empty))
+    state.bp_t3_conditions_csv = db.csv_bytes(getattr(state, "bp_t3_cond_df", empty))
+    state.bp_t3_results_csv = db.csv_bytes(getattr(state, "bp_t3_kpi_result_df", empty))
+
 
 def _invalidate_assessments(state):
     """Clear all prior protocol verdicts when the inputs change."""
@@ -674,6 +696,7 @@ def _build_t1(state):
     if state.bp_t1_adj_mode == "On":
         _build_t1_adj(state)
     _build_t1_plot(state)
+    _refresh_table_csv_exports(state)
 
 
 def _build_t1_plot(state):
@@ -764,6 +787,7 @@ def _build_t1_adj(state):
         cap += (" ⚠ Some values were clamped to the reactor RPM range; the target "
                 "P/m cannot be held at those steps.")
     state.bp_t1_adj_caption = cap
+    _refresh_table_csv_exports(state)
 
 
 
@@ -893,6 +917,7 @@ def on_bp_t1_assess(state):
     state.bp_t1_result = res
     state.bp_t1_assessed = True
     state.bp_t1_sensitive = res["sensitive"]
+    _refresh_table_csv_exports(state)
     _reset_downstream(state, 1)
     prefix = _kpi_prefix(res)
     ratio = _test1_range_ratio(state)
@@ -950,6 +975,7 @@ def _build_t2(state):
             "Note": note,
         })
     state.bp_t2_cond_df = pd.DataFrame(rows)
+    _refresh_table_csv_exports(state)
 
 
 def on_bp_t2_recalc(state):
@@ -966,6 +992,7 @@ def on_bp_t2_assess(state):
     state.bp_t2_result = res
     state.bp_t2_assessed = True
     state.bp_t2_sensitive = res["sensitive"]
+    _refresh_table_csv_exports(state)
     _reset_downstream(state, 2)
     prefix = _kpi_prefix(res)
     if res["status"] == "sensitive":
@@ -1015,6 +1042,7 @@ def _build_t3(state):
             "t_E micro (s)": f"{micromixing_time_engulfment(eps_loc, nu):.3g}",
         })
     state.bp_t3_cond_df = pd.DataFrame(rows)
+    _refresh_table_csv_exports(state)
 
 
 def on_bp_t3_recalc(state):
@@ -1031,6 +1059,7 @@ def on_bp_t3_assess(state):
     state.bp_t3_result = res
     state.bp_t3_assessed = True
     state.bp_t3_sensitive = res["sensitive"]
+    _refresh_table_csv_exports(state)
     state.bp_pdf_ready = False
     prefix = _kpi_prefix(res)
     if res["sensitive"]:
@@ -1417,6 +1446,8 @@ volume. If the response barely moves, mixing is not rate-limiting.
 
 <|{bp_t1_hydro_df}|table|width=100%|show_all|>
 
+<|Download Test 1 conditions CSV|file_download|content={bp_t1_conditions_csv}|name=bourne_test_1_conditions.csv|label=Download Test 1 conditions CSV|>
+
 ### Discrete speed adjustments (fed-batch)
 Step the impeller speed at volume milestones to hold **P/m constant** as the
 working volume grows. Enter one row per milestone volume (L).
@@ -1428,6 +1459,8 @@ working volume grows. Enter one row per milestone volume (L).
 <|{bp_t1_adj_vols_df}|table|editable|rebuild|on_edit=on_bp_t1_adj_edit|on_add=on_bp_t1_adj_add|on_delete=on_bp_t1_adj_delete|width=100%|show_all|>
 
 <|{bp_t1_adj_result_df}|table|width=100%|show_all|>
+
+<|Download speed adjustments CSV|file_download|content={bp_t1_adjustments_csv}|name=bourne_test_1_speed_adjustments.csv|label=Download speed adjustments CSV|>
 |>
 
 <|{bp_t1_adj_caption}|text|mode=markdown|>
@@ -1458,6 +1491,8 @@ Track one or more KPIs — add a row per metric. Each is judged sensitive at a
 
 <|part|render={bp_t1_assessed}|
 <|{bp_t1_kpi_result_df}|table|width=100%|show_all|>
+
+<|Download Test 1 KPI results CSV|file_download|content={bp_t1_results_csv}|name=bourne_test_1_kpi_results.csv|label=Download Test 1 KPI results CSV|>
 |>
 
 <|{bp_t1_verdict}|text|mode=markdown|>
@@ -1482,6 +1517,8 @@ means the reaction is **micromixing**-controlled; sensitivity points to mesomixi
 
 <|{bp_t2_cond_df}|table|width=100%|show_all|>
 
+<|Download Test 2 conditions CSV|file_download|content={bp_t2_conditions_csv}|name=bourne_test_2_conditions.csv|label=Download Test 2 conditions CSV|>
+
 ### Enter measured responses
 KPIs carry over from Test 1 — edit the responses (columns: **Slow feed / Centre /
 Fast feed**), add or remove rows as needed.
@@ -1492,6 +1529,8 @@ Fast feed**), add or remove rows as needed.
 
 <|part|render={bp_t2_assessed}|
 <|{bp_t2_kpi_result_df}|table|width=100%|show_all|>
+
+<|Download Test 2 KPI results CSV|file_download|content={bp_t2_results_csv}|name=bourne_test_2_kpi_results.csv|label=Download Test 2 KPI results CSV|>
 |>
 
 <|{bp_t2_verdict}|text|mode=markdown|>
@@ -1515,6 +1554,8 @@ measured or CFD-derived values when available.
 
 <|{bp_t3_cond_df}|table|width=100%|show_all|>
 
+<|Download Test 3 conditions CSV|file_download|content={bp_t3_conditions_csv}|name=bourne_test_3_conditions.csv|label=Download Test 3 conditions CSV|>
+
 ### Enter measured responses
 KPIs carry over from Test 2 — edit the responses (columns: **Surface / Mid /
 Impeller**).
@@ -1525,6 +1566,8 @@ Impeller**).
 
 <|part|render={bp_t3_assessed}|
 <|{bp_t3_kpi_result_df}|table|width=100%|show_all|>
+
+<|Download Test 3 KPI results CSV|file_download|content={bp_t3_results_csv}|name=bourne_test_3_kpi_results.csv|label=Download Test 3 KPI results CSV|>
 |>
 
 <|{bp_t3_verdict}|text|mode=markdown|>

@@ -1,6 +1,7 @@
 # Vessel-height clarification — code changes
 
-Date: 2026-09-16. All changes are uncommitted in the working tree (`git diff` against HEAD).
+Date: 2026-09-16. Committed as `a6d920c` ("CSV Overhaul") on branch `fix_blend_time`, 2026-09-16 16:49.
+To see the exact diff: `git show a6d920c` (13 files, +662 / −68).
 Companion documents: `README_csv_changes.md` (data edits) and `README_reactor_review.md` (rows to re-verify).
 
 ## Why
@@ -186,7 +187,7 @@ vessels).
 
 ---
 
-## 8. `utils/calculations/geometry.py` — `dish_geometry()` (used by Vessel Assessment, Bourne, Vessel Comparison)
+## 8. `utils/calculations/geometry.py` — `dish_geometry()` (used by Vessel Assessment, Bourne, Vessel Comparison and — since §3b — Heat Transfer)
 
 Two new branches, inserted **before** the torispherical one; torispherical/conical/default numbers unchanged.
 
@@ -245,7 +246,7 @@ scripts/dish_height_comparison_out/
 
 Method definitions:
 - **B (CSV)** — dish depth `H_bot_dish_m`, shape from `bottom_dish`, numeric capacity curve (400-pt trapezoid) incl. impeller displacement. This is exactly what the Vessel Database schematic draws.
-- **C (analytic)** — `geometry.dish_geometry()` depth/volume from the type formula, straight-wall algebra, no impellers, capped at `H_max_m`. This is what Vessel Assessment / Bourne / Vessel Comparison compute with.
+- **C (analytic)** — `geometry.dish_geometry()` depth/volume from the type formula, straight-wall algebra, no impellers, capped at `H_max_m`. This is what Vessel Assessment / Bourne / Vessel Comparison / Heat Transfer compute with.
 
 ---
 
@@ -262,3 +263,25 @@ Method definitions:
 - All pages import; `tests/test_bourne_protocol_regression.py` + `tests/test_liquid_liquid.py` — 23 runnable test functions pass (pytest is not installed in `mixer`; `test_miscibility.py` needs it and two Bourne tests need the `monkeypatch` fixture).
 - CSV: 70 columns × 42 rows, LF, no trailing newline, `H_bot_dish_m == H_max_m − L_tan_tan_m` for all 39 populated rows, `H_m` blank everywhere.
 - `tests/test_liquid_liquid.py` was accidentally overwritten by a stray keystroke during GUI testing and **restored from git** (`git checkout -- tests/test_liquid_liquid.py`); 4/4 pass.
+
+## 13. Runtime warnings that are **not** caused by these changes
+
+Seen in the `python app.py` console after the change set, and investigated 2026-09-17:
+
+```
+Session id … not found in data scope. Taipy will automatically create a scope … you may have to reload your page.
+A problem occurred while resolving variable 'selected_vessel_TPMDL_9' in module '__main__'.
+__process_content_provider() callback function raised an exception:
+    AttributeError: 'types.SimpleNamespace' object has no attribute '_TpCh_tpec_TpExPr_vessel_schematic_html_TPMDL_9'
+```
+
+All three are one event: `app.py` runs with `use_reloader=True, debug=True`, so every save of a `.py` file restarts
+the server process. The browser tab keeps the **old** session id; the new process has no data scope for it, Taipy
+stubs an empty scope, and anything the page asks for from that scope — state variables (`selected_vessel`,
+`bp_reactor`) or the `<|part|content=…|>` HTML providers for the schematic / 3D viewer — is missing. `_TPMDL_9` /
+`_TPMDL_25` are Taipy's per-module suffixes (Vessel Database / Bourne Protocol). **Refresh the browser tab (F5)
+after any "Server reloaded" line** and the warnings stop; no data or calculation is affected.
+
+The reloader watches every directory on `sys.path`, and `sys.path[0]` is the repo root, so saving *any* `.py`
+under `mixing_lab_v2/` — including the git-ignored `scripts/dish_height_comparison*.py` and the `tests/` — triggers a
+restart. Run with `use_reloader=False` while editing side scripts if this is a nuisance.

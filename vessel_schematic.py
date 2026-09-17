@@ -251,7 +251,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     tol = R * 1e-3
     warnings: list[str] = []
     wall_hit: set[int] = set()
-    for idx, (d_i, cy_i, h_i, _c_i, _t_i) in enumerate(impellers):
+    for idx, (d_i, cy_i, h_i, _c_i, t_i) in enumerate(impellers):
         r_i = d_i / 2.0
         zb, zt = cy_i - h_i / 2.0, cy_i + h_i / 2.0
         local_r = min(radius_at(z) for z in np.linspace(zb, zt, 12))
@@ -259,6 +259,15 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             warnings.append(f"Impeller {idx + 1}: ⌀{d_i * 1000:.0f} mm exceeds the tank ID "
                             f"⌀{geom['D'] * 1000:.0f} mm.")
             wall_hit.add(idx)
+        elif "chevron" in t_i.lower():
+            # For a chevron, we assume the blade angle matches the cone angle and
+            # therefore the only meaningful wall check is whether the underside has
+            # positive clearance above the dish bottom.
+            clearance = (cy_i - h_i / 2.0) + bot_depth
+            if clearance <= tol:
+                warnings.append(f"Impeller {idx + 1}: the blade (⌀{d_i * 1000:.0f} mm) cuts into "
+                                "the dish wall at its height.")
+                wall_hit.add(idx)
         elif r_i > local_r + tol:
             warnings.append(f"Impeller {idx + 1}: the blade (⌀{d_i * 1000:.0f} mm) cuts into "
                             "the dish wall at its height.")
@@ -346,26 +355,30 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                 v_drop = r_imp * (bot_depth / R)
             else:
                 v_drop = max(h_imp, r_imp * 0.5)
-            half_v = (v_drop + h_imp) / 2.0
+            # Anchor the bottom centre vertex at the blade underside, i.e. the
+            # recorded off-bottom clearance (cy - h_imp/2 = -bot_depth + clearance).
+            base = cy - h_imp / 2.0
             pts = [
-                (-r_imp, cy + half_v),
-                (0.0, cy + half_v - v_drop),
-                (r_imp, cy + half_v),
-                (r_imp, cy + half_v - h_imp),
-                (0.0, cy - half_v),
-                (-r_imp, cy + half_v - h_imp),
+                (-r_imp, base + v_drop + h_imp),
+                (0.0, base + h_imp),
+                (r_imp, base + v_drop + h_imp),
+                (r_imp, base + v_drop),
+                (0.0, base),
+                (-r_imp, base + v_drop),
             ]
+            lab_y = base + (v_drop + h_imp) / 2.0  # centre of the drawn V for the label
             ax.add_patch(patches.Polygon(pts, closed=True, facecolor=color,
                                          edgecolor=edge, alpha=0.7, lw=elw, zorder=4))
         else:
+            lab_y = cy
             ax.add_patch(patches.FancyBboxPatch(
                 (-r_imp, cy - h_imp / 2.0), d_imp, h_imp,
                 boxstyle="round,pad=0.002", facecolor=color, edgecolor=edge,
                 alpha=0.7, lw=elw, zorder=4))
         # Leader line + label
-        ax.plot([r_imp, R + right_pad * 0.12], [cy, cy],
+        ax.plot([r_imp, R + right_pad * 0.12], [lab_y, lab_y],
                 color=color, lw=0.6, alpha=0.5, zorder=3)
-        ax.text(R + right_pad * 0.15, cy, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
+        ax.text(R + right_pad * 0.15, lab_y, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
                 fontsize=10, fontweight="bold", va="center", ha="left", color=color)
 
     # Shaft

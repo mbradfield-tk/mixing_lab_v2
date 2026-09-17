@@ -1,8 +1,9 @@
 # `data/reactors.csv` — change log
 
-Date: 2026-09-16. Every edit made to the reactor database during the vessel-height clarification, in the order it
-happened, with the reason. Values in metres unless stated. "Round" numbers group edits by the review pass they came
-from. Companion documents: `README_code_changes.md`, `README_reactor_review.md`.
+Date: 2026-09-16. Committed as `a6d920c` ("CSV Overhaul") on branch `fix_blend_time`; the pre-change file is
+`git show a6d920c^:data/reactors.csv`. Every edit made to the reactor database during the vessel-height
+clarification, in the order it happened, with the reason. Values in metres unless stated. "Round" numbers group
+edits by the review pass they came from. Companion documents: `README_code_changes.md`, `README_reactor_review.md`.
 
 ## Column semantics (new)
 
@@ -62,7 +63,7 @@ from. Companion documents: `README_code_changes.md`, `README_reactor_review.md`.
 
 ## D. Final state of every row (height columns + dish labels)
 
-Bold = changed from the committed version (`git show HEAD:data/reactors.csv`).
+Bold = changed from the pre-overhaul version (`git show a6d920c^:data/reactors.csv`).
 
 | ID | Name | D_tank | L_tan_tan (was H_m) | H_max | H_bot_dish | bottom_dish | top_dish |
 |---|---|---|---|---|---|---|---|

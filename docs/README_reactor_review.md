@@ -1,13 +1,13 @@
 # Reactor rows to re-verify
 
-Date: 2026-09-16. Every row of `data/reactors.csv` that has missing geometry, a physically inconsistent dimension,
-a questionable dish label, or a schematic-vs-calculation disagreement above 1 % of `H_max_m`. Rows are in **CSV
-order**. Rows not listed here (RX-001–004, 007, 008, 015, 017, 027–030, 034, 035, 037, 038, 039, 042) are
-complete and self-consistent.
+Date: 2026-09-16 (data as committed in `a6d920c` on `fix_blend_time`). Every row of `data/reactors.csv` that has
+missing geometry, a physically inconsistent dimension, a questionable dish label, or a schematic-vs-calculation
+disagreement above 1 % of `H_max_m`. Rows are in **CSV order**. Rows not listed here (RX-001–004, 007, 008, 015,
+017, 027–030, 034, 035, 037, 038, 039, 042) are complete and self-consistent.
 
 How the checks were made (see `README_code_changes.md` §10):
 - **B** = liquid level from the CSV dish height (what the Vessel Database schematic draws)
-- **C** = liquid level from `liquid_height_from_volume()` (what Vessel Assessment / Bourne / Vessel Comparison compute)
+- **C** = liquid level from `liquid_height_from_volume()` (what Vessel Assessment / Bourne / Vessel Comparison / Heat Transfer compute)
 - "C−B" is the difference at the page-default fill (midpoint of `V_L_min`/`V_L_max`, else 70 % of brim), as % of `H_max_m`
 - "hemisphere limit" — a curved (non-conical) bottom cannot be deeper than R = D/2
 - "best fit" — standard head whose depth/D ratio is closest to `H_bot_dish_m / D_tank_m`

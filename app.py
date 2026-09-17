@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 
@@ -641,12 +642,16 @@ def create_app():
     )
 
 if __name__ == "__main__":
-    # Local development — same Gui instance, its own server, reloader on.
+    # Local development — reloader is opt-in to avoid stale-session warnings
+    # after automatic restarts (set MIXING_LAB_RELOADER=1 to enable).
+    use_reloader = os.getenv("MIXING_LAB_RELOADER", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
     gui.run(
         title="Mixing Lab 2.0",
         dark_mode=False,
         theme=TAKEDA_THEME,
-        use_reloader=True,
+        use_reloader=use_reloader,
         port="auto",
         debug=True,
     )

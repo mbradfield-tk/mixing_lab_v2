@@ -616,12 +616,7 @@ def _build_ua_sweeps(state) -> None:
         vmin, vmax = 0.1 * cur_vol, 2.0 * cur_vol
     vmin = max(vmin, 1e-6)
     vol_range = np.linspace(vmin, vmax, 40)
-    ua_vol = [u_fixed * estimate_jacket_area(state.d_tank,
-                                             liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom),
-                                             bottom)
-                                             liquid_height_from_volume(
-                                                 vol, state.d_tank, h_max_val, bottom, dish_height),
-                                             bottom, dish_height)
+    ua_vol = [u_fixed * estimate_jacket_area(state.d_tank, liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom, dish_height), bottom, dish_height)
               for vol in vol_range]
     fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
                                 line={"color": "#1f77b4", "width": 2}, name="UA"))

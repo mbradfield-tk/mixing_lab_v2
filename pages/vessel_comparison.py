@@ -322,11 +322,11 @@ vc_feed_time_hr = 1.0
 
 
 def _seed_feed_pipe_rows(names) -> pd.DataFrame:
-    """Default each vessel's feed-pipe ID from reactors.csv (mm); editable per vessel."""
+    """Default each vessel's feed-pipe ID from reactors.csv (mm); 0 if not recorded."""
     rows = []
     for name in names:
         csv_m = _sf(_reactor_row(name).get("D_feed_pipe_m"))
-        val = round(csv_m * 1000.0, 2) if csv_m > 0 else _DEFAULT_FEED_PIPE_MM
+        val = round(csv_m * 1000.0, 2) if csv_m > 0 else 0.0
         rows.append({"Reactor": name, "Feed pipe ID (mm)": val})
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Reactor", "Feed pipe ID (mm)"])
 
@@ -512,6 +512,7 @@ def _build_csv_exports(state):
     state.vc_scale_full_csv = db.csv_bytes(state.vc_scale_full_df)
     state.vc_scale_pct_csv = db.csv_bytes(state.vc_scale_pct_df)
     state.vc_impact_csv = db.csv_bytes(state.vc_impact_df)
+    state.vc_feed_plan_csv = db.csv_bytes(state.vc_feed_plan_df)
 
 
 # ---------------------------------------------------------------------------
@@ -777,10 +778,18 @@ def on_vc_compute(state):
     _build_heat_summary(state, env_df, reactor_info, ctx)
     _build_scaling(state, names, reactor_info, ctx)
     _build_impact(state, env_df, present, ctx)
-    _build_feed_plan(state, reactor_info, fed_on)
+    feed_ok = _build_feed_plan(state, reactor_info, fed_on)
     _build_csv_exports(state)
 
     state.vc_pdf_ready = False
+    if not feed_ok:
+        state.vc_ready = False
+        state.vc_stale = False
+        state.vc_compute_class = "compute-btn"
+        state.vc_status = ("Fed-batch feed volume exceeds max volume for one or more vessels — "
+                           "adjust the feed schedule and recompute.")
+        return
+
     state.vc_ready = True
     state.vc_stale = False
     state.vc_compute_class = "compute-btn-ok"
@@ -1087,30 +1096,31 @@ def _build_impact(state, env_df, present, ctx):
     state.vc_impact_df = pd.DataFrame(rows)
 
 
-def _build_feed_plan(state, reactor_info, fed_on):
+def _build_feed_plan(state, reactor_info, fed_on) -> bool:
     """Scale the basis vessel's feed volume to every vessel by V_L_max ratio.
 
     Feed time is shared across vessels; only feed volume (and thus rate)
-    scales. Warns when the projected end volume (start = V_L_min) would
-    exceed the vessel's recorded V_L_max.
+    scales. Returns False (and warns) when the projected end volume (start =
+    V_L_min) would exceed any vessel's recorded V_L_max.
     """
     if not fed_on or not reactor_info:
         state.vc_feed_plan_df = pd.DataFrame()
-        return
+        return True
     basis = state.vc_feed_basis
     if basis not in reactor_info:
         state.vc_feed_plan_df = pd.DataFrame(
             [{"Reactor": basis, "Status": "Basis geometry missing"}])
-        return
+        return False
     basis_vmax = reactor_info[basis]["V_max_L"]
     if basis_vmax <= 0:
         state.vc_feed_plan_df = pd.DataFrame(
             [{"Reactor": basis, "Status": "Basis max volume unavailable"}])
-        return
+        return False
     feed_time_hr = max(_sf(state.vc_feed_time_hr), 1e-9)
     feed_vol_basis_mL = _sf(state.vc_feed_volume_mL)
 
     rows = []
+    exceeded = []
     for name, info in reactor_info.items():
         v_max, v_min = info["V_max_L"], info["V_min_L"]
         ratio = v_max / basis_vmax
@@ -1118,15 +1128,21 @@ def _build_feed_plan(state, reactor_info, fed_on):
         feed_rate_mLmin = feed_vol_mL / (feed_time_hr * 60.0)
         end_vol_L = v_min + feed_vol_mL / 1000.0
         exceeds = end_vol_L > v_max + 1e-9
+        if exceeds:
+            exceeded.append(f"{name} ({end_vol_L:.3g} L > {v_max:.3g} L)")
         rows.append({
             "Reactor": name, "Role": "Basis" if name == basis else "Scaled",
             "V_max (L)": f"{v_max:.3g}", "Start volume (L)": f"{v_min:.3g}",
-            "Feed volume (mL)": f"{feed_vol_mL:.1f}",
-            "Feed rate (mL/min)": f"{feed_rate_mLmin:.2f}",
-            "End volume (L)": f"{end_vol_L:.3g}",
+            "Feed volume (mL)": "—" if exceeds else f"{feed_vol_mL:.1f}",
+            "Feed rate (mL/min)": "—" if exceeds else f"{feed_rate_mLmin:.2f}",
+            "End volume (L)": "—" if exceeds else f"{end_vol_L:.3g}",
             "Status": "⚠️ Exceeds max volume" if exceeds else "OK",
         })
     state.vc_feed_plan_df = pd.DataFrame(rows)
+    if exceeded:
+        notify(state, "W", "Feed volume exceeds max volume for: " + "; ".join(exceeded))
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1314,7 +1330,7 @@ vessel and scaled to the other vessels by their max fill volume (V_L_max) relati
 <|layout|columns=1 1 1|class_name=form-grid|
 <|{vc_feed_basis}|selector|lov={vc_reactors}|dropdown|label=Basis vessel (feed volume specified here)|on_change=on_vc_input_change|>
 
-<|{vc_feed_volume_mL}|number|label=Feed volume at basis (mL)|on_change=on_vc_input_change|>
+<|{vc_feed_volume_mL}|number|label=Volume which you add (mL)|on_change=on_vc_input_change|>
 
 <|{vc_feed_time_hr}|number|label=Feed time (hours)|on_change=on_vc_input_change|>
 |>

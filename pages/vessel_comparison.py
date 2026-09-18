@@ -312,11 +312,26 @@ vc_vs = 0.005
 vc_coal = coal_options[0]
 
 # Fed-batch (mesomixing)
+_DEFAULT_FEED_PIPE_MM = 3.0
 vc_fed_mode = "Off"
-vc_feed_rate = 5.0
-vc_feed_diam = 3.0
 vc_feed_location = "Bulk (mid-liquid)"
 vc_feed_location_options = ["Near impeller", "Bulk (mid-liquid)", "Surface"]
+vc_feed_basis = vc_reactors[0] if vc_reactors else ""
+vc_feed_volume_mL = 100.0
+vc_feed_time_hr = 1.0
+
+
+def _seed_feed_pipe_rows(names) -> pd.DataFrame:
+    """Default each vessel's feed-pipe ID from reactors.csv (mm); editable per vessel."""
+    rows = []
+    for name in names:
+        csv_m = _sf(_reactor_row(name).get("D_feed_pipe_m"))
+        val = round(csv_m * 1000.0, 2) if csv_m > 0 else _DEFAULT_FEED_PIPE_MM
+        rows.append({"Reactor": name, "Feed pipe ID (mm)": val})
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Reactor", "Feed pipe ID (mm)"])
+
+
+vc_feed_pipe_df = _seed_feed_pipe_rows(vc_reactors)
 
 # Section 3: scale-up matching
 vc_incl_scaling = "Off"
@@ -344,6 +359,7 @@ vc_scale_df = pd.DataFrame()
 vc_scale_full_df = pd.DataFrame()
 vc_scale_pct_df = pd.DataFrame()
 vc_impact_df = pd.DataFrame()
+vc_feed_plan_df = pd.DataFrame()
 vc_summary_csv = b""
 vc_detail_csv = b""
 vc_rpm_ref_csv = b""
@@ -352,6 +368,7 @@ vc_scale_csv = b""
 vc_scale_full_csv = b""
 vc_scale_pct_csv = b""
 vc_impact_csv = b""
+vc_feed_plan_csv = b""
 
 vc_pdf_bytes = b""
 vc_pdf_name = "Vessel_Comparison.pdf"
@@ -410,8 +427,18 @@ def on_vc_kin_change(state):
 def on_vc_reactors_change(state):
     if state.vc_basis not in (state.vc_reactors or []):
         state.vc_basis = state.vc_reactors[0] if state.vc_reactors else ""
+    if state.vc_feed_basis not in (state.vc_reactors or []):
+        state.vc_feed_basis = state.vc_reactors[0] if state.vc_reactors else ""
     state.vc_viewers_html = _viewers_html(state.vc_reactors)
     _build_targets(state)
+    state.vc_feed_pipe_df = _seed_feed_pipe_rows(state.vc_reactors or [])
+    _mark_stale(state)
+
+
+def on_vc_feed_pipe_edit(state, var_name, payload):
+    df = state.vc_feed_pipe_df.copy()
+    df.iloc[payload["index"], df.columns.get_loc(payload["col"])] = payload["value"]
+    state.vc_feed_pipe_df = df
     _mark_stale(state)
 
 
@@ -526,12 +553,16 @@ def _corner_and_curves(names, ctx):
         V_min = _sf(r.get("V_L_min")) or V_max
         dish = str(r.get("bottom_dish", "") or "")
         dish_height = _sf(r.get("H_bottom_dish_m"))
+        feed_pipe_mm = ctx.get("feed_pipe_mm", {}).get(name)
+        d_feed_pipe_m = (feed_pipe_mm / 1000.0 if feed_pipe_mm and feed_pipe_mm > 0
+                        else _sf(r.get("D_feed_pipe_m")))
 
         info = {
             "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max, "Np": Np, "Nq": Nq,
             "N_lo": N_lo, "N_hi": N_hi, "V_max_L": V_max, "V_min_L": V_min,
             "rpm_max": rpm_max, "bottom_dish": dish, "scale": scale,
             "bottom_dish_height": dish_height,
+            "D_feed_pipe_m": d_feed_pipe_m,
             "shell_material": str(r.get("shell_material", "") or ""),
             "lining_material": str(r.get("lining_material", "") or ""),
             "wall_thickness_mm": _sf(r.get("wall_thickness_mm")),
@@ -612,7 +643,9 @@ def _point(name, info, N, V_L, ctx, part_static) -> dict:
 
     meso_vals = {}
     if ctx["fed"]:
-        d_feed = ctx["feed_diam"] / 1000.0  # mm -> m
+        d_feed = info.get("D_feed_pipe_m")
+        if d_feed is None or d_feed <= 0:
+            d_feed = _DEFAULT_FEED_PIPE_MM / 1000.0  # mm -> m
         loc = str(ctx["feed_loc"])
         if loc.startswith("Near impeller"):
             eps_feed = h.get("ε_max (W/kg)", 0.0)
@@ -697,12 +730,14 @@ def on_vc_compute(state):
         plot_params += _PARTICLE_PARAMS
 
     v_s = _sf(state.vc_vs) if (gas_on and state.vc_gas_transfer == "Sparging") else 0.0
+    feed_pipe_mm = ({str(r["Reactor"]): _sf(r["Feed pipe ID (mm)"])
+                    for _, r in state.vc_feed_pipe_df.iterrows()} if fed_on else {})
     ctx = {
         "rho": rho, "mu": mu, "D_mol": D_mol, "v_s": v_s,
         "coalescing": state.vc_coal.startswith("Coalescing"),
         "t_rxn": rxn["t_rxn"], "order": rxn["order"], "k": rxn["k"], "C0": rxn["C0"],
         "dH": rxn["dH"], "incl_heat": incl_h, "incl_particles": incl_p, "gas_on": gas_on,
-        "fed": fed_on, "feed_diam": _sf(state.vc_feed_diam), "feed_loc": state.vc_feed_location,
+        "fed": fed_on, "feed_pipe_mm": feed_pipe_mm, "feed_loc": state.vc_feed_location,
         "rho_p": _sf(state.vc_rho_p), "d50": _sf(state.vc_d50), "phi": _sf(state.vc_phi),
         "x_wt": x_wt, "x_vol": x_vol, "szw": _sf(state.vc_szw, 5.5),
         "gmb_z": _sf(state.vc_gmb_z, 3.0), "cd": _sf(state.vc_cd, 0.33),
@@ -742,6 +777,7 @@ def on_vc_compute(state):
     _build_heat_summary(state, env_df, reactor_info, ctx)
     _build_scaling(state, names, reactor_info, ctx)
     _build_impact(state, env_df, present, ctx)
+    _build_feed_plan(state, reactor_info, fed_on)
     _build_csv_exports(state)
 
     state.vc_pdf_ready = False
@@ -1051,6 +1087,48 @@ def _build_impact(state, env_df, present, ctx):
     state.vc_impact_df = pd.DataFrame(rows)
 
 
+def _build_feed_plan(state, reactor_info, fed_on):
+    """Scale the basis vessel's feed volume to every vessel by V_L_max ratio.
+
+    Feed time is shared across vessels; only feed volume (and thus rate)
+    scales. Warns when the projected end volume (start = V_L_min) would
+    exceed the vessel's recorded V_L_max.
+    """
+    if not fed_on or not reactor_info:
+        state.vc_feed_plan_df = pd.DataFrame()
+        return
+    basis = state.vc_feed_basis
+    if basis not in reactor_info:
+        state.vc_feed_plan_df = pd.DataFrame(
+            [{"Reactor": basis, "Status": "Basis geometry missing"}])
+        return
+    basis_vmax = reactor_info[basis]["V_max_L"]
+    if basis_vmax <= 0:
+        state.vc_feed_plan_df = pd.DataFrame(
+            [{"Reactor": basis, "Status": "Basis max volume unavailable"}])
+        return
+    feed_time_hr = max(_sf(state.vc_feed_time_hr), 1e-9)
+    feed_vol_basis_mL = _sf(state.vc_feed_volume_mL)
+
+    rows = []
+    for name, info in reactor_info.items():
+        v_max, v_min = info["V_max_L"], info["V_min_L"]
+        ratio = v_max / basis_vmax
+        feed_vol_mL = feed_vol_basis_mL * ratio
+        feed_rate_mLmin = feed_vol_mL / (feed_time_hr * 60.0)
+        end_vol_L = v_min + feed_vol_mL / 1000.0
+        exceeds = end_vol_L > v_max + 1e-9
+        rows.append({
+            "Reactor": name, "Role": "Basis" if name == basis else "Scaled",
+            "V_max (L)": f"{v_max:.3g}", "Start volume (L)": f"{v_min:.3g}",
+            "Feed volume (mL)": f"{feed_vol_mL:.1f}",
+            "Feed rate (mL/min)": f"{feed_rate_mLmin:.2f}",
+            "End volume (L)": f"{end_vol_L:.3g}",
+            "Status": "⚠️ Exceeds max volume" if exceeds else "OK",
+        })
+    state.vc_feed_plan_df = pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # Export / save
 # ---------------------------------------------------------------------------
@@ -1226,12 +1304,19 @@ Particle properties are shared across all compared vessels.
 
 <|part|render={vc_fed_mode == "On"}|
 Feed inputs unlock the **mesomixing** Damköhler number (Da_meso), evaluated at the feed point.
-<|layout|columns=1 1 1|class_name=form-grid|
-<|{vc_feed_rate}|number|label=Feed rate (mL/min)|on_change=on_vc_input_change|>
-
-<|{vc_feed_diam}|number|label=Feed pipe ID (mm)|on_change=on_vc_input_change|>
-
 <|{vc_feed_location}|selector|lov={vc_feed_location_options}|dropdown|label=Feed location|on_change=on_vc_input_change|>
+
+**Feed pipe diameter per vessel** — defaults from each reactor's recorded feed-pipe ID; edit to override.
+<|{vc_feed_pipe_df}|table|editable|rebuild|on_edit=on_vc_feed_pipe_edit|width=60%|show_all|>
+
+**Feed schedule** — feed time is shared across vessels; feed volume is specified at the basis
+vessel and scaled to the other vessels by their max fill volume (V_L_max) relative to the basis.
+<|layout|columns=1 1 1|class_name=form-grid|
+<|{vc_feed_basis}|selector|lov={vc_reactors}|dropdown|label=Basis vessel (feed volume specified here)|on_change=on_vc_input_change|>
+
+<|{vc_feed_volume_mL}|number|label=Feed volume at basis (mL)|on_change=on_vc_input_change|>
+
+<|{vc_feed_time_hr}|number|label=Feed time (hours)|on_change=on_vc_input_change|>
 |>
 |>
 |>
@@ -1358,6 +1443,19 @@ Ratios use the midpoint (average of the 4 corners) for each parameter, relative 
 
 <|part|render={not vc_stale}|
 <|Download impact CSV|file_download|content={vc_impact_csv}|name=vessel_comparison_impact.csv|label=Download impact CSV|>
+|>
+|>
+
+<|part|render={len(vc_feed_plan_df) > 0}|class_name=va-card|
+## Fed-Batch Feed Plan
+Feed volume (and rate) scales linearly with each vessel's max fill volume (V_L_max) relative to
+the basis vessel; feed time is shared. Start volume is each vessel's V_L_min; flagged rows would
+exceed that vessel's recorded V_L_max.
+
+<|{vc_feed_plan_df}|table|width=100%|show_all|rebuild|>
+
+<|part|render={not vc_stale}|
+<|Download feed-plan CSV|file_download|content={vc_feed_plan_csv}|name=vessel_comparison_feed_plan.csv|label=Download feed-plan CSV|>
 |>
 |>
 

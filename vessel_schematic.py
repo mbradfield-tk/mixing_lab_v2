@@ -130,6 +130,10 @@ def _geometry(row: pd.Series) -> dict | None:
     bot_depth = _bottom_dish_depth(row, bottom, R)
     if bot_depth > 0 and bot_shape == "flat":
         bot_shape = "curved"
+    full_height = _f(row, "H_m")
+    full_top = full_height - bot_depth if full_height > 0 else 0.0
+    show_full_height = full_top > H + max(D, H) * 1e-6
+    show_full_height_box = show_full_height
     n_imp = int(_f(row, "impeller_count", 1) or 1)
     n_imp = max(1, min(3, n_imp))
 
@@ -187,6 +191,9 @@ def _geometry(row: pd.Series) -> dict | None:
         "bottom": bottom, "top": top,
         "bot_depth": bot_depth, "top_depth": top_depth,
         "bot_shape": bot_shape, "top_shape": top_shape,
+        "full_height": full_height, "full_top": full_top,
+        "show_full_height": show_full_height,
+        "show_full_height_box": show_full_height_box,
         "impellers": impellers, "radius_at": radius_at,
         "z_grid": z_grid, "cap_grid": cap_grid,
         "total_L": float(cap_grid[-1]) * 1000.0,
@@ -232,6 +239,9 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     R, H = geom["R"], geom["H"]
     bot_depth, top_depth = geom["bot_depth"], geom["top_depth"]
     bot_shape, top_shape = geom["bot_shape"], geom["top_shape"]
+    full_height, full_top = geom["full_height"], geom["full_top"]
+    show_full_height = geom["show_full_height"]
+    show_full_height_box = geom["show_full_height_box"]
     radius_at = geom["radius_at"]
     impellers = geom["impellers"]
     total_L = geom["total_L"]
@@ -284,11 +294,12 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             wall_hit.add(idx)
 
     # Size-aware padding so labels never crowd the vessel.
-    total_h = bot_depth + H + top_depth
+    drawn_top = max(H + top_depth, full_top if show_full_height else 0.0)
+    total_h = bot_depth + drawn_top
     ref = max(R, total_h)
     gap = ref * 0.06
     left_pad = R * 0.85
-    right_pad = R * 0.95
+    right_pad = R * 2.60
     bot_pad = gap + ref * 0.12 + (ref * 0.10 if warnings else 0.0)
     top_pad = ref * 0.03
     if level is not None:
@@ -299,7 +310,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # Square frame centred on the vessel centre-point: every reactor renders at
     # the same pixel size and centred, so the panel scale is consistent and the
     # reactor centre lands at the panel centre.
-    cy_c = (H + top_depth - bot_depth) / 2.0
+    cy_c = (drawn_top - bot_depth) / 2.0
     ex = R + max(left_pad, right_pad)
     ey = max(cy_c + bot_depth + bot_pad, (H + top_depth + top_pad) - cy_c)
     half = max(ex, ey)
@@ -334,6 +345,16 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         ax.add_patch(Arc((0, H), geom["D"], top_depth * 2,
                          theta1=0, theta2=180, color=wall_color, lw=wall_lw))
 
+    if show_full_height_box:
+        envelope_color = "#777777"
+        dotted = (0, (1, 3))
+        # Top-right reference corner: continue from the right-wall tangent and
+        # mark the measured full-height level across the vessel width.
+        ax.plot([R, R], [H, full_top], color=envelope_color,
+            lw=1.2, ls=dotted, zorder=3)
+        ax.plot([-R, R], [full_top, full_top], color=envelope_color,
+            lw=1.2, ls=dotted, zorder=3)
+
     # Liquid fill (behind the impellers)
     if level is not None:
         z_liq = np.linspace(-bot_depth, level, 80)
@@ -344,7 +365,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         r_surf = radius_at(level)
         ax.plot([-r_surf, r_surf], [level, level],
                 color="#0288D1", lw=1.6, zorder=2)
-        ax.text(0, H + top_depth + ref * 0.02, f"{fill_L:,.1f} L",
+        ax.text(0, drawn_top + ref * 0.02, f"{fill_L:,.1f} L",
                 ha="center", va="bottom", fontsize=10, fontweight="bold",
                 color="#0277BD", zorder=2)
 
@@ -408,6 +429,19 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.text(hx - R * 0.06, H / 2, f"H {H * 1000:.0f} mm",
             ha="right", va="center", fontsize=dim_fs, fontweight="bold",
             color=dim_color, rotation=90)
+
+    if show_full_height:
+        leader_y = full_top + ref * 0.18
+        elbow_x = R * 2.15
+        leader_end_x = R * 3.35
+        ax.plot([elbow_x, leader_end_x], [leader_y, leader_y],
+            color="#777777", lw=1.2, zorder=2)
+        ax.annotate("", xy=(R, full_top), xytext=(elbow_x, leader_y),
+                arrowprops=dict(arrowstyle="->", color="#777777", lw=1.2))
+        ax.text((elbow_x + leader_end_x) / 2.0, leader_y + ref * 0.025,
+            f"H full {full_height * 1000:.0f} mm",
+            ha="center", va="bottom", fontsize=dim_fs, fontweight="bold",
+            color="#777777")
 
     # Bottom impeller off-bottom clearance (C): vessel bottom -> impeller underside.
     if impellers:

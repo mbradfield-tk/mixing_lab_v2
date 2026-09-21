@@ -370,7 +370,19 @@ def _fill_caption(res: dict) -> str:
     return base
 
 
+def _fill_min_warning(row: pd.Series, fill_L: float) -> str:
+    """Red warning when the fill volume is below the vessel's Min Volume (if recorded)."""
+    try:
+        lo = float(row.get("V_L_min"))
+    except (TypeError, ValueError):
+        return ""
+    if not (lo > 0) or fill_L >= lo:
+        return ""
+    return f"🔴 Below Min Volume ({lo:g} L)."
+
+
 vessel_fill_caption = _fill_caption(_schem0)
+vessel_fill_min_warning = _fill_min_warning(_row0, vessel_fill_L)
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +494,7 @@ def _refresh_schematic(state):
     state.vessel_total_vol_L = res["total_L"]
     state.vessel_schematic_html = res["html"]
     state.vessel_fill_caption = _fill_caption(res)
+    state.vessel_fill_min_warning = _fill_min_warning(row, state.vessel_fill_L)
 
 
 def on_vessel_select(state):
@@ -665,7 +678,11 @@ page. Reactor images are added separately.
 <|part|
 Enter a fill volume to draw the liquid surface on the vessel cross-section.
 
+<|layout|columns=1 1|
 <|{vessel_fill_L}|number|label=Liquid fill volume (L)|on_change=on_vessel_fill_change|>
+
+<|{vessel_fill_min_warning}|text|mode=markdown|>
+|>
 
 <|{vessel_fill_caption}|text|mode=markdown|>
 |>

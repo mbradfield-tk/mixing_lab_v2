@@ -32,11 +32,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from taipy.gui import Markdown, notify
+from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
 from utils.solvent_properties import get_properties, is_known_solvent
-from utils.report_builder import build_protocol_pdf, report_filename
+from utils.report_builder import build_protocol_pdf, report_filename, report_header_label
 from pages import _db_common as db
 from vessel_media import build_image_html
 
@@ -278,6 +278,18 @@ ms_competing_options = ["- select -", "Yes", "No", "Not sure"]
 ms_dh_action_options = ["- select -",
                         "Perform calorimetry - measure ΔH experimentally",
                         "Estimate ΔH from a similar reaction"]
+ms_unit_operation_options = ["- select -", "Reaction", "Quench", "Crystallization",
+                             "Liquid-Liquid Extraction", "Distillation", "Filtration",
+                             "Drying", "Other"]
+
+
+# ---------------------------------------------------------------------------
+# State - report metadata
+# ---------------------------------------------------------------------------
+ms_project_name = ""
+ms_step_text = ""
+ms_unit_operation = ms_unit_operation_options[0]
+ms_process_version = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1114,12 +1126,25 @@ def on_ms_export_pdf(state):
     try:
         snap = dict(state._ms_cache)
         snap["bourne_meta"] = dict(getattr(state, "ms_bourne_meta", {}) or {})
+        unit_op = state.ms_unit_operation if state.ms_unit_operation != ms_unit_operation_options[0] else ""
+        snap["project_name"] = state.ms_project_name
+        snap["step_number"] = state.ms_step_text
+        snap["unit_operation"] = unit_op
+        snap["process_version"] = state.ms_process_version
         state.ms_pdf_bytes = build_protocol_pdf(snap)
-        state.ms_pdf_name = report_filename("Sensitivity_Protocol", state.ms_reaction)
+        state.ms_pdf_name = report_filename("RxnSens", report_header_label(snap) or state.ms_reaction)
         state.ms_pdf_ready = True
         notify(state, "S", "PDF report generated - click Download.")
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"PDF generation failed: {exc}")
+
+
+def on_ms_pdf_download(state):
+    # file_download's `name` property is static, so the filename must be set
+    # via the imperative download() call rather than the control's binding.
+    if not state.ms_pdf_ready:
+        return
+    download(state, content=state.ms_pdf_bytes, name=state.ms_pdf_name)
 
 
 def on_ms_init(state):
@@ -1140,6 +1165,10 @@ def on_ms_update_assessment(state):
 def on_ms_reset(state):
     """Reset every input back to its default and clear all results/recommendations."""
     # inputs
+    state.ms_project_name = ""
+    state.ms_step_text = ""
+    state.ms_unit_operation = ms_unit_operation_options[0]
+    state.ms_process_version = ""
     state.ms_bourne_status = ms_bourne_status_options[0]
     state.ms_bourne_mech = "Not resolved"
     state.ms_bourne_tests = ["Test 1"]
@@ -1206,6 +1235,21 @@ the **Summary** synthesises everything into an overall verdict.
 
 <|Decision-tree flowsheet|expandable|expanded=False|
 <|part|content={ms_decision_tree_html}|height=620px|>
+|>
+
+<|part|height=18px|>
+
+<|part|class_name=va-card|
+## Report Metadata
+<|layout|columns=1 1 1 1|class_name=form-grid|
+<|{ms_project_name}|input|label=Project name|>
+
+<|{ms_step_text}|input|label=Step|>
+
+<|{ms_unit_operation}|selector|lov={ms_unit_operation_options}|dropdown|label=Unit operation|>
+
+<|{ms_process_version}|input|label=Process version|>
+|>
 |>
 
 <|part|height=18px|>
@@ -1428,7 +1472,7 @@ Generate a PDF capturing the inputs, findings, overall verdict, and next steps.
 <|Generate PDF report|button|on_action=on_ms_export_pdf|class_name=compute-btn|>
 
 <|part|render={ms_pdf_ready}|
-<|Download PDF|file_download|content={ms_pdf_bytes}|name={ms_pdf_name}|label=Download PDF|>
+<|{None}|file_download|on_action=on_ms_pdf_download|label=Download PDF|>
 |>
 |>
 """)

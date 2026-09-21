@@ -145,12 +145,14 @@ class MixingReport(FPDF):
     _FONT = "DejaVu"
     _unicode_font = True
 
-    def __init__(self, report_title: str, logo_path: str | None = None, **kw):
+    def __init__(self, report_title: str, logo_path: str | None = None,
+                 header_label: str | None = None, **kw):
         super().__init__(**kw)
         if logo_path is None:
             logo_path = str(_LOGO) if _LOGO.exists() else None
         self._logo_path = logo_path
         self._report_title = report_title
+        self._header_label = header_label or report_title
         self.set_auto_page_break(auto=True, margin=25)
         if _DEJAVU_DIR:
             try:
@@ -170,7 +172,7 @@ class MixingReport(FPDF):
             self.image(self._logo_path, x=10, y=8, h=12)
         self.set_font(self._FONT, "B", 10)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 10, self._s(self._report_title), align="R")
+        self.cell(0, 10, self._s(self._header_label), align="R")
         self.ln(14)
         self.set_draw_color(200, 200, 200)
         self.line(10, self.get_y(), self.w - 10, self.get_y())
@@ -392,9 +394,9 @@ class MixingReport(FPDF):
         self.ln(4)
 
 
-def new_report(title: str) -> MixingReport:
+def new_report(title: str, header_label: str | None = None) -> MixingReport:
     """Create a new MixingReport with standard settings."""
-    pdf = MixingReport(title, orientation="P", unit="mm", format="A4")
+    pdf = MixingReport(title, header_label=header_label, orientation="P", unit="mm", format="A4")
     pdf.alias_nb_pages()
     return pdf
 
@@ -404,15 +406,54 @@ def report_bytes(pdf: MixingReport) -> bytes:
     return bytes(pdf.output())
 
 
-def report_filename(prefix: str, label: str = "") -> str:
-    """Generate a timestamped filename."""
-    clean = label.replace(" ", "_").replace("/", "_") if label else ""
+def report_filename(prefix: str, label: str = "", tags: list[str] | None = None) -> str:
+    """Generate a timestamped filename, optionally inserting metadata tags."""
+    def _clean(s: str) -> str:
+        return s.replace(" ", "_").replace("/", "_") if s else ""
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    parts = [prefix]
+    parts = [_clean(prefix) or "Report"]
+    clean = _clean(label)
     if clean:
         parts.append(clean)
+    for tag in tags or []:
+        tag_clean = _clean(str(tag).strip())
+        if tag_clean:
+            parts.append(tag_clean)
     parts.append(ts)
     return "_".join(parts) + ".pdf"
+
+
+def report_header_label(snap: dict) -> str:
+    """Top-right page header: PROJECT_step#_UnitOperation v.VERSION."""
+    project = str(snap.get("project_name", "") or "").strip()
+    step = str(snap.get("step_number", "") or "").strip()
+    unit_op = str(snap.get("unit_operation", "") or "").strip()
+    version = str(snap.get("process_version", "") or "").strip()
+    step_part = f"step{step}" if step else ""
+    label = "_".join(p for p in (project, step_part, unit_op) if p)
+    if version:
+        label = f"{label} v.{version}" if label else f"v.{version}"
+    return label
+
+
+def project_meta_section(pdf: "MixingReport", snap: dict) -> None:
+    """Render the Project Information section (name, step, unit op, version) if present."""
+    project_name = snap.get("project_name", "")
+    step_number = snap.get("step_number", "")
+    unit_operation = snap.get("unit_operation", "")
+    process_version = snap.get("process_version", "")
+    if not (project_name or step_number or unit_operation or process_version):
+        return
+    pdf.section_title("Project Information")
+    if project_name:
+        pdf.kv("Project", project_name, bold_val=True)
+    if step_number:
+        pdf.kv("Step", step_number, bold_val=True)
+    if unit_operation:
+        pdf.kv("Unit operation", unit_operation, bold_val=True)
+    if process_version:
+        pdf.kv("Process version", process_version, bold_val=True)
+    pdf.ln(2)
 
 
 def build_envelope_fig(param: str, envelope: dict, V_L: float = 0.0):
@@ -1037,7 +1078,7 @@ def build_protocol_pdf(snap: dict) -> bytes:
     caveat = snap.get("caveat", "")
 
     title = f"Sensitivity Protocol \u2014 {rxn_name}"
-    pdf = new_report(title)
+    pdf = new_report(title, header_label=report_header_label(snap))
 
     # ── Page 1: Title & Inputs ───────────────────────────────────────────
     pdf.add_page()
@@ -1049,6 +1090,8 @@ def build_protocol_pdf(snap: dict) -> bytes:
     )
     pdf.cell(0, 14, pdf._s(_title_text), align="C")
     pdf.ln(18)
+
+    project_meta_section(pdf, snap)
 
     pdf.section_title("Reaction Input")
     pdf.kv("Reaction", rxn_name, bold_val=True)
@@ -1238,7 +1281,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     centerpoint_metrics = snap.get("centerpoint_metrics", {})
 
     title = f"Bourne Protocol \u2014 {reactor_name}"
-    pdf = new_report(title)
+    pdf = new_report(title, header_label=report_header_label(snap))
 
     # ── Page 1: Title & System ───────────────────────────────────────────
     pdf.add_page()
@@ -1247,18 +1290,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.cell(0, 14, pdf._s("Bourne Protocol Report"), align="C")
     pdf.ln(18)
 
-    _project_name = snap.get("project_name", "")
-    _step_number = snap.get("step_number", "")
-    _unit_operation = snap.get("unit_operation", "")
-    if _project_name or _step_number or _unit_operation:
-        pdf.section_title("Project Information")
-        if _project_name:
-            pdf.kv("Project", _project_name, bold_val=True)
-        if _step_number:
-            pdf.kv("Step number", _step_number, bold_val=True)
-        if _unit_operation:
-            pdf.kv("Unit operation", _unit_operation, bold_val=True)
-        pdf.ln(2)
+    project_meta_section(pdf, snap)
 
     pdf.section_title("System Configuration")
     pdf.kv("Reactor", reactor_name, bold_val=True)
@@ -1495,7 +1527,7 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
     step_title = _step_titles.get(step, f"Test {step}")
 
     title = f"Bourne Protocol {step_title} \u2014 {reactor_name}"
-    pdf = new_report(title)
+    pdf = new_report(title, header_label=report_header_label(snap))
 
     # ── Title & System ───────────────────────────────────────────────────
     pdf.add_page()
@@ -1504,18 +1536,7 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
     pdf.cell(0, 12, pdf._s(f"Bourne Protocol -- {step_title}"), align="C")
     pdf.ln(16)
 
-    _project_name = snap.get("project_name", "")
-    _step_number = snap.get("step_number", "")
-    _unit_operation = snap.get("unit_operation", "")
-    if _project_name or _step_number or _unit_operation:
-        pdf.section_title("Project Information")
-        if _project_name:
-            pdf.kv("Project", _project_name, bold_val=True)
-        if _step_number:
-            pdf.kv("Step number", _step_number, bold_val=True)
-        if _unit_operation:
-            pdf.kv("Unit operation", _unit_operation, bold_val=True)
-        pdf.ln(2)
+    project_meta_section(pdf, snap)
 
     pdf.section_title("System Configuration")
     pdf.kv("Reactor", reactor_name, bold_val=True)

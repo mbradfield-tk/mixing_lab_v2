@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from taipy.gui import Markdown, notify
+from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
 from utils.calculations import (
@@ -49,7 +49,7 @@ from utils.solvent_properties import (
     list_solvents,
     resolve_solvent_name,
 )
-from utils.report_builder import build_bourne_protocol_pdf, report_filename
+from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
 from pages import _db_common as db
 from vessel_media import build_image_html, build_vessel_viewer_html, media_caption
 
@@ -62,6 +62,9 @@ bp_decision_tree_html = build_image_html(
     IMAGES_DIR / "bourne_protocol_decision_tree.png", alt="Bourne Protocol decision tree")
 
 VIEWER_H = 360
+UNIT_OPERATION_OPTIONS = ["- select -", "Reaction", "Quench", "Crystallization",
+                          "Liquid-Liquid Extraction", "Distillation", "Filtration",
+                          "Drying", "Other"]
 RESPONSE_METRICS = ["Yield", "Purity", "Conversion", "Selectivity",
                     "Impurity level", "Particle size (D50)", "Other"]
 # Per-column dropdown options for the editable KPI tables. A trailing ``None``
@@ -442,6 +445,14 @@ bp_media_caption = media_caption(_reactor_id(bp_reactor))
 
 bp_status = "Define the system, then click Start Protocol."
 bp_started = False
+
+# ---------------------------------------------------------------------------
+# State — report metadata
+# ---------------------------------------------------------------------------
+bp_project_name = ""
+bp_step_text = ""
+bp_unit_operation = UNIT_OPERATION_OPTIONS[0]
+bp_process_version = ""
 
 # ---------------------------------------------------------------------------
 # State — Test 1 (impeller speed)
@@ -1312,12 +1323,25 @@ def on_bp_export_pdf(state):
         if state.bp_t3_result:
             snap["t3_conditions"] = _t3_conditions_snap(state)
             snap["t3_responses"] = _kpi_snapshot(state.bp_t3_result, 3)
+        unit_op = state.bp_unit_operation if state.bp_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
+        snap["project_name"] = state.bp_project_name
+        snap["step_number"] = state.bp_step_text
+        snap["unit_operation"] = unit_op
+        snap["process_version"] = state.bp_process_version
         state.bp_pdf_bytes = build_bourne_protocol_pdf(snap)
-        state.bp_pdf_name = report_filename("Bourne_Protocol", state.bp_reactor)
+        state.bp_pdf_name = report_filename("Bourne", report_header_label(snap) or state.bp_reactor)
         state.bp_pdf_ready = True
         notify(state, "S", "PDF report generated \u2014 click Download.")
     except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
         notify(state, "E", f"PDF generation failed: {exc}")
+
+
+def on_bp_pdf_download(state):
+    # file_download's `name` property is static, so the filename must be set
+    # via the imperative download() call rather than the control's binding.
+    if not state.bp_pdf_ready:
+        return
+    download(state, content=state.bp_pdf_bytes, name=state.bp_pdf_name)
 
 
 def _sens_test_finding(sensitive: bool, assessed: bool, test: int) -> str:
@@ -1340,13 +1364,14 @@ def on_bp_export_sens_csv(state):
         dominant, _ = _dominant_and_conclusions(state)
         mechanism = dominant if dominant in ("Micromixing", "Mesomixing", "Macromixing") else ""
         overall = "yes" if state.bp_t1_sensitive else "no"
+        unit_op = state.bp_unit_operation if state.bp_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
 
         def _kpis(res):
             return (res or {}).get("sensitive_names", "") if res else ""
 
         rows = [
             ("record_type", "bourne_results"),
-            ("project_name", ""),
+            ("project_name", str(state.bp_project_name)),
             ("reactor", str(state.bp_reactor)),
             ("fluid", str(state.bp_fluid)),
             ("test1_assessed", "yes" if state.bp_t1_assessed else "no"),
@@ -1366,13 +1391,27 @@ def on_bp_export_sens_csv(state):
         writer.writerow(["field", "value"])
         writer.writerows(rows)
         state.bp_sens_csv_bytes = buf.getvalue().encode("utf-8")
+        meta = {
+            "project_name": state.bp_project_name,
+            "step_number": state.bp_step_text,
+            "unit_operation": unit_op,
+            "process_version": state.bp_process_version,
+        }
         state.bp_sens_csv_name = report_filename(
-            "Bourne_for_Sensitivity", state.bp_reactor).replace(".pdf", ".csv")
+            report_header_label(meta) or state.bp_reactor).replace(".pdf", ".csv")
         state.bp_sens_csv_ready = True
         notify(state, "S", "CSV export ready \u2014 click Download, then import it on the "
                "Reaction Sensitivity Protocol page.")
     except Exception as exc:  # noqa: BLE001 - surface export errors to the user
         notify(state, "E", f"CSV export failed: {exc}")
+
+
+def on_bp_sens_csv_download(state):
+    # file_download's `name` property is static, so the filename must be set
+    # via the imperative download() call rather than the control's binding.
+    if not state.bp_sens_csv_ready:
+        return
+    download(state, content=state.bp_sens_csv_bytes, name=state.bp_sens_csv_name)
 
 
 # ---------------------------------------------------------------------------
@@ -1392,6 +1431,21 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 
 <|Decision-tree flowsheet|expandable|expanded=False|
 <|part|content={bp_decision_tree_html}|height=620px|>
+|>
+
+<|part|height=18px|>
+
+<|part|class_name=va-card|
+## Report Metadata
+<|layout|columns=1 1 1 1|class_name=form-grid|
+<|{bp_project_name}|input|label=Project name|>
+
+<|{bp_step_text}|input|label=Step|>
+
+<|{bp_unit_operation}|selector|lov={UNIT_OPERATION_OPTIONS}|dropdown|label=Unit operation|>
+
+<|{bp_process_version}|input|label=Process version|>
+|>
 |>
 
 <|part|height=18px|>
@@ -1584,7 +1638,7 @@ responses, and the decision-tree conclusion.
 <|Generate PDF report|button|on_action=on_bp_export_pdf|class_name=compute-btn|>
 
 <|part|render={bp_pdf_ready}|
-<|Download PDF|file_download|content={bp_pdf_bytes}|name={bp_pdf_name}|label=Download PDF|>
+<|{None}|file_download|on_action=on_bp_pdf_download|label=Download PDF|>
 |>
 
 ### Export for the Reaction Sensitivity Protocol
@@ -1595,7 +1649,7 @@ the overall sensitivity assessment.
 <|Generate Sensitivity CSV|button|on_action=on_bp_export_sens_csv|class_name=compute-btn|>
 
 <|part|render={bp_sens_csv_ready}|
-<|Download CSV|file_download|content={bp_sens_csv_bytes}|name={bp_sens_csv_name}|label=Download Sensitivity CSV|>
+<|{None}|file_download|on_action=on_bp_sens_csv_download|label=Download Sensitivity CSV|>
 |>
 |>
 """)

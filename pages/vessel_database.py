@@ -370,19 +370,25 @@ def _fill_caption(res: dict) -> str:
     return base
 
 
-def _fill_min_warning(row: pd.Series, fill_L: float) -> str:
-    """Red warning when the fill volume is below the vessel's Min Volume (if recorded)."""
+def _fill_range_warning(row: pd.Series, fill_L: float) -> str:
+    """Red warning when the fill volume is outside the vessel's Min/Max Volume (if recorded)."""
     try:
         lo = float(row.get("V_L_min"))
     except (TypeError, ValueError):
-        return ""
-    if not (lo > 0) or fill_L >= lo:
-        return ""
-    return f"🔴 Below Min Volume ({lo:g} L)."
+        lo = float("nan")
+    if lo > 0 and fill_L < lo:
+        return f"🔴 Below Min Volume ({lo:g} L)."
+    try:
+        hi = float(row.get("V_L_max"))
+    except (TypeError, ValueError):
+        hi = float("nan")
+    if hi > 0 and fill_L > hi:
+        return f"🔴 Above Max Volume ({hi:g} L)."
+    return ""
 
 
 vessel_fill_caption = _fill_caption(_schem0)
-vessel_fill_min_warning = _fill_min_warning(_row0, vessel_fill_L)
+vessel_fill_min_warning = _fill_range_warning(_row0, vessel_fill_L)
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +500,7 @@ def _refresh_schematic(state):
     state.vessel_total_vol_L = res["total_L"]
     state.vessel_schematic_html = res["html"]
     state.vessel_fill_caption = _fill_caption(res)
-    state.vessel_fill_min_warning = _fill_min_warning(row, state.vessel_fill_L)
+    state.vessel_fill_min_warning = _fill_range_warning(row, state.vessel_fill_L)
 
 
 def on_vessel_select(state):

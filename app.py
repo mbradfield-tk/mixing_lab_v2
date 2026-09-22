@@ -508,6 +508,7 @@ button.compute-btn-ok:hover {
 }
 /* Trim the default dense-form margins so stacked fields sit closer together. */
 .taipy-number.MuiFormControl-marginDense,
+.taipy-number.MuiFormControl-marginDense,
 .taipy-input.MuiFormControl-marginDense,
 .taipy-selector.MuiFormControl-marginDense {
     margin-top: 4px;

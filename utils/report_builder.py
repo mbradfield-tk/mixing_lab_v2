@@ -1703,14 +1703,92 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
     return report_bytes(pdf)
 
 
+def _heat_transfer_reaction_pdf_body(pdf: "MixingReport", snap: dict) -> None:
+    """Reaction-mode content for the Heat Transfer PDF (Page 5, reaction-profile mode)."""
+    T_start = snap.get("T_start", 0.0)
+    T_jacket_in = snap.get("T_jacket_in", 0.0)
+    rxn_order = snap.get("rxn_order", "")
+    rxn_k = snap.get("rxn_k", 0.0)
+    rxn_c0 = snap.get("rxn_c0", 0.0)
+    rxn_dH = snap.get("rxn_dH", 0.0)
+    adiabatic_rise = snap.get("adiabatic_rise")
+    T_adiabatic = snap.get("T_adiabatic")
+    T_peak = snap.get("T_peak")
+    t_complete_min = snap.get("t_complete_min")
+    rxn_summary = snap.get("rxn_summary", [])
+    fig_profile_png = snap.get("fig_profile_png")
+
+    pdf.kv("T_start", f"{T_start:.1f} deg C")
+    pdf.kv("Jacket / coolant T", f"{T_jacket_in:.1f} deg C")
+    pdf.ln(2)
+
+    pdf.section_title("Reaction Kinetics & Heat of Reaction")
+    pdf.kv("Order", str(rxn_order))
+    pdf.kv("Rate constant k", f"{rxn_k:.4g}")
+    pdf.kv("C0", f"{rxn_c0:.4g} mol/L")
+    thermal = "exothermic" if rxn_dH < 0 else ("endothermic" if rxn_dH > 0 else "athermal")
+    pdf.kv("Delta H_rxn", f"{rxn_dH:.1f} kJ/mol ({thermal})")
+    if adiabatic_rise is not None:
+        pdf.kv("Adiabatic rise", f"{adiabatic_rise:+.1f} deg C")
+    if T_adiabatic is not None:
+        pdf.kv("Adiabatic temperature", f"{T_adiabatic:.1f} deg C")
+    pdf.ln(4)
+
+    pdf.section_title("Reaction Results")
+    if T_peak is not None:
+        pdf.kv("Peak batch temperature", f"{T_peak:.1f} deg C")
+    if t_complete_min is not None:
+        pdf.kv("Time to 99% conversion",
+               "not reached" if not np.isfinite(t_complete_min) else f"{t_complete_min:.2f} min")
+    pdf.ln(2)
+
+    if fig_profile_png:
+        pdf.section_title("Temperature & Conversion Profile")
+        pdf.image(io.BytesIO(fig_profile_png), x=15, w=180)
+        pdf.ln(5)
+
+    if rxn_summary:
+        pdf.section_title("Reaction & Heat-Transfer Summary")
+        _rows = [[str(k), str(v)] for k, v in rxn_summary]
+        pdf.data_table(["Metric", "Value"], _rows, col_widths=[90, 80])
+
+
 def build_heat_transfer_pdf(snap: dict) -> bytes:
-    reactor_name = snap["reactor"]
-    fluid_name = snap["fluid"]
-    fluid_T_C = snap["fluid_T_C"]
-    N_rpm = snap["N_rpm"]
-    V_L = snap["V_L"]
-    htm_name = snap["htm_name"]
-    nu_corr = snap["nu_corr"]
+    mode = snap.get("mode", "heat_cool")
+    reactor_name = snap.get("reactor", "Manual entry")
+    fluid_name = snap.get("fluid", "")
+    fluid_T_C = snap.get("fluid_T_C", 0.0)
+    N_rpm = snap.get("N_rpm", 0.0)
+    V_L = snap.get("V_L", 0.0)
+
+    title = f"Heat Transfer -- {reactor_name}"
+    pdf = new_report(title, header_label=report_header_label(snap))
+
+    # -- Page 1: Title & System Info --
+    pdf.add_page()
+    pdf.set_font(pdf._FONT, "B", 20)
+    pdf.set_text_color(30, 30, 80)
+    pdf.cell(0, 14, pdf._s("Heat Transfer Report"), align="C")
+    pdf.ln(18)
+
+    project_meta_section(pdf, snap)
+
+    pdf.section_title("System Configuration")
+    pdf.kv("Reactor", reactor_name, bold_val=True)
+    pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
+    pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
+    pdf.kv("Liquid volume", f"{_fmt_sig(V_L)} L")
+    htm_name = snap.get("htm_name", "")
+    if htm_name:
+        pdf.kv("Heat transfer medium", htm_name, bold_val=True)
+    nu_corr = snap.get("nu_corr", "")
+    if nu_corr:
+        pdf.kv("Nusselt correlation", nu_corr)
+
+    if mode == "reaction":
+        _heat_transfer_reaction_pdf_body(pdf, snap)
+        return report_bytes(pdf)
+
     T_start = snap["T_start"]
     T_target = snap["T_target"]
     T_jacket_in = snap["T_jacket_in"]
@@ -1722,7 +1800,6 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
     coefficients = snap["coefficients"]
     resistances = snap["resistances"]
     time_estimates = snap["time_estimates"]
-    rpm_sensitivity = snap.get("rpm_sensitivity")
     nusselt_comparison = snap.get("nusselt_comparison", [])
     htm_comparison = snap.get("htm_comparison", [])
 
@@ -1736,23 +1813,6 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
     _is_cooling = T_target < T_start
     _mode_label = "Cooling" if _is_cooling else "Heating"
 
-    title = f"Heat Transfer -- {reactor_name}"
-    pdf = new_report(title)
-
-    # ── Page 1: Title & System Info ──────────────────────────────────────
-    pdf.add_page()
-    pdf.set_font(pdf._FONT, "B", 20)
-    pdf.set_text_color(30, 30, 80)
-    pdf.cell(0, 14, pdf._s("Heat Transfer Report"), align="C")
-    pdf.ln(18)
-
-    pdf.section_title("System Configuration")
-    pdf.kv("Reactor", reactor_name, bold_val=True)
-    pdf.kv("Fluid", f"{fluid_name}  ({fluid_T_C:.1f} deg C)", bold_val=True)
-    pdf.kv("Stir speed", f"{N_rpm:.0f} RPM")
-    pdf.kv("Liquid volume", f"{_fmt_sig(V_L)} L")
-    pdf.kv("Heat transfer medium", htm_name, bold_val=True)
-    pdf.kv("Nusselt correlation", nu_corr)
     pdf.kv("Mode", _mode_label)
     pdf.kv("T_start", f"{T_start:.1f} deg C")
     pdf.kv("T_target", f"{T_target:.1f} deg C")
@@ -1766,7 +1826,7 @@ def build_heat_transfer_pdf(snap: dict) -> bytes:
     pdf.kv("Fouling resistance", f"{fouling_R:.5f} m2.K/W")
     pdf.ln(4)
 
-    # ── Heat Transfer Coefficients ───────────────────────────────────────
+    # -- Heat Transfer Coefficients --
     pdf.section_title("Heat Transfer Coefficients")
     coeff_rows = [
         ("h_i (process side)", f"{coefficients['h_i']:.1f} W/(m2.K)"),

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from taipy.gui import Markdown, notify
+from taipy.gui import Markdown, download, notify
 
 from heat_transfer_core import (
     FOULING_DEFAULT,
@@ -31,6 +31,12 @@ from heat_transfer_core import (
     safe_float,
 )
 from utils.menu_icons import inject_icons
+from utils.report_builder import (
+    build_heat_transfer_pdf,
+    fig_to_png_bytes,
+    report_filename,
+    report_header_label,
+)
 from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
 from pages import _db_common as db
 
@@ -55,6 +61,9 @@ htm_options = list(htm_db.keys())
 nusselt_options = list(NUSSELT_CORRELATIONS.keys())
 wall_options = list(WALL_CONDUCTIVITY.keys())
 lining_options = ["None"] + list(LINING_CONDUCTIVITY.keys())
+UNIT_OPERATION_OPTIONS = ["- select -", "Reaction", "Quench", "Crystallization",
+                          "Liquid-Liquid Extraction", "Distillation", "Filtration",
+                          "Drying", "Other"]
 
 
 def _reactor_row(reactor_name: str) -> pd.Series:
@@ -220,6 +229,15 @@ ua_rpm_fig = go.Figure()
 ua_rpm_fig.update_layout(title="UA vs Stir Speed", xaxis_title="Stir speed (rpm)", yaxis_title="UA (W/K)")
 ua_vol_fig = go.Figure()
 ua_vol_fig.update_layout(title="UA vs Volume", xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)")
+
+# Report metadata (captured in the exported PDF's header/filename and body)
+ht_project_name = ""
+ht_step_text = ""
+ht_unit_operation = UNIT_OPERATION_OPTIONS[0]
+ht_process_version = ""
+ht_pdf_bytes = b""
+ht_pdf_name = "Heat_Transfer.pdf"
+ht_pdf_ready = False
 
 
 # ---------------------------------------------------------------------------
@@ -538,8 +556,8 @@ def np_is_finite(value: float) -> bool:
     return np.isfinite(value)
 
 
-def _build_resistance_breakdown(state, result) -> None:
-    """Resistance-contribution bar chart + agitator heat share (heat/cool mode)."""
+def _resistance_items(state, result) -> list[tuple[str, float]]:
+    """Series thermal resistances (name, R value) feeding both the chart and the PDF."""
     items: list[tuple[str, float]] = []
     if result.h_i > 0:
         items.append(("Inside film (process)", 1.0 / result.h_i))
@@ -551,6 +569,12 @@ def _build_resistance_breakdown(state, result) -> None:
         items.append(("Fouling", state.fouling))
     if result.h_o > 0:
         items.append(("Outside film (jacket)", 1.0 / result.h_o))
+    return items
+
+
+def _build_resistance_breakdown(state, result) -> None:
+    """Resistance-contribution bar chart + agitator heat share (heat/cool mode)."""
+    items = _resistance_items(state, result)
 
     r_total = sum(r for _, r in items) or 1.0
     labels = [n for n, _ in items]
@@ -627,6 +651,176 @@ def _build_ua_sweeps(state) -> None:
     state.ua_vol_fig = fig2
 
 
+def _nu_records(df: pd.DataFrame) -> list[dict]:
+    """Nusselt-correlation comparison rows, in the keys build_heat_transfer_pdf expects."""
+    if df is None or df.empty:
+        return []
+    return [{
+        "Correlation": r.get("Correlation", ""),
+        "Nu": r.get("Nu", 0),
+        "h_i (W/(m2.K))": r.get("h_i (W/m2.K)", 0),
+        "U (W/(m2.K))": r.get("U (W/m2.K)", 0),
+        "Time (min)": r.get("Time (min)", 0),
+    } for _, r in df.iterrows()]
+
+
+def _htm_records(df: pd.DataFrame) -> list[dict]:
+    """Heat-transfer-medium comparison rows, in the keys build_heat_transfer_pdf expects."""
+    if df is None or df.empty:
+        return []
+    return [{
+        "Medium": r.get("Medium", ""),
+        "h_o (W/(m2.K))": r.get("h_o (W/m2.K)", 0),
+        "U (W/(m2.K))": r.get("U (W/m2.K)", 0),
+        "Time (min)": r.get("Time (min)", 0),
+        "In range?": r.get("In range", ""),
+    } for _, r in df.iterrows()]
+
+
+def _safe_png(fig) -> bytes | None:
+    """PNG bytes for a chart, or None if the image export backend is unavailable."""
+    try:
+        return fig_to_png_bytes(fig)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def on_ht_export_pdf(state):
+    if state.ht_mode == HT_MODE_RXN:
+        _export_reaction_pdf(state)
+    else:
+        _export_batch_pdf(state)
+
+
+def _export_batch_pdf(state):
+    if not state.result_ready:
+        notify(state, "W", "Compute the heat/cool vessel results before exporting a PDF.")
+        return
+    try:
+        data = {
+            "rho": state.rho, "mu": state.mu, "cp": state.cp, "k_fluid": state.k_fluid,
+            "d_tank": state.d_tank, "d_imp": state.d_imp, "n_rpm": state.n_rpm,
+            "np_in": state.np_in, "v_l": state.v_l,
+            "t_start": state.t_start, "t_target": state.t_target, "t_jacket": state.t_jacket,
+            "mu_wall": state.mu_wall, "nusselt_correlation": state.nusselt_correlation,
+            "htm_name": state.selected_htm, "v_jacket": state.v_jacket,
+            "d_hyd_jacket": state.d_hyd_jacket, "m_dot_jacket": state.m_dot_jacket,
+            "cp_jacket": state.cp_jacket, "q_rxn": state.q_rxn,
+            "include_agitator": state.include_agitator, "wall_k": state.wall_k,
+            "wall_thickness_mm": state.wall_thickness_mm, "lining_k": state.lining_k,
+            "lining_thickness_mm": state.lining_thickness_mm, "fouling": state.fouling,
+            "a_ht": state.a_ht,
+        }
+        result = compute_batch(data, htm_db)
+
+        items = _resistance_items(state, result)
+        r_total = sum(r for _, r in items) or 1.0
+        resistances = [(name, r, r / r_total * 100.0) for name, r in items]
+        controlling = max(resistances, key=lambda t: t[2])[0] if resistances else ""
+
+        coefficients = {
+            "h_i": result.h_i, "h_o": result.h_o, "U": result.u, "Nu": result.nu,
+            "Re": result.re, "Pr": result.pr, "A_ht": state.a_ht, "P_agitator": result.p_agitator_w,
+        }
+        analytical_min = (result.time_analytical_s / 60.0
+                          if np.isfinite(result.time_analytical_s) else float("inf"))
+        time_estimates = {
+            "Q_max": result.q_max_w, "dT_dt_init": result.dt_dt_c_per_min,
+            "t_analytical_min": analytical_min,
+            "t_sim_const_min": result.time_const_jacket_s / 60.0,
+            "t_sim_var_min": result.time_variable_jacket_s / 60.0,
+        }
+
+        unit_op = state.ht_unit_operation if state.ht_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
+        snap = {
+            "mode": "heat_cool",
+            "reactor": state.selected_reactor, "fluid": state.selected_fluid,
+            "fluid_T_C": state.t_start, "N_rpm": state.n_rpm, "V_L": state.v_l,
+            "htm_name": state.selected_htm, "nu_corr": state.nusselt_correlation,
+            "T_start": state.t_start, "T_target": state.t_target, "T_jacket_in": state.t_jacket,
+            "wall_material": state.wall_material, "wall_mm": state.wall_thickness_mm,
+            "lining_material": state.lining_material, "fouling_R": state.fouling,
+            "coefficients": coefficients, "resistances": resistances,
+            "time_estimates": time_estimates, "controlling_resistance": controlling,
+            "nusselt_comparison": _nu_records(state.corr_df),
+            "htm_comparison": _htm_records(state.htm_compare_df),
+            "fig_T_png": _safe_png(state.temp_fig),
+            "fig_Q_png": _safe_png(state.duty_fig),
+            "fig_resistance_png": _safe_png(state.res_fig),
+            "fig_rpm_U_png": _safe_png(state.ua_rpm_fig),
+            "fig_rpm_time_png": _safe_png(state.ua_vol_fig),
+            "project_name": state.ht_project_name,
+            "step_number": state.ht_step_text,
+            "unit_operation": unit_op,
+            "process_version": state.ht_process_version,
+        }
+        state.ht_pdf_bytes = build_heat_transfer_pdf(snap)
+        state.ht_pdf_name = report_filename(
+            "HeatTransfer", report_header_label(snap) or state.selected_reactor)
+        state.ht_pdf_ready = True
+        notify(state, "S", "PDF report generated \u2014 click Download.")
+    except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
+        notify(state, "E", f"PDF generation failed: {exc}")
+
+
+def _export_reaction_pdf(state):
+    if not state.rxn_result_ready:
+        notify(state, "W", "Compute the reaction temperature profile before exporting a PDF.")
+        return
+    try:
+        data = _shared_ht_data(state)
+        data.update({
+            "t_start": state.t_start,
+            "t_jacket": state.t_jacket,
+            "rxn_order": state.rxn_order,
+            "rxn_k": state.rxn_k,
+            "rxn_c0": state.rxn_c0,
+            "rxn_dH": state.rxn_dH,
+        })
+        result = compute_reaction_profile(data, htm_db)
+        t_complete_min = (result.t_complete_s / 60.0
+                         if np.isfinite(result.t_complete_s) else float("inf"))
+        adiabatic_rise = result.T_adiabatic_c - state.t_start
+
+        rxn_summary_rows = [(str(r.get("Metric", "")), str(r.get("Value", "")))
+                           for _, r in state.rxn_summary_df.iterrows()]
+
+        unit_op = state.ht_unit_operation if state.ht_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
+        snap = {
+            "mode": "reaction",
+            "reactor": state.selected_reactor, "fluid": state.selected_fluid,
+            "fluid_T_C": state.t_start, "N_rpm": state.n_rpm, "V_L": state.v_l,
+            "T_start": state.t_start, "T_jacket_in": state.t_jacket,
+            "rxn_order": state.rxn_order, "rxn_k": state.rxn_k, "rxn_c0": state.rxn_c0,
+            "rxn_dH": state.rxn_dH,
+            "adiabatic_rise": adiabatic_rise, "T_adiabatic": result.T_adiabatic_c,
+            "T_peak": result.T_peak_c, "t_complete_min": t_complete_min,
+            "rxn_summary": rxn_summary_rows,
+            "fig_profile_png": _safe_png(state.rxn_fig),
+            "project_name": state.ht_project_name,
+            "step_number": state.ht_step_text,
+            "unit_operation": unit_op,
+            "process_version": state.ht_process_version,
+        }
+        state.ht_pdf_bytes = build_heat_transfer_pdf(snap)
+        state.ht_pdf_name = report_filename(
+            "HeatTransfer", report_header_label(snap) or state.selected_reactor)
+        state.ht_pdf_ready = True
+        notify(state, "S", "PDF report generated \u2014 click Download.")
+    except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
+        notify(state, "E", f"PDF generation failed: {exc}")
+
+
+def on_ht_pdf_download(state):
+    # file_download's `name` property is static, so the filename must be set
+    # via the imperative download() call rather than the control's binding.
+    if not state.ht_pdf_ready:
+        return
+    download(state, content=state.ht_pdf_bytes, name=state.ht_pdf_name)
+
+
+
+
 heat_transfer_md = """
 # __ICON:Heat_Transfer__Heat Transfer Tool
 
@@ -637,6 +831,19 @@ heat_transfer_md = """
 Choose whether to drive the batch to a target temperature with the jacket, or to
 model the temperature profile produced by a reaction.
 <|{ht_mode}|toggle|lov={ht_mode_options}|label=What to model|on_change=on_ht_mode_change|>
+|>
+
+<|part|class_name=va-card|
+## Report Metadata
+<|layout|columns=1 1 1 1|
+<|{ht_project_name}|input|label=Project name|>
+
+<|{ht_step_text}|input|label=Step|>
+
+<|{ht_unit_operation}|selector|lov={UNIT_OPERATION_OPTIONS}|dropdown|label=Unit operation|>
+
+<|{ht_process_version}|input|label=Process version|>
+|>
 |>
 
 <|part|class_name=va-card|
@@ -654,26 +861,27 @@ model the temperature profile produced by a reaction.
 
 <|part|class_name=va-card|
 ## 2. Geometry, Materials, and Operating Inputs
+### Reactor Specifications
 <|layout|columns=1 1 1 1|
 <|{d_tank}|number|label=D_tank (m)|>
 
 <|{d_imp}|number|label=D_imp (m)|>
 
-<|{n_rpm}|number|label=N (RPM)|>
-
 <|{np_in}|number|label=Np|>
 |>
 
+### Volume, Area & Fouling
 <|layout|columns=1 1 1 1|
+<|{fouling}|number|label=Fouling resistance (m2.K/W)|>
+
 <|{v_l}|number|label=Liquid volume (L)|on_change=on_v_l_change|>
 
 <|{a_ht}|number|label=Heat-transfer area A_ht (m2)|>
 
-<|{fouling}|number|label=Fouling resistance (m2.K/W)|>
-
-<|{mu_wall}|number|label=mu at wall (Pa.s)|>
+<|{n_rpm}|number|label=N (RPM)|>
 |>
 
+### Wall
 <|layout|columns=1 1 1 1|
 <|{wall_material}|selector|lov={wall_options}|dropdown|label=Wall material|on_change=on_wall_material_change|>
 
@@ -681,49 +889,58 @@ model the temperature profile produced by a reaction.
 
 <|{wall_thickness_mm}|number|label=Wall thickness (mm)|>
 
-<|{lining_material}|selector|lov={lining_options}|dropdown|label=Lining|on_change=on_lining_change|>
+<|{mu_wall}|number|label=mu at wall (Pa.s)|>
 |>
 
+### Lining
 <|layout|columns=1 1 1 1|
+<|{lining_material}|selector|lov={lining_options}|dropdown|label=Lining|on_change=on_lining_change|>
+
 <|{lining_k}|number|label=Lining k (W/m.K)|>
 
 <|{lining_thickness_mm}|number|label=Lining thickness (mm)|>
+|>
 
+### Fluid Properties
+<|layout|columns=1 1 1 1|
 <|{rho}|number|label=rho (kg/m3)|on_change=on_rxn_input_change|>
 
 <|{mu}|number|label=mu (Pa.s)|>
-|>
 
-<|layout|columns=1 1 1 1|
 <|{cp}|number|label=Cp (J/kg.K)|on_change=on_rxn_input_change|>
 
 <|{k_fluid}|number|label=k fluid (W/m.K)|>
+|>
 
+### Jacket
+<|layout|columns=1 1 1 1|
 <|{v_jacket}|number|label=Jacket velocity (m/s)|>
 
 <|{d_hyd_jacket}|number|label=Jacket hydraulic diameter (m)|>
-|>
 
-<|layout|columns=1 1 1 1|
 <|{m_dot_jacket}|number|label=Jacket mass flow (kg/s)|>
 
 <|{cp_jacket}|number|label=Jacket Cp (J/kg.K)|>
+|>
 
+### Heat Input
+<|layout|columns=1 1 1 1|
 <|{q_rxn}|number|label=Extra heat input (W)|>
 
 <|{include_agitator}|toggle|label=Include agitator heat|>
 |>
 
+### Temperatures
 <|layout|columns=1 1 1 1|
 <|{t_start}|number|label=T_start (C)|on_change=on_rxn_input_change|>
 
 <|{t_jacket}|number|label=Jacket / coolant T (C)|>
 
-<|{time_unit}|selector|lov=Seconds;Minutes;Hours|dropdown|label=Plot time unit|>
-
 <|part|render={ht_mode == "Heat / cool vessel"}|
 <|{t_target}|number|label=T_target (C)|>
 |>
+
+<|{time_unit}|selector|lov=Seconds;Minutes;Hours|dropdown|label=Plot time unit|>
 |>
 |>
 
@@ -815,6 +1032,18 @@ batch would reach with no cooling).
 <|{rxn_summary_df}|table|width=100%|>
 
 <|Download reaction summary CSV|file_download|content={rxn_summary_csv}|name=heat_transfer_reaction_summary.csv|label=Download reaction summary CSV|>
+|>
+
+<|part|class_name=va-card|
+## Export Report
+Generate a PDF capturing the system, resistances, KPIs, and profiles (heat/cool
+mode) or the reaction kinetics and temperature/conversion profile (reaction mode).
+
+<|Generate PDF report|button|on_action=on_ht_export_pdf|class_name=compute-btn|>
+
+<|part|render={ht_pdf_ready}|
+<|{None}|file_download|on_action=on_ht_pdf_download|label=Download PDF|>
+|>
 |>
 """
 

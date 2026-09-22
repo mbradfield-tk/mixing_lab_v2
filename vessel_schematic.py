@@ -234,7 +234,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                "color:#8a6d3b;padding:12px;'>Insufficient geometry data "
                "(needs tank ID and height) to draw a schematic.</body></html>")
         return {"html": msg, "aspect": 1.4, "total_L": 0.0, "level_mm": None, "fill_pct": None,
-                "contact_area_m2": None, "level_warning": "", "level_warning_kind": None}
+                "contact_area_m2": None, "level_warning": "", "level_warning_kind": None,
+                "other_level_warning": ""}
 
     R, H = geom["R"], geom["H"]
     bot_depth, top_depth = geom["bot_depth"], geom["top_depth"]
@@ -263,6 +264,16 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # Flag impellers whose blades cut into the wall / dish, or spill past the
     # vessel ends (usually a mis-entered diameter, height or clearance).
     tol = R * 1e-3
+
+    def _blade_band(cy_i: float, h_i: float, t_i: str, r_i: float) -> tuple[float, float]:
+        """Return the drawn blade's (bottom, top) z-extent; chevrons draw a
+        V taller than cy +/- h/2, so their apparent top must include the drop."""
+        bottom = cy_i - h_i / 2.0
+        if "chevron" in t_i.lower():
+            v_drop = r_i * (bot_depth / R) if (bot_shape == "cone" and R > 0) else max(h_i, r_i * 0.5)
+            return bottom, bottom + v_drop + h_i
+        return bottom, cy_i + h_i / 2.0
+
     warnings: list[str] = []
     wall_hit: set[int] = set()
     for idx, (d_i, cy_i, h_i, _c_i, t_i) in enumerate(impellers):
@@ -297,9 +308,12 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     # surface above the impeller. Fully dry -> red; partially submerged -> yellow.
     level_warning = ""
     level_warning_kind: str | None = None
+    other_level_warning = ""
     if level is not None and impellers:
-        _, low_cy, low_h, _, _ = min(impellers, key=lambda t: t[1])
-        imp_bottom, imp_top = low_cy - low_h / 2.0, low_cy + low_h / 2.0
+        imp_order = sorted(range(len(impellers)), key=lambda i: impellers[i][1])
+        lowest_idx = imp_order[0]
+        _, low_cy, low_h, _, low_t = impellers[lowest_idx]
+        imp_bottom, imp_top = _blade_band(low_cy, low_h, low_t, impellers[lowest_idx][0] / 2.0)
         if level < imp_bottom - tol:
             level_warning_kind = "red"
             level_warning = "Liquid level is below the lowest impeller — it is not submerged."
@@ -308,6 +322,15 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             level_warning = ("Liquid level is at the lowest impeller — raise the fill so it is "
                              "fully submerged.")
 
+        # Non-overlapping impeller bands mean the surface can only ever straddle
+        # one band, so at most one higher impeller needs this check.
+        for idx in imp_order[1:]:
+            d_i, cy_i, h_i, _, t_i = impellers[idx]
+            imp_bottom_i, imp_top_i = _blade_band(cy_i, h_i, t_i, d_i / 2.0)
+            if imp_bottom_i - tol < level < imp_top_i + tol:
+                other_level_warning = f"Liquid level intersects impeller {idx + 1}"
+                break
+
     # Size-aware padding so labels never crowd the vessel.
     drawn_top = max(H + top_depth, full_top if show_full_height else 0.0)
     total_h = bot_depth + drawn_top
@@ -315,8 +338,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     gap = ref * 0.06
     left_pad = R * 0.85
     right_pad = R * 2.60
-    n_warn_lines = (1 if warnings else 0) + (1 if level_warning_kind else 0)
-    bot_pad = gap + ref * 0.12 + ref * 0.10 * n_warn_lines
+    bot_pad = gap + ref * 0.12
     top_pad = ref * 0.03
     if level is not None:
         top_pad += ref * 0.06
@@ -473,18 +495,8 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                 ha="right", va="center", fontsize=dim_fs, fontweight="bold",
                 color=cclr, rotation=90)
 
-    # Flags drawn below the vessel: wall interference, then liquid level vs. impeller.
-    below_lines: list[tuple[str, str]] = []
-    if warnings:
-        below_lines.append(("⚠ Impeller cuts into the wall", "#C62828"))
-    if level_warning_kind == "red":
-        below_lines.append(("⚠ Liquid level is below the lowest impeller", "#C62828"))
-    elif level_warning_kind == "yellow":
-        below_lines.append(("⚠ Liquid level is at the lowest impeller", "#F9A825"))
-    y_txt = -bot_depth - gap - ref * 0.17
-    for msg, col in below_lines:
-        ax.text(0, y_txt, msg, ha="center", va="top", fontsize=10, color=col, fontweight="bold")
-        y_txt -= ref * 0.09
+    # Warnings (wall interference, liquid level vs. impeller) are surfaced by
+    # the caller via the returned dict, not drawn on the image itself.
 
     # Labels are fixed pixel-size text, so their data-space extent depends on the
     # vessel proportions and can spill past the geometry-derived frame. Measure
@@ -520,4 +532,5 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         "wall_cut": bool(warnings),
         "level_warning": level_warning,
         "level_warning_kind": level_warning_kind,
+        "other_level_warning": other_level_warning,
     }

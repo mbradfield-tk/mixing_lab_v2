@@ -370,25 +370,32 @@ def _fill_caption(res: dict) -> str:
     return base
 
 
-def _fill_range_warning(row: pd.Series, fill_L: float) -> str:
-    """Red warning when the fill volume is outside the vessel's Min/Max Volume (if recorded)."""
+def _fill_status_warning(row: pd.Series, fill_L: float, schem: dict) -> str:
+    """Single fill warning: volume band takes priority, else the schematic's
+    liquid-level/impeller warning. Red for every case except a liquid level
+    that intersects an impeller (partially submerged), which is yellow."""
     try:
         lo = float(row.get("V_L_min"))
     except (TypeError, ValueError):
         lo = float("nan")
     if lo > 0 and fill_L < lo:
-        return f"🔴 Below Min Volume ({lo:g} L)."
+        return "🔴 Below Min Volume ({:g} L)".format(lo)
     try:
         hi = float(row.get("V_L_max"))
     except (TypeError, ValueError):
         hi = float("nan")
     if hi > 0 and fill_L > hi:
-        return f"🔴 Above Max Volume ({hi:g} L)."
-    return ""
+        return "🔴 Above Max Volume ({:g} L)".format(hi)
+    if schem.get("level_warning_kind") == "red":
+        return "🔴 Liquid level is below the lowest impeller"
+    if schem.get("level_warning_kind") == "yellow":
+        return "🟡 Liquid level is at the lowest impeller"
+    other = schem.get("other_level_warning")
+    return f"🟡 {other}" if other else ""
 
 
 vessel_fill_caption = _fill_caption(_schem0)
-vessel_fill_min_warning = _fill_range_warning(_row0, vessel_fill_L)
+vessel_fill_min_warning = _fill_status_warning(_row0, vessel_fill_L, _schem0)
 
 
 # ---------------------------------------------------------------------------
@@ -500,7 +507,7 @@ def _refresh_schematic(state):
     state.vessel_total_vol_L = res["total_L"]
     state.vessel_schematic_html = res["html"]
     state.vessel_fill_caption = _fill_caption(res)
-    state.vessel_fill_min_warning = _fill_range_warning(row, state.vessel_fill_L)
+    state.vessel_fill_min_warning = _fill_status_warning(row, state.vessel_fill_L, res)
 
 
 def on_vessel_select(state):

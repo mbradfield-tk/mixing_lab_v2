@@ -447,7 +447,7 @@ bp_status = "Define the system, then click Start Protocol."
 bp_started = False
 
 # ---------------------------------------------------------------------------
-# State — report metadata
+# State — Project Information
 # ---------------------------------------------------------------------------
 bp_project_name = ""
 bp_step_text = ""
@@ -1436,7 +1436,7 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 <|part|height=18px|>
 
 <|part|class_name=va-card|
-## Report Metadata
+## Project Information
 <|layout|columns=1 1 1 1|class_name=form-grid|
 <|{bp_project_name}|input|label=Project name|>
 

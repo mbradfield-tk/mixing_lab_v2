@@ -284,7 +284,7 @@ ms_unit_operation_options = ["- select -", "Reaction", "Quench", "Crystallizatio
 
 
 # ---------------------------------------------------------------------------
-# State - report metadata
+# State - Project Information
 # ---------------------------------------------------------------------------
 ms_project_name = ""
 ms_step_text = ""
@@ -1240,7 +1240,7 @@ the **Summary** synthesises everything into an overall verdict.
 <|part|height=18px|>
 
 <|part|class_name=va-card|
-## Report Metadata
+## Project Information
 <|layout|columns=1 1 1 1|class_name=form-grid|
 <|{ms_project_name}|input|label=Project name|>
 

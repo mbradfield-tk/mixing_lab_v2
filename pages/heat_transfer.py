@@ -230,7 +230,7 @@ ua_rpm_fig.update_layout(title="UA vs Stir Speed", xaxis_title="Stir speed (rpm)
 ua_vol_fig = go.Figure()
 ua_vol_fig.update_layout(title="UA vs Volume", xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)")
 
-# Report metadata (captured in the exported PDF's header/filename and body)
+# Project Information (captured in the exported PDF's header/filename and body)
 ht_project_name = ""
 ht_step_text = ""
 ht_unit_operation = UNIT_OPERATION_OPTIONS[0]
@@ -834,7 +834,7 @@ model the temperature profile produced by a reaction.
 |>
 
 <|part|class_name=va-card|
-## Report Metadata
+## Project Information
 <|layout|columns=1 1 1 1|
 <|{ht_project_name}|input|label=Project name|>
 

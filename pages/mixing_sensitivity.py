@@ -806,7 +806,7 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
                          f"t_rxn = {t_rxn:.4g} s - slow relative to typical micromixing times."))
 
     # Micro/mesomixing (selectivity)
-    if meso_sensitive:
+    if meso_sensitive or is_semi_batch:
         if is_semi_batch and competing == "No":
             findings.append(("Mesomixing (feed-plume)", "🟡 Semi-batch - check experimentally",
                              "No competing reactions, but feed-plume dispersion controls local "

@@ -1441,7 +1441,7 @@ blend time **θ<sub>95</sub> = 5.2·T^1.5·H^0.5/(N<sub>p</sub>^(1/3)·N·D²)**
 Once you've worked through the steps above, start the assessment to generate the
 per-step findings and the overall verdict.
 
-<|Start assessment|button|on_action=on_ms_init|class_name=compute-btn|>
+<|Run assessment|button|on_action=on_ms_init|class_name=compute-btn|>
 |>
 
 <|part|class_name=va-card|

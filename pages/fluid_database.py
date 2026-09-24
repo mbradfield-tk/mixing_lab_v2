@@ -116,7 +116,8 @@ blend_basis = "Volume"
 blend_basis_options = ["Volume", "Mass"]
 blend_T = 25.0
 blend_input_df = pd.DataFrame(columns=["Component", "Amount"])
-blend_result_df = pd.DataFrame(columns=["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)"])
+blend_result_df = pd.DataFrame(columns=["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)",
+                                        "σ (N/m)", "D (m²/s)", "Cp (J/kg·K)", "k (W/m·K)"])
 blend_misc_df = pd.DataFrame(columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
 blend_dispersion_speed = 5.0
 blend_dispersion_d = 0.05

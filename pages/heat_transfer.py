@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.colors import get_colorscale
 from plotly.subplots import make_subplots
 from taipy.gui import Markdown, download, notify
 
@@ -111,6 +112,75 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
     return hi or lo or fallback
 
 
+SWEEP_PARAMETER_KEYS = {
+    "Stir speed (rpm)": "n_rpm",
+    "Liquid volume (L)": "v_l",
+    "Impeller diameter (m)": "d_imp",
+    "Tank diameter (m)": "d_tank",
+    "Fluid density (kg/m3)": "rho",
+    "Fluid viscosity (Pa.s)": "mu",
+    "Fluid Cp (J/kg.K)": "cp",
+    "Fluid conductivity (W/m.K)": "k_fluid",
+    "Jacket velocity (m/s)": "v_jacket",
+    "Jacket hydraulic diameter (m)": "d_hyd_jacket",
+    "Wall conductivity (W/m.K)": "wall_k",
+    "Wall thickness (mm)": "wall_thickness_mm",
+    "Lining conductivity (W/m.K)": "lining_k",
+    "Lining thickness (mm)": "lining_thickness_mm",
+    "Fouling resistance (m2.K/W)": "fouling",
+    "Wall-side viscosity (Pa.s)": "mu_wall",
+}
+SWEEP_PARAMETER_OPTIONS = list(SWEEP_PARAMETER_KEYS)
+SWEEP_COLOR_THEME_OPTIONS = ["Turbo", "Viridis", "Cool/Warm", "X-ray"]
+SWEEP_COLOR_RANGE_OPTIONS = ["Automatic", "Custom"]
+_SWEEP_ZERO_VALUE_MAX = {
+    "d_imp": 1.0, "d_tank": 2.0, "rho": 2000.0, "mu": 0.1,
+    "cp": 10000.0, "k_fluid": 2.0, "v_jacket": 2.0,
+    "d_hyd_jacket": 0.1, "wall_k": 100.0, "wall_thickness_mm": 10.0,
+    "lining_k": 2.0, "lining_thickness_mm": 3.0, "fouling": 0.001,
+    "mu_wall": 0.01,
+}
+
+
+def _sweep_range_defaults(reactor_name: str, parameter: str, current_value: float) -> tuple[float, float]:
+    """Use reactor operating bounds where available, otherwise bracket the current value."""
+    row = _reactor_row(reactor_name)
+    key = SWEEP_PARAMETER_KEYS[parameter]
+    if key == "n_rpm":
+        lower = safe_float(row.get("N_rpm_min"), 0.0)
+        upper = safe_float(row.get("N_rpm_max"), 0.0)
+        if upper > lower >= 0:
+            return lower, upper
+    elif key == "v_l":
+        lower = safe_float(row.get("V_L_min"), 0.0)
+        upper = safe_float(row.get("V_L_max"), 0.0)
+        if upper > lower >= 0:
+            return lower, upper
+
+    current = safe_float(current_value, 0.0)
+    if current > 0:
+        return current * 0.5, current * 1.5
+    return 0.0, _SWEEP_ZERO_VALUE_MAX.get(key, 1.0)
+
+
+def _sweep_colorscale(theme: str) -> list[list[float | str]]:
+    if theme == "Cool/Warm":
+        scale = get_colorscale("rdbu")
+        return [[1.0 - position, color] for position, color in reversed(scale)]
+    name = {"Turbo": "turbo", "Viridis": "viridis", "X-ray": "greys"}.get(theme, "turbo")
+    return get_colorscale(name)
+
+
+def _surface_color_limits(values: np.ndarray) -> tuple[float, float]:
+    lower = float(np.nanmin(values))
+    upper = float(np.nanmax(values))
+    if np.isclose(lower, upper):
+        padding = max(abs(lower) * 0.01, 1e-6)
+        lower -= padding
+        upper += padding
+    return lower, upper
+
+
 selected_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
                     else (reactor_options[0] if reactor_options else ""))
 selected_fluid = "Water" if "Water" in fluid_options else fluid_options[0]
@@ -146,6 +216,21 @@ wall_thickness_mm = safe_float(_r.get("wall_thickness_mm"), 5.0)
 lining_material = "None"
 lining_k = 0.0
 lining_thickness_mm = 0.0
+sweep_x_parameter = "Stir speed (rpm)"
+sweep_y_parameter = "Liquid volume (L)"
+sweep_x_min, sweep_x_max = _sweep_range_defaults(selected_reactor, sweep_x_parameter, n_rpm)
+sweep_y_min, sweep_y_max = _sweep_range_defaults(selected_reactor, sweep_y_parameter, v_l)
+sweep_color_theme = "Turbo"
+sweep_color_range_mode = "Automatic"
+sweep_u_color_min = 0.0
+sweep_u_color_max = 0.0
+sweep_ua_color_min = 0.0
+sweep_ua_color_max = 0.0
+sweep_result_ready = False
+sweep_u_fig = go.Figure()
+sweep_u_fig.update_layout(title="Overall U Surface", height=500)
+sweep_ua_fig = go.Figure()
+sweep_ua_fig.update_layout(title="UA Surface", height=500)
 
 _htm = htm_db[selected_htm]
 cp_jacket = safe_float(_htm.get("Cp_J_kgK"), 3500.0)
@@ -165,8 +250,9 @@ time_unit = "Minutes"
 # Tool mode: heat/cool a vessel, or model a reaction's temperature profile.
 HT_MODE_HEAT = "Heat / cool vessel"
 HT_MODE_RXN = "Reaction temperature profile"
+HT_MODE_SWEEP = "Parameter Sweep"
 ht_mode = HT_MODE_HEAT
-ht_mode_options = [HT_MODE_HEAT, HT_MODE_RXN]
+ht_mode_options = [HT_MODE_HEAT, HT_MODE_RXN, HT_MODE_SWEEP]
 
 # Reaction kinetics + heat of reaction (mode 2)
 selected_reaction_source = reaction_source_options[0]
@@ -269,7 +355,53 @@ def on_reactor_change(state):
     state.wall_material = shell
     state.wall_k = WALL_CONDUCTIVITY.get(shell, 16.0)
     state.wall_thickness_mm = safe_float(row.get("wall_thickness_mm"), state.wall_thickness_mm)
+    raw_lining = row.get("lining_material", "")
+    lining_name = str(raw_lining).strip() if pd.notna(raw_lining) else ""
+    state.lining_material = find_best_material_key(lining_name, lining_options)
+    on_lining_change(state)
+    _refresh_sweep_ranges(state)
     notify(state, "I", "Reactor defaults loaded.")
+
+
+def _refresh_sweep_ranges(state) -> None:
+    for axis in ("x", "y"):
+        parameter = getattr(state, f"sweep_{axis}_parameter")
+        key = SWEEP_PARAMETER_KEYS[parameter]
+        current = getattr(state, key)
+        lower, upper = _sweep_range_defaults(state.selected_reactor, parameter, current)
+        setattr(state, f"sweep_{axis}_min", lower)
+        setattr(state, f"sweep_{axis}_max", upper)
+
+
+def _on_sweep_parameter_change(state, changed_axis: str) -> None:
+    other_axis = "y" if changed_axis == "x" else "x"
+    changed_parameter = getattr(state, f"sweep_{changed_axis}_parameter")
+    if changed_parameter == getattr(state, f"sweep_{other_axis}_parameter"):
+        replacement = next(option for option in SWEEP_PARAMETER_OPTIONS
+                           if option != changed_parameter)
+        setattr(state, f"sweep_{other_axis}_parameter", replacement)
+    _refresh_sweep_ranges(state)
+    state.sweep_result_ready = False
+
+
+def on_sweep_x_change(state):
+    _on_sweep_parameter_change(state, "x")
+
+
+def on_sweep_y_change(state):
+    _on_sweep_parameter_change(state, "y")
+
+
+def on_sweep_color_range_mode_change(state):
+    if state.sweep_color_range_mode != "Custom":
+        return
+    for metric, figure_name in (("u", "sweep_u_fig"), ("ua", "sweep_ua_fig")):
+        figure = getattr(state, figure_name)
+        if not figure.data:
+            continue
+        lower, upper = _surface_color_limits(np.asarray(figure.data[0].z, dtype=float))
+        setattr(state, f"sweep_{metric}_color_min", lower)
+        setattr(state, f"sweep_{metric}_color_max", upper)
 
 
 def _refresh_area(state):
@@ -352,6 +484,8 @@ def on_rxn_input_change(state):
 def on_ht_mode_change(state):
     if state.ht_mode == HT_MODE_RXN:
         state.status_message = "Select a reaction and coolant temperature, then Compute."
+    elif state.ht_mode == HT_MODE_SWEEP:
+        state.status_message = "Choose two parameters and their ranges, then Compute."
     else:
         state.status_message = "Set the start / target / jacket temperatures, then Compute."
 
@@ -438,6 +572,9 @@ def _compute_reaction(state):
 
 
 def on_compute(state):
+    if state.ht_mode == HT_MODE_SWEEP:
+        _compute_parameter_sweep(state)
+        return
     if state.ht_mode == HT_MODE_RXN:
         _compute_reaction(state)
         return
@@ -651,6 +788,111 @@ def _build_ua_sweeps(state) -> None:
     state.ua_vol_fig = fig2
 
 
+def _compute_parameter_sweep(state) -> None:
+    x_parameter = state.sweep_x_parameter
+    y_parameter = state.sweep_y_parameter
+    if x_parameter == y_parameter:
+        state.sweep_result_ready = False
+        state.status_message = "Choose two different parameters for the sweep."
+        notify(state, "E", state.status_message)
+        return
+
+    x_min = safe_float(state.sweep_x_min, float("nan"))
+    x_max = safe_float(state.sweep_x_max, float("nan"))
+    y_min = safe_float(state.sweep_y_min, float("nan"))
+    y_max = safe_float(state.sweep_y_max, float("nan"))
+    if not all(np.isfinite(value) for value in (x_min, x_max, y_min, y_max)) or x_max <= x_min or y_max <= y_min:
+        state.sweep_result_ready = False
+        state.status_message = "Each sweep maximum must be greater than its minimum."
+        notify(state, "E", state.status_message)
+        return
+
+    x_key = SWEEP_PARAMETER_KEYS[x_parameter]
+    y_key = SWEEP_PARAMETER_KEYS[y_parameter]
+    x_values = np.linspace(x_min, x_max, 30)
+    y_values = np.linspace(y_min, y_max, 30)
+    u_values = np.empty((len(y_values), len(x_values)))
+    ua_values = np.empty_like(u_values)
+    base = _shared_ht_data(state)
+    reactor = _reactor_row(state.selected_reactor)
+    h_max = safe_float(reactor.get("H_max_m"), safe_float(reactor.get("H_m"), 0.2))
+    bottom = str(reactor.get("bottom_dish", ""))
+    dish_height = safe_float(reactor.get("H_bottom_dish_m"))
+
+    for iy, y_value in enumerate(y_values):
+        for ix, x_value in enumerate(x_values):
+            point = {**base, x_key: float(x_value), y_key: float(y_value)}
+            u_value = _heat_transfer_coeffs(point, htm_db)["u"]
+            area = state.a_ht
+            if "v_l" in (x_key, y_key) or "d_tank" in (x_key, y_key):
+                liquid_height = liquid_height_from_volume(
+                    point["v_l"], point["d_tank"], h_max, bottom, dish_height)
+                area = estimate_jacket_area(point["d_tank"], liquid_height, bottom, dish_height)
+            u_values[iy, ix] = u_value
+            ua_values[iy, ix] = u_value * area
+
+    u_auto_limits = _surface_color_limits(u_values)
+    ua_auto_limits = _surface_color_limits(ua_values)
+    if state.sweep_color_range_mode == "Automatic":
+        state.sweep_u_color_min, state.sweep_u_color_max = u_auto_limits
+        state.sweep_ua_color_min, state.sweep_ua_color_max = ua_auto_limits
+        u_color_limits = u_auto_limits
+        ua_color_limits = ua_auto_limits
+    else:
+        u_color_limits = (safe_float(state.sweep_u_color_min, float("nan")),
+                          safe_float(state.sweep_u_color_max, float("nan")))
+        ua_color_limits = (safe_float(state.sweep_ua_color_min, float("nan")),
+                           safe_float(state.sweep_ua_color_max, float("nan")))
+        if u_color_limits == (0.0, 0.0):
+            u_color_limits = u_auto_limits
+            state.sweep_u_color_min, state.sweep_u_color_max = u_color_limits
+        if ua_color_limits == (0.0, 0.0):
+            ua_color_limits = ua_auto_limits
+            state.sweep_ua_color_min, state.sweep_ua_color_max = ua_color_limits
+        if not all(np.isfinite(value) for value in (*u_color_limits, *ua_color_limits)) \
+                or u_color_limits[1] <= u_color_limits[0] or ua_color_limits[1] <= ua_color_limits[0]:
+            state.sweep_result_ready = False
+            state.status_message = "Each custom color maximum must be greater than its minimum."
+            notify(state, "E", state.status_message)
+            return
+
+    colorscale = _sweep_colorscale(state.sweep_color_theme)
+
+    def _surface_figure(values: np.ndarray, limits: tuple[float, float], title: str,
+                        z_title: str) -> go.Figure:
+        figure = go.Figure(go.Surface(
+            x=x_values,
+            y=y_values,
+            z=values,
+            colorscale=colorscale,
+            cmin=limits[0],
+            cmax=limits[1],
+            colorbar={"title": z_title},
+            hovertemplate=(f"{x_parameter}: %{{x:.4g}}<br>"
+                           f"{y_parameter}: %{{y:.4g}}<br>"
+                           f"{z_title}: %{{z:.4g}}<extra></extra>"),
+        ))
+        figure.update_layout(
+            title=title,
+            scene={
+                "xaxis_title": x_parameter,
+                "yaxis_title": y_parameter,
+                "zaxis_title": z_title,
+            },
+            height=520,
+            margin={"l": 0, "r": 0, "t": 50, "b": 0},
+        )
+        return figure
+
+    state.sweep_u_fig = _surface_figure(
+        u_values, u_color_limits, "Overall Heat-Transfer Coefficient U", "U (W/m2.K)")
+    state.sweep_ua_fig = _surface_figure(
+        ua_values, ua_color_limits, "Overall Heat-Transfer Capacity UA", "UA (W/K)")
+    state.sweep_result_ready = True
+    state.status_message = f"Parameter sweep computed for {x_parameter} and {y_parameter}."
+    notify(state, "S", "U and UA parameter surfaces computed.")
+
+
 def _nu_records(df: pd.DataFrame) -> list[dict]:
     """Nusselt-correlation comparison rows, in the keys build_heat_transfer_pdf expects."""
     if df is None or df.empty:
@@ -828,8 +1070,7 @@ heat_transfer_md = """
 
 <|part|class_name=va-card|
 ## Mode
-Choose whether to drive the batch to a target temperature with the jacket, or to
-model the temperature profile produced by a reaction.
+Choose heat/cool operation, a reaction temperature profile, or a two-parameter U/UA sweep.
 <|{ht_mode}|toggle|lov={ht_mode_options}|label=What to model|on_change=on_ht_mode_change|>
 |>
 
@@ -944,6 +1185,49 @@ model the temperature profile produced by a reaction.
 |>
 |>
 
+<|part|render={ht_mode == "Parameter Sweep"}|class_name=va-card|
+## Parameter Sweep Inputs
+### X axis
+<|layout|columns=1 1 1|
+<|{sweep_x_parameter}|selector|lov={SWEEP_PARAMETER_OPTIONS}|dropdown|label=X-axis parameter|on_change=on_sweep_x_change|>
+
+<|{sweep_x_min}|number|label=X minimum|>
+
+<|{sweep_x_max}|number|label=X maximum|>
+|>
+
+### Y axis
+<|layout|columns=1 1 1|
+<|{sweep_y_parameter}|selector|lov={SWEEP_PARAMETER_OPTIONS}|dropdown|label=Y-axis parameter|on_change=on_sweep_y_change|>
+
+<|{sweep_y_min}|number|label=Y minimum|>
+
+<|{sweep_y_max}|number|label=Y maximum|>
+|>
+
+### Surface Appearance
+<|layout|columns=1 1|
+<|{sweep_color_theme}|selector|lov={SWEEP_COLOR_THEME_OPTIONS}|dropdown|label=Color theme|>
+
+<|{sweep_color_range_mode}|selector|lov={SWEEP_COLOR_RANGE_OPTIONS}|dropdown|label=Color range|on_change=on_sweep_color_range_mode_change|>
+|>
+<|part|render={sweep_color_range_mode == "Custom"}|
+### U color range
+<|layout|columns=1 1|
+<|{sweep_u_color_min}|number|label=U color minimum|>
+
+<|{sweep_u_color_max}|number|label=U color maximum|>
+|>
+
+### UA color range
+<|layout|columns=1 1|
+<|{sweep_ua_color_min}|number|label=UA color minimum|>
+
+<|{sweep_ua_color_max}|number|label=UA color maximum|>
+|>
+|>
+|>
+
 <|part|render={ht_mode == "Reaction temperature profile"}|class_name=va-card|
 ## Reaction Kinetics and Heat of Reaction
 Pick a reaction to auto-fill its kinetics, or edit the fields directly. The rate
@@ -967,6 +1251,14 @@ not modelled) and the profile runs until 99% conversion.
 |>
 
 <|Compute|button|on_action=on_compute|class_name=compute-btn|>
+
+<|part|render={ht_mode == "Parameter Sweep" and sweep_result_ready}|class_name=va-card|
+## U and UA Surfaces
+<|layout|columns=1 1|
+<|chart|figure={sweep_u_fig}|height=520px|>
+<|chart|figure={sweep_ua_fig}|height=520px|>
+|>
+|>
 
 <|part|render={ht_mode == "Heat / cool vessel"}|
 <|part|class_name=va-card|
@@ -1034,7 +1326,7 @@ batch would reach with no cooling).
 <|Download reaction summary CSV|file_download|content={rxn_summary_csv}|name=heat_transfer_reaction_summary.csv|label=Download reaction summary CSV|>
 |>
 
-<|part|class_name=va-card|
+<|part|render={ht_mode != "Parameter Sweep"}|class_name=va-card|
 ## Export Report
 Generate a PDF capturing the system, resistances, KPIs, and profiles (heat/cool
 mode) or the reaction kinetics and temperature/conversion profile (reaction mode).

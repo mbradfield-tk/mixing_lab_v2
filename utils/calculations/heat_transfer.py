@@ -134,17 +134,22 @@ def estimate_U(material: str = "", N_rps: float = 0.0,
 # Material property lookup tables
 # ---------------------------------------------------------------------------
 
+# Keep in sync with heat_transfer_core.py, which holds the referenced source table
+# (WALL_CONDUCTIVITY_REF / LINING_CONDUCTIVITY_REF) for every value below.
 WALL_CONDUCTIVITY: dict[str, float] = {
-    "stainless steel": 16.0, "stainless": 16.0,
-    "ss316": 16.0, "ss304": 16.0,
+    "stainless steel": 15.0, "stainless": 15.0,
+    "ss316": 13.4, "ss304": 14.4,
     "hastelloy": 12.0, "hastelloy c-276": 12.0,
-    "inconel": 15.0, "carbon steel": 50.0,
-    "glass": 1.0, "glass-lined": 1.0,
-    "titanium": 22.0, "copper": 385.0,
+    "inconel": 15.0, "incoloy": 12.0,
+    "monel": 26.0, "nickel": 61.0,
+    "carbon steel": 50.0,
+    "glass": 1.2, "glass-lined": 1.2,
+    "titanium": 22.0, "zirconium": 23.0,
+    "tantalum": 57.0, "copper": 390.0,
 }
 
 LINING_CONDUCTIVITY: dict[str, float] = {
-    "glass": 1.0, "glass-lined": 1.0,
+    "glass": 1.2, "glass-lined": 1.2,
     "ptfe": 0.25, "teflon": 0.25, "pfa": 0.25,
     "pvdf": 0.19, "rubber": 0.16, "epoxy": 0.20,
     "titanium": 22.0, "hastelloy": 12.0, "tantalum": 57.0,

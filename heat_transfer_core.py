@@ -8,33 +8,99 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+# Process-side Nusselt correlations for jacketed agitated vessels:
+#   Nu = C * Re^a * Pr^b * (mu/mu_wall)^c
+# Each entry carries a `ref` so the constants can be audited by hand. Entries
+# flagged UNVERIFIED were inherited from the original tool and could not be traced
+# to a primary source in the 2026-09 review; confirm before relying on them.
 NUSSELT_CORRELATIONS: dict[str, dict[str, float | str]] = {
-    "DIN 28131 (standard)": {"C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14},
-    "Chilton–Drew–Jebens": {"C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14},
-    "Lehrer (anchor/helical)": {"C": 0.54, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14},
-    "Stein–Schmidt (high Re)": {"C": 0.50, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14},
-    "Brooks–Su (Retreat Blade)": {"C": 0.33, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14},
-    "Nagata (paddle)": {"C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.18},
+    "Chilton–Drew–Jebens (paddle)": {
+        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Chilton, Drew & Jebens (1944), Ind. Eng. Chem. 36(6):510. "
+               "Jacketed vessel, paddle impeller, turbulent (Re > 400).",
+    },
+    "Flat-blade turbine (baffled)": {
+        "C": 0.74, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Uhl & Gray, Mixing: Theory and Practice Vol. 1 (1966); Perry's "
+               "Chemical Engineers' Handbook 9th ed., Sec. 11. Baffled vessel with "
+               "a flat-blade (Rushton) turbine, turbulent regime.",
+    },
+    "Brooks–Su (retreat blade, glass-lined)": {
+        "C": 0.33, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Brooks & Su (1959), Chem. Eng. Prog. 55(10):54. Retreat-curve blade "
+               "impeller in a glass-lined vessel.",
+    },
+    "DIN 28131 (standard)": {
+        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "DIN 28131:1979. UNVERIFIED — constants are identical to "
+               "Chilton–Drew–Jebens; confirm against the standard.",
+    },
+    "Lehrer (anchor/helical)": {
+        "C": 0.54, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Lehrer (1970), Chem. Eng. Sci. 25:1397. UNVERIFIED — Lehrer's "
+               "published form is not a simple power law; confirm C/a/b/c.",
+    },
+    "Stein–Schmidt (high Re)": {
+        "C": 0.50, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Stein & Schmidt (1993), Chem. Eng. Process. 32:305. UNVERIFIED — "
+               "constants not traced to the paper.",
+    },
+    "Nagata (paddle)": {
+        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.18,
+        "ref": "Nagata (1975), Mixing: Principles and Applications. UNVERIFIED — "
+               "viscosity exponent 0.18 not traced to the source.",
+    },
 }
 
+# Thermal conductivity at ~20-25 C. Alloy conductivity varies with grade, temper
+# and temperature, so check the cited source or a mill certificate for critical duty.
 WALL_CONDUCTIVITY: dict[str, float] = {
-    "stainless steel": 16.0,
-    "stainless": 16.0,
-    "ss316": 16.0,
-    "ss304": 16.0,
+    "stainless steel": 15.0,
+    "stainless": 15.0,
+    "ss316": 13.4,
+    "ss304": 14.4,
     "hastelloy": 12.0,
     "hastelloy c-276": 12.0,
     "inconel": 15.0,
+    "incoloy": 12.0,
+    "monel": 26.0,
+    "nickel": 61.0,
     "carbon steel": 50.0,
-    "glass": 1.0,
-    "glass-lined": 1.0,
+    "glass": 1.2,
+    "glass-lined": 1.2,
     "titanium": 22.0,
-    "copper": 385.0,
+    "zirconium": 23.0,
+    "tantalum": 57.0,
+    "copper": 390.0,
+}
+
+WALL_CONDUCTIVITY_REF: dict[str, str] = {
+    "stainless steel": "Generic austenitic grade; midpoint of 304/316 (13-16 W/m.K). "
+                       "Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
+    "ss316": "316/316L at 20-100 C. ASM Handbook Vol. 1; confirm per mill certificate.",
+    "ss304": "Type 304 at 20 C. Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
+    "hastelloy": "Hastelloy C at 0-25 C. Engineering ToolBox. Haynes C-276 datasheets "
+                 "quote ~10 W/m.K at 25 C — verify for critical duty.",
+    "hastelloy c-276": "See 'hastelloy'.",
+    "inconel": "Inconel (600) at 21-100 C. Engineering ToolBox. Inconel 625 is lower (~9.8 W/m.K).",
+    "incoloy": "Incoloy at 0-100 C. Engineering ToolBox.",
+    "monel": "Monel at 0-100 C. Engineering ToolBox.",
+    "nickel": "Wrought nickel at 0-100 C, quoted range 61-90 W/m.K; lower bound used. "
+              "Engineering ToolBox.",
+    "carbon steel": "Plain carbon steel at 20 C, 43 (1% C) to 54 (0.5% C) W/m.K; 50 W/m.K "
+                    "used as a mid-range design value. Engineering ToolBox.",
+    "glass": "Borosilicate glass / glass-lining enamel, ~1.1-1.3 W/m.K. Harmonised with "
+             "LINING_CONDUCTIVITY['glass'].",
+    "glass-lined": "See 'glass'.",
+    "titanium": "Titanium at 0 C, 22.4 W/m.K (Grade 2 ~21.9). Engineering ToolBox.",
+    "zirconium": "Zirconium at 0 C, 23.2 W/m.K. Engineering ToolBox.",
+    "tantalum": "Tantalum at 0 C, 57.4 W/m.K. Engineering ToolBox.",
+    "copper": "Electrolytic (ETP) copper at 0-25 C. Engineering ToolBox.",
 }
 
 LINING_CONDUCTIVITY: dict[str, float] = {
-    "glass": 1.0,
-    "glass-lined": 1.0,
+    "glass": 1.2,
+    "glass-lined": 1.2,
     "ptfe": 0.25,
     "teflon": 0.25,
     "pfa": 0.25,
@@ -46,6 +112,8 @@ LINING_CONDUCTIVITY: dict[str, float] = {
     "tantalum": 57.0,
 }
 
+# Nominal as-applied lining thickness (m). Reactor-grade glass lining is
+# typically 1.0-2.0 mm; confirm against the vessel datasheet.
 LINING_THICKNESS_DEFAULT: dict[str, float] = {
     "glass": 0.0015,
     "glass-lined": 0.0015,
@@ -60,7 +128,26 @@ LINING_THICKNESS_DEFAULT: dict[str, float] = {
     "tantalum": 0.001,
 }
 
+LINING_CONDUCTIVITY_REF: dict[str, str] = {
+    "glass": "Glass-lining enamel, 1.2 W/m.K (typical 1.1-1.3). De Dietrich / Pfaudler "
+             "glass-lining technical data.",
+    "glass-lined": "See 'glass'.",
+    "ptfe": "PTFE. Engineering ToolBox, Plastics - Thermal Conductivity Coefficients.",
+    "teflon": "See 'ptfe'.",
+    "pfa": "PFA, quoted 0.19-0.25 W/m.K; upper bound used. Fluoropolymer vendor datasheets.",
+    "pvdf": "PVDF. Fluoropolymer vendor datasheets.",
+    "rubber": "Soft/natural rubber lining. Engineering ToolBox.",
+    "epoxy": "Unfilled epoxy coating. Engineering ToolBox.",
+    "titanium": "Metal clad lining — see WALL_CONDUCTIVITY_REF['titanium'].",
+    "hastelloy": "Metal clad lining — see WALL_CONDUCTIVITY_REF['hastelloy'].",
+    "tantalum": "Metal clad lining — see WALL_CONDUCTIVITY_REF['tantalum'].",
+}
+
+# Jacket-side film coefficient used when the medium has no computed value.
+# 1500 W/(m2.K) is a conventional simple-jacket water/glycol value
+# (Perry's Chemical Engineers' Handbook 9th ed., Sec. 11).
 JACKET_HTC_DEFAULT = 1500.0
+# Fouling resistance 2e-4 m2.K/W — typical clean process service (TEMA RGP-T-2.4).
 FOULING_DEFAULT = 0.0002
 
 

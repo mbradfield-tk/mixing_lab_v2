@@ -363,7 +363,7 @@ def _fill_caption(res: dict) -> str:
                 f"brim-full volume).")
         area = res.get("contact_area_m2")
         if area is not None:
-            base += f" Wetted contact area ≈ **{area:,.2f} m²**."
+            base += f" Wetted contact area ≈ **{area:,.3f} m²**."
     warns = res.get("warnings") or []
     if warns:
         base += "\n\n⚠️ **Impeller–wall interference:** " + " ".join(warns)

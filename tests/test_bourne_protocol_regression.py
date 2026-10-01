@@ -13,6 +13,7 @@ from pages.bourne_protocol import (
     _invalidate_assessments,
     _new_kpi_df,
     _refresh_table_csv_exports,
+    on_bp_tab_change,
 )
 from pages.mixing_sensitivity import (
     _build_verdict,
@@ -55,6 +56,29 @@ def test_bourne_table_exports_reflect_current_results():
 
     assert b"P/m (W/kg)" in state.bp_t1_conditions_csv
     assert b"Yield" in state.bp_t1_results_csv
+
+
+def test_plan_builds_all_three_tests_without_start_or_assessment():
+    from pages import bourne_protocol as bp
+
+    state = SimpleNamespace(**{
+        name: value.copy() if isinstance(value, pd.DataFrame) else value
+        for name, value in vars(bp).items() if name.startswith("bp_")
+    })
+    state.bp_tab = "Plan"
+    state.bp_started = False
+    state.bp_t1_assessed = False
+
+    on_bp_tab_change(state)
+
+    assert len(state.bp_t1_hydro_df) == 3
+    assert len(state.bp_t2_cond_df) == 3
+    assert len(state.bp_t3_cond_df) == 3
+    assert state.bp_t1_pm_eff > 0
+    assert state.bp_started is False
+    assert state.bp_t1_assessed is False
+    assert state.bp_show_t2 is False
+    assert b"Feed location" in state.bp_t3_conditions_csv
 
 
 def test_mixed_kpi_signal_is_inconclusive_not_confirmed_sensitive():

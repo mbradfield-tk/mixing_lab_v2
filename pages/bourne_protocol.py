@@ -445,6 +445,8 @@ bp_media_caption = media_caption(_reactor_id(bp_reactor))
 
 bp_status = "Define the system, then click Start Protocol."
 bp_started = False
+bp_tab = "Protocol"
+bp_tab_options = ["Protocol", "Plan"]
 
 # ---------------------------------------------------------------------------
 # State — Project Information
@@ -661,6 +663,33 @@ def on_bp_fluid_change(state):
 def on_bp_sys_change(state):
     if is_known_solvent(state.bp_fluid):
         _load_fluid(state)
+
+
+def _build_plan(state):
+    _build_t1(state)
+    _build_t2(state)
+    _build_t3(state)
+
+
+def on_bp_tab_change(state):
+    if state.bp_tab == "Plan":
+        _build_plan(state)
+
+
+def on_bp_plan_recalc(state):
+    _invalidate_assessments(state)
+    _build_plan(state)
+
+
+def on_bp_plan_fluid_change(state):
+    _load_fluid(state)
+    _build_plan(state)
+
+
+def on_bp_plan_sys_change(state):
+    if is_known_solvent(state.bp_fluid):
+        _load_fluid(state)
+    _build_plan(state)
 
 
 # ---------------------------------------------------------------------------
@@ -1421,6 +1450,9 @@ page = Markdown(
     inject_icons("""
 # __ICON:Bourne_Protocol__Bourne Protocol
 
+<|{bp_tab}|toggle|lov={bp_tab_options}|on_change=on_bp_tab_change|>
+
+<|part|render={bp_tab == "Protocol"}|
 <|{bp_status}|text|>
 
 A structured mixing-sensitivity screen (Bourne, 2003). Three gated tests reveal
@@ -1650,6 +1682,60 @@ the overall sensitivity assessment.
 
 <|part|render={bp_sens_csv_ready}|
 <|{None}|file_download|on_action=on_bp_sens_csv_download|label=Download Sensitivity CSV|>
+|>
+|>
+|>
+
+<|part|render={bp_tab == "Plan"}|
+## Experimental plan
+Set the vessel, fluid and test inputs to calculate all three experimental condition sets. Planning does not require starting or assessing the protocol. These inputs are shared with the Protocol tab; changing them invalidates previous assessments.
+
+<|part|class_name=va-card|
+### System
+<|layout|columns=1 1 1|
+<|{bp_reactor}|selector|lov={reactor_options}|dropdown|label=Vessel|on_change=on_bp_reactor_change|>
+<|{bp_fluid}|selector|lov={fluid_options}|dropdown|label=Fluid|on_change=on_bp_plan_fluid_change|>
+<|{bp_v_l}|number|label=Working volume (L)|on_change=on_bp_plan_recalc|>
+<|{bp_T}|number|label=Temperature (°C)|on_change=on_bp_plan_sys_change|>
+<|{bp_P}|number|label=Pressure (atm)|on_change=on_bp_plan_sys_change|>
+|>
+<|{bp_reactor_summary_df}|table|show_all|width=100%|>
+|>
+
+<|part|class_name=va-card|
+### Test 1: impeller speed
+<|layout|columns=1 1 1|
+<|{bp_t1_ctr_mode}|selector|lov={bp_t1_ctr_mode_options}|dropdown|label=Centre-point method|on_change=on_bp_plan_recalc|>
+<|{bp_t1_pm_center}|number|label=Centre P/m (W/kg)|active={bp_t1_ctr_mode == "Custom P/m"}|on_change=on_bp_plan_recalc|>
+<|{bp_t1_rpm_center}|number|label=Centre RPM|active={bp_t1_ctr_mode == "Custom RPM"}|on_change=on_bp_plan_recalc|>
+|>
+<|{bp_t1_ctr_info}|text|mode=markdown|>
+<|{bp_t1_hydro_df}|table|width=100%|show_all|>
+<|Download Test 1 conditions CSV|file_download|content={bp_t1_conditions_csv}|name=bourne_test_1_conditions.csv|label=Download Test 1 conditions CSV|>
+|>
+
+<|part|class_name=va-card|
+### Test 2: feed rate / time
+<|layout|columns=1 1 1 1|
+<|{bp_t2_feed_vol}|number|label=Total feed volume (mL)|on_change=on_bp_plan_recalc|>
+<|{bp_t2_mode}|toggle|lov={bp_t2_mode_options}|label=Define by|on_change=on_bp_plan_recalc|>
+<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == "Feed rate"}|on_change=on_bp_plan_recalc|>
+<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == "Feed time"}|on_change=on_bp_plan_recalc|>
+|>
+<|{bp_t2_cond_df}|table|width=100%|show_all|>
+<|Download Test 2 conditions CSV|file_download|content={bp_t2_conditions_csv}|name=bourne_test_2_conditions.csv|label=Download Test 2 conditions CSV|>
+|>
+
+<|part|class_name=va-card|
+### Test 3: feed location
+Keep the centre-point speed and feed rate fixed. Local dissipation ratios are illustrative; use measured or CFD-derived values when available.
+<|layout|columns=1 1 1|
+<|{bp_t3_surface_ratio}|number|label=Surface ε_loc/ε_avg|on_change=on_bp_plan_recalc|>
+<|{bp_t3_mid_ratio}|number|label=Mid ε_loc/ε_avg|on_change=on_bp_plan_recalc|>
+<|{bp_t3_impeller_ratio}|number|label=Impeller ε_loc/ε_avg|on_change=on_bp_plan_recalc|>
+|>
+<|{bp_t3_cond_df}|table|width=100%|show_all|>
+<|Download Test 3 conditions CSV|file_download|content={bp_t3_conditions_csv}|name=bourne_test_3_conditions.csv|label=Download Test 3 conditions CSV|>
 |>
 |>
 """)

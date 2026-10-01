@@ -112,6 +112,13 @@ def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> f
     return hi or lo or fallback
 
 
+def _round_sig(value: float, digits: int = 4) -> float:
+    """Round to significant figures; Taipy's number control has no display format."""
+    if value == 0 or not np.isfinite(value):
+        return value
+    return round(value, -int(np.floor(np.log10(abs(value)))) + digits - 1)
+
+
 SWEEP_PARAMETER_KEYS = {
     "Stir speed (rpm)": "n_rpm",
     "Liquid volume (L)": "v_l",
@@ -201,8 +208,8 @@ a_ht = estimate_jacket_area(d_tank, h_liquid, _bottom0)
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(
     v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
-a_ht = estimate_jacket_area(
-    d_tank, h_liquid, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
+a_ht = _round_sig(estimate_jacket_area(
+    d_tank, h_liquid, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m"))))
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -415,7 +422,7 @@ def _refresh_area(state):
     dish = str(row.get("bottom_dish", ""))
     dish_height = safe_float(row.get("H_bottom_dish_m"))
     h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, dish, dish_height)
-    state.a_ht = estimate_jacket_area(state.d_tank, h, dish, dish_height)
+    state.a_ht = _round_sig(estimate_jacket_area(state.d_tank, h, dish, dish_height))
 
 
 def on_v_l_change(state):

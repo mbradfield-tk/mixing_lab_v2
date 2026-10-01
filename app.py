@@ -401,6 +401,15 @@ button.compute-btn-ok:hover {
     margin: 4px 0 12px 0;
 }
 
+/* Click-selected row in the Vessel Database table. The theme leaves MUI's
+   Mui-selected row transparent, so the highlight is painted here. */
+.vessel-db-table .MuiTableRow-root.Mui-selected td {
+    background-color: rgba(225, 37, 27, 0.12) !important;
+}
+.taipy-dark .vessel-db-table .MuiTableRow-root.Mui-selected td {
+    background-color: rgba(225, 37, 27, 0.28) !important;
+}
+
 /* Centred Takeda logo shown at the top of every page (in the shared shell,
    above the page content). */
 .page-logo {

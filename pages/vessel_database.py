@@ -261,7 +261,38 @@ vessel_columns = list(vessel_raw_df.columns)
 vessel_colmap = _reverse_map(vessel_columns)               # friendly -> raw
 vessel_df = db.friendly_columns(vessel_raw_df)             # displayed / edited (friendly columns)
 vessel_search = ""                                         # global search box
+
+# Scope of the search box: the two headline fields, every field, or one column.
+VESSEL_SEARCH_NAME_OWNER = "Name & Owner"
+VESSEL_SEARCH_ALL = "All fields"
+
+# Text match by default; the comparison operators filter a single numeric column.
+VESSEL_SEARCH_CONTAINS = "contains"
+_NUMERIC_OPS = {
+    "=": lambda series, value: series == value,
+    "<": lambda series, value: series < value,
+    "<=": lambda series, value: series <= value,
+    ">": lambda series, value: series > value,
+    ">=": lambda series, value: series >= value,
+}
+vessel_search_op_options = [VESSEL_SEARCH_CONTAINS] + list(_NUMERIC_OPS)
+
+
+def _search_field_options(columns: list[str]) -> list[str]:
+    return [VESSEL_SEARCH_NAME_OWNER, VESSEL_SEARCH_ALL] + columns
+
+
+vessel_search_field_options = _search_field_options(list(vessel_df.columns))
+vessel_search_field = VESSEL_SEARCH_NAME_OWNER
+vessel_search_op = VESSEL_SEARCH_CONTAINS
+vessel_search_status = ""
 vessel_view_df = vessel_df                                 # what the table shows (full or filtered)
+
+# Click-to-highlight row: `selected` drives Taipy's own highlight, the index list
+# is also read back by vessel_row_class for the stronger custom styling.
+vessel_selected_rows: list[int] = []
+vessel_selected_caption = ""
+
 vessel_export = db.csv_bytes(vessel_raw_df)
 vessel_msg = f"{len(vessel_raw_df)} vessels in database."
 
@@ -405,21 +436,87 @@ def _refresh_display(state) -> None:
     state.vessel_columns = list(state.vessel_raw_df.columns)
     state.vessel_colmap = _reverse_map(state.vessel_columns)
     state.vessel_df = db.friendly_columns(state.vessel_raw_df)
+    state.vessel_search_field_options = _search_field_options(list(state.vessel_df.columns))
+    if state.vessel_search_field not in state.vessel_search_field_options:
+        state.vessel_search_field = VESSEL_SEARCH_NAME_OWNER
     state.vessel_view_df = _apply_search(state)
 
 
-def _apply_search(state) -> pd.DataFrame:
-    """Return the full friendly frame, or a filtered (read-only) view when searching.
+def _search_columns(field: str) -> list[str] | None:
+    """Columns to search; None means every column."""
+    if field == VESSEL_SEARCH_ALL:
+        return None
+    if field == VESSEL_SEARCH_NAME_OWNER:
+        return ["Reactor Name", "Owner"]
+    return [field]
 
-    Searches only the Reactor Name and Owner columns.
-    """
+
+def _apply_search(state) -> pd.DataFrame:
+    """Return the full friendly frame, or a filtered (read-only) view when searching."""
     query = (state.vessel_search or "").strip()
-    return (db.filter_rows(state.vessel_df, query, columns=["Reactor Name", "Owner"])
-            if query else state.vessel_df)
+    field = state.vessel_search_field
+    op = state.vessel_search_op
+    if not query:
+        state.vessel_search_status = ""
+        return state.vessel_df
+    if op == VESSEL_SEARCH_CONTAINS:
+        state.vessel_search_status = ""
+        return db.filter_rows(state.vessel_df, query, columns=_search_columns(field))
+    if field in (VESSEL_SEARCH_NAME_OWNER, VESSEL_SEARCH_ALL):
+        state.vessel_search_status = f"Pick a single field to compare with {op}."
+        return state.vessel_df
+    try:
+        value = float(query)
+    except ValueError:
+        state.vessel_search_status = f"Enter a number to compare with {op}."
+        return state.vessel_df
+    numeric = _numeric_series(state.vessel_df[field])
+    result = db.reset(state.vessel_df[_NUMERIC_OPS[op](numeric, value)])
+    state.vessel_search_status = f"{len(result)} of {len(state.vessel_df)} vessels where {field} {op} {query}."
+    return result
+
+
+def _clear_row_selection(state) -> None:
+    state.vessel_selected_rows = []
+    state.vessel_selected_caption = ""
+
+
+def _numeric_series(series: pd.Series) -> pd.Series:
+    """Coerce a column to numbers, tolerating thousands separators like ``14,774``."""
+    cleaned = series.astype(str).str.replace(",", "", regex=False).str.strip()
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
+def on_vessel_row_select(state, var_name, payload):
+    index = payload.get("index")
+    if index is None:
+        return
+    if index in state.vessel_selected_rows:
+        _clear_row_selection(state)
+        return
+    state.vessel_selected_rows = [index]
+    view = state.vessel_view_df
+    name = ""
+    if 0 <= index < len(view) and "Reactor Name" in view.columns:
+        name = str(view.iloc[index].get("Reactor Name", "") or "")
+    state.vessel_selected_caption = (
+        f"**Highlighted row {index + 1}:** {name}" if name
+        else f"**Highlighted row {index + 1}**")
 
 
 def on_vessel_search(state):
     state.vessel_view_df = _apply_search(state)
+    _clear_row_selection(state)
+
+
+def on_vessel_search_field_change(state):
+    state.vessel_view_df = _apply_search(state)
+    _clear_row_selection(state)
+
+
+def on_vessel_search_op_change(state):
+    state.vessel_view_df = _apply_search(state)
+    _clear_row_selection(state)
 
 
 def _searching(state) -> bool:
@@ -487,6 +584,7 @@ def on_vessel_delete(state, var_name, payload):
         return
     state.vessel_raw_df = db.delete_row(state.vessel_raw_df.copy(), payload)
     _refresh_display(state)
+    _clear_row_selection(state)
     _persist(state)
     notify(state, "I", "Row deleted.")
 
@@ -498,6 +596,7 @@ def on_vessel_add(state, var_name, payload):
     state.vessel_raw_df, _ = _assign_missing_reactor_ids(state.vessel_raw_df)
     state.vessel_raw_df = _refresh_search_names(state.vessel_raw_df)
     _refresh_display(state)
+    _clear_row_selection(state)
     _persist(state)
 
 
@@ -637,6 +736,7 @@ def _finalize_import(state):
     applied, skipped = cache["applied"], cache["skipped"]
     state.vessel_raw_df = db.reset(df)
     _refresh_display(state)
+    _clear_row_selection(state)
     _persist(state)
     state.vessel_import_active = False
     state._vessel_import_cache = {}
@@ -663,10 +763,26 @@ page. Reactor images are added separately.
 
 <|part|height=18px|>
 
-<|Vessel database|expandable|expanded=False|
-<|{vessel_search}|input|label=Search by name or owner|on_change=on_vessel_search|class_name=db-search|>
+<|layout|columns=260px 150px 320px|
+<|{vessel_search_field}|selector|lov={vessel_search_field_options}|dropdown|label=Search in|on_change=on_vessel_search_field_change|>
 
-<|{vessel_view_df}|table|editable={admin_authenticated and vessel_search == ""}|filter|rebuild|on_edit=on_vessel_edit|on_delete=on_vessel_delete|on_add=on_vessel_add|width=100%|page_size=12|>
+<|{vessel_search_op}|selector|lov={vessel_search_op_options}|dropdown|label=Compare|on_change=on_vessel_search_op_change|>
+
+<|{vessel_search}|input|label=Search|on_change=on_vessel_search|class_name=db-search|>
+|>
+
+<|{vessel_search_status}|text|>
+
+Click any row to highlight it, making it easier to follow while editing. Choose a
+single field and a comparison operator to filter numerically — for example, set
+**Search in** to Max Volume, **Compare** to greater-than and search for 100.
+
+<|{vessel_selected_caption}|text|mode=markdown|>
+
+<|Vessel database|expandable|expanded=False|
+<|part|class_name=vessel-db-table|
+<|{vessel_view_df}|table|editable={admin_authenticated and vessel_search == ""}|filter|rebuild|on_edit=on_vessel_edit|on_delete=on_vessel_delete|on_add=on_vessel_add|on_action=on_vessel_row_select|selected={vessel_selected_rows}|width=100%|page_size=12|>
+|>
 |>
 |>
 

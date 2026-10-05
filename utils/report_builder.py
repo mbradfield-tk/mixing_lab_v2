@@ -1173,7 +1173,10 @@ def build_protocol_pdf(snap: dict) -> bytes:
     pdf.add_page()
     pdf.section_title("Recommended Next Steps")
     if next_steps:
-        _step_rows = [[step.get("Area", ""), step.get("Action", "")]
+        # The page emits the UI column name ("Recommended action"); accept the
+        # legacy "Action" key as well.
+        _step_rows = [[step.get("Area", ""),
+                       step.get("Recommended action", step.get("Action", ""))]
                       for step in next_steps]
         pdf.data_table(["Area", "Recommended Action"], _step_rows,
                        col_widths=[40, 130])

@@ -1445,7 +1445,7 @@ for every mechanism below. When derived from k and C₀, the protocol uses a con
 |>
 
 <|layout|columns=1 1 1|class_name=form-grid|
-<|{ms_rxn_trxn}|number|label=t<sub>rxn</sub> (s, 0 = derive from k)|on_change=on_ms_kin_change|>
+<|{ms_rxn_trxn}|number|label=Reaction time (s, 0 = derive from k)|on_change=on_ms_kin_change|>
 
 <|{ms_rxn_T}|number|label=Temperature (°C)|on_change=on_ms_kin_change|>
 

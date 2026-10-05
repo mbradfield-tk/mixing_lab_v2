@@ -863,9 +863,12 @@ def _env_ranges(state) -> tuple[np.ndarray, float, float]:
 def _point_values(state, n_rpm: float, v_l: float, t_rxn: float, params: list[str]) -> dict:
     """Evaluate the selected envelope parameters at one (N, V) point."""
     h = _hydro_at(state, n_rpm, v_l)
+    # Match the results table: gas-liquid transfer only counts when a gas phase is active.
+    gas_on = state.va_gas_mode == "On"
     d = compute_damkohler_numbers(
         h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-        kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"])
+        kLa=h["kLa (1/s)"] if gas_on else 0.0,
+        kLa_surface=h["kLa_surface (1/s)"] if gas_on else 0.0)
     return {p: (d[p] if p.startswith("Da_") else h[p]) for p in params}
 
 

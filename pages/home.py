@@ -12,7 +12,7 @@ from taipy.gui import Markdown
 from utils.menu_icons import image_thumb_uri, inject_icons
 
 APP_VERSION = "Beta"
-RELEASE_DATE = "September 2026"
+RELEASE_DATE = "October 2026"
 
 # App logo, downscaled + cached (displayed ~180px; 360px thumb stays crisp on retina).
 _LOGO_URI = image_thumb_uri(
@@ -56,8 +56,8 @@ Use the menu on the left to navigate between sections.
 ## Assessment tools
 
 - **__ICON:Vessel_Assessment__[Vessel Assessment](/Vessel_Assessment)** — full single-vessel analysis: hydrodynamics,
-  Damköhler numbers, solid suspension, heat balance and an operating-envelope
-  chart, with PDF export.
+  Damköhler numbers, mass-transfer capacity screen, solid suspension, heat balance, an
+  operating-envelope chart and interactive 3D response surfaces, with PDF export.
 - **__ICON:Vessel_Comparison__[Vessel Comparison](/Vessel_Comparison)** — side-by-side envelopes for several vessels plus
   scale-up matching between scales.
 - **__ICON:Bourne_Protocol__[Bourne Protocol](/Bourne_Protocol)** — experimental screen for mixing sensitivity

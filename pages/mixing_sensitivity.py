@@ -35,13 +35,19 @@ import pandas as pd
 from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
-from utils.solvent_properties import get_properties, is_known_solvent
+from utils.calculations import (
+    characteristic_reaction_time,
+    compute_reactor_hydro,
+    liquid_height_from_volume,
+)
+from utils.solvent_properties import get_properties, is_known_solvent, resolve_solvent_name
 from utils.report_builder import build_protocol_pdf, report_filename, report_header_label
 from pages import _db_common as db
 from vessel_media import build_image_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
+reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
 
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images" / "general"
 ms_decision_tree_html = build_image_html(
@@ -63,6 +69,35 @@ def _reaction_row(name: str) -> pd.Series:
     df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
     row = df[df["reaction_name"].astype(str) == str(name)]
     return row.iloc[0] if not row.empty else pd.Series(dtype=object)
+
+
+def _reactor_row(name: str) -> pd.Series:
+    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
+    row = df[df["reactor_name"].astype(str) == str(name)]
+    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
+
+
+def _mid(row: pd.Series, lo_key: str, hi_key: str, fallback: float) -> float:
+    lo, hi = _sf(row.get(lo_key)), _sf(row.get(hi_key))
+    if lo > 0 and hi > 0:
+        return (lo + hi) / 2.0
+    return hi or lo or fallback
+
+
+def _solvent_props(solvent: str, T_C: float) -> dict | None:
+    """Solvent property dict at T (None when the name is not in the library)."""
+    if not solvent or not is_known_solvent(solvent):
+        return None
+    try:
+        return get_properties(resolve_solvent_name(solvent) or solvent, T_C, 1.0)
+    except Exception:  # noqa: BLE001 - property library edge cases
+        return None
+
+
+def _update_rho_cp(state, solvent: str, T_C: float) -> None:
+    p = _solvent_props(solvent, T_C)
+    if p:
+        state.ms_rho_cp = round(p["rho_kg_m3"] * p["Cp_J_per_kgK"] / 1000.0, 1)
 
 
 def _amd(kind: str, text: str) -> str:
@@ -159,33 +194,13 @@ def _damkohler_screening_note(t_rxn: float) -> str:
 
 def _reaction_timescale_profile(order: str, k: float, C0: float,
                                 t_specified: float = 0.0) -> tuple[float, float, str]:
-    """Return initial and conservative 90%-conversion reaction times.
+    """Return (characteristic t_rxn, 90 %-conversion time, basis).
 
-    The second value is used for a process-window screen when kinetics are
-    derived from ``k`` and ``C0``. A directly specified ``t_rxn`` is retained
-    as-is because its conversion basis is unknown.
+    The first value drives every Damköhler comparison (shortest = most
+    conservative for mixing sensitivity); the second is shown as process-window
+    context only. See ``characteristic_reaction_time``.
     """
-    if t_specified > 0:
-        return t_specified, t_specified, "specified directly"
-    if k <= 0:
-        return 0.0, 0.0, ""
-
-    normalized_order = str(order)
-    if normalized_order in ("1", "pseudo-1"):
-        initial = 1.0 / k
-        worst = 2.302585093 / k
-        basis = "1/k; 90% conversion = 2.303/k"
-    elif normalized_order in ("2", "pseudo-2") and C0 > 0:
-        initial = 1.0 / (k * C0)
-        worst = 9.0 / (k * C0)
-        basis = "1/(k·C₀); 90% conversion = 9/(k·C₀)"
-    elif normalized_order == "0" and C0 > 0:
-        initial = C0 / k
-        worst = 0.9 * C0 / k
-        basis = "C₀/k; 90% conversion = 0.9·C₀/k"
-    else:
-        return 0.0, 0.0, "fallback (order/C₀ incomplete)"
-    return initial, worst, basis
+    return characteristic_reaction_time(order, k, C0, t_specified)
 
 
 def _heat_transfer_summary(abs_dH: float, dt_ad: float | None = None, *,
@@ -372,10 +387,19 @@ ms_step4_assess = ""
 ms_dt_ad_caption = ""
 
 # ---------------------------------------------------------------------------
-# State - Step 5 (mixing time)
+# State - Step 5 (mixing time) - optional reactor-specific Damköhler screen
 # ---------------------------------------------------------------------------
 ms_trxn_caption = ""
 ms_step5_assess = ""
+ms_da_mode = "Off"
+ms_da_mode_options = ["Off", "On"]
+ms_da_reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
+ms_da_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in ms_da_reactor_options
+                 else (ms_da_reactor_options[0] if ms_da_reactor_options else ""))
+_da_r0 = _reactor_row(ms_da_reactor)
+ms_da_rpm = _mid(_da_r0, "N_rpm_min", "N_rpm_max", 300.0)
+ms_da_vl = _mid(_da_r0, "V_L_min", "V_L_max", _sf(_da_r0.get("V_L"), 1.0))
+ms_da_caption = ""
 
 # ---------------------------------------------------------------------------
 # State - Step 6 (summary) + Step 7 (export)
@@ -468,8 +492,7 @@ def _recompute(state):
     dH = _sf(state.ms_rxn_dh)
     rxn_type = str(row.get("type", "") or "")
 
-    t_rxn, t_rxn_worst, t_basis = _reaction_timescale_profile(
-        order, k, C0, t_specified)
+    t_rxn, t_90, t_basis = _reaction_timescale_profile(order, k, C0, t_specified)
 
     using_approx = state.ms_kinetics_avail.startswith("Approximate")
     kinetics_declined = state.ms_kinetics_avail.startswith("No")
@@ -486,18 +509,15 @@ def _recompute(state):
     if t_rxn > 0:
         state.ms_kinetics_md = (
             f"**Kinetic model** (order {order}): {law}\n\n"
-            f"Initial characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({t_basis}). "
-            + (f"For a 90% conversion process window, use **{t_rxn_worst:.4g} s** as the "
-                    "conservative timescale. " if t_rxn_worst != t_rxn else "")
-                + "This is the reaction time constant used in the Damköhler number "
-                "(the e-folding time, not the half-life).")
+            f"Characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({t_basis}). This is the "
+            "initial-rate time constant used in every Damköhler comparison below — the shortest "
+            "(most conservative) estimate for mixing sensitivity."
+            + (f" For process-window planning, 90% conversion takes about **{t_90:.4g} s**; "
+               "that longer figure is *not* used for the Damköhler screen."
+               if t_90 != t_rxn else ""))
     else:
         state.ms_kinetics_md = ("⚠️ Cannot determine a characteristic reaction time - "
                     "check k, C₀ and t_rxn in the Reaction Database.")
-
-    # Use the process-window estimate for downstream mixing comparisons. The
-    # initial value remains visible above so the conservatism is auditable.
-    t_rxn = t_rxn_worst
 
     if kinetics_declined:
         state.ms_step1_assess = _amd(
@@ -649,9 +669,14 @@ def _recompute(state):
         state.ms_dt_ad_caption = ""
 
     # ---- Step 5: mixing time vs reaction time --------------------------
+    da = _inline_damkohler(state, t_rxn) if (kinetics_known and t_rxn > 0) else None
+    state.ms_da_caption = _da_caption(da)
     if kinetics_known and t_rxn > 0:
         state.ms_trxn_caption = f"Your reaction time: **t_rxn = {t_rxn:.4g} s**."
-        if t_rxn < 0.1:
+        if da:
+            kind, text, micro_likely = _da_assessment(da)
+            state.ms_step5_assess = _amd(kind, text)
+        elif t_rxn < 0.1:
             state.ms_step5_assess = _amd(
                 "critical", "**Very fast reaction** - micromixing-sensitive in most reactor "
                 "configurations. Local turbulent energy dissipation near the impeller, feed "
@@ -690,7 +715,7 @@ def _recompute(state):
         b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
         meso_sensitive, competing, is_semi_batch, multiphase, phases,
         has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known, using_approx,
-        dh_estimated)
+        dh_estimated, da)
     verdict, verdict_kind = _build_verdict(
         b_sensitive, b_mechs, b_done, findings, competing)
     next_steps = _build_next_steps(
@@ -728,19 +753,85 @@ def _recompute(state):
         "competing": competing if competing_set else "Not assessed",
         "overall_verdict": _strip_md(verdict), "using_approximate": using_approx,
         "dh_estimated": dh_estimated, "is_semi_batch": is_semi_batch,
+        "damkohler": dict(da) if da else {},
     }
 
 
-def _ms_meta_from_caption(_caption: str) -> dict:
-    if not _caption:
-        return {}
-    meta = {}
-    for part in _caption.split("  •  "):
-        match = re.search(r"\*\*(.+?):\*\*\s*(.+)", part)
-        if match:
-            key, value = match.groups()
-            meta[key.strip().lower().replace(" ", "_")] = value.strip()
-    return meta
+# ---------------------------------------------------------------------------
+# Inline Damköhler screen (Step 5, optional vessel)
+# ---------------------------------------------------------------------------
+def _inline_damkohler(state, t_rxn: float) -> dict | None:
+    """Da_macro / Da_micro for the chosen vessel at the given N and V (literature
+    correlations, solvent from the reaction row, else water). None when off or
+    the vessel geometry is incomplete."""
+    if getattr(state, "ms_da_mode", "Off") != "On":
+        return None
+    row = _reactor_row(getattr(state, "ms_da_reactor", ""))
+    d_tank, d_imp = _sf(row.get("D_tank_m")), _sf(row.get("D_imp_m"))
+    n_rpm, v_l = _sf(getattr(state, "ms_da_rpm", 0.0)), _sf(getattr(state, "ms_da_vl", 0.0))
+    if row.empty or d_tank <= 0 or d_imp <= 0 or n_rpm <= 0 or v_l <= 0:
+        return None
+    T_C = _sf(getattr(state, "ms_rxn_T", 25.0), 25.0)
+    solvent = str(_reaction_row(state.ms_reaction).get("solvent", "") or "")
+    props = _solvent_props(solvent, T_C) or _solvent_props("Water", T_C)
+    rho = props["rho_kg_m3"] if props else 1000.0
+    mu = props["mu_Pa_s"] if props else 1e-3
+    h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), d_tank))
+    h_liq = liquid_height_from_volume(v_l, d_tank, h_max, str(row.get("bottom_dish", "") or ""),
+                                      db.bottom_dish_height(row))
+    Np = _sf(row.get("Np")) or None
+    Nq = _sf(row.get("Nq")) or None
+    h = compute_reactor_hydro(N=n_rpm / 60.0, D_imp=d_imp, D_tank=d_tank, H=h_liq,
+                              rho=rho, mu=mu, Np=Np, Nq=Nq)
+    t_blend, t_e = h["Blend time 95% (s)"], h["Micromix time t_E (s)"]
+    return {
+        "reactor": str(getattr(state, "ms_da_reactor", "")), "N_rpm": n_rpm, "V_L": v_l,
+        "fluid": (resolve_solvent_name(solvent) or solvent) if props and solvent else "Water",
+        "t_blend": t_blend, "t_E": t_e, "Re": h["Re"], "P_V_W_L": h["P/V (W/L)"],
+        "Da_macro": t_blend / t_rxn if t_rxn > 0 else 0.0,
+        "Da_micro": t_e / t_rxn if t_rxn > 0 else 0.0,
+    }
+
+
+def _da_band(da: float) -> str:
+    if da >= 1.0:
+        return "mixing-limited"
+    if da >= 0.1:
+        return "transitional"
+    return "insensitive"
+
+
+def _da_caption(da: dict | None) -> str:
+    if not da:
+        return ""
+    return (f"**{da['reactor']}** at {da['N_rpm']:.0f} RPM, {da['V_L']:.3g} L, {da['fluid']} — "
+            f"Re = {da['Re']:,.0f}, P/V = {da['P_V_W_L']:.3g} W/L, θ₉₅ = {da['t_blend']:.3g} s, "
+            f"t_E = {da['t_E']:.3g} s  →  **Da_macro = {da['Da_macro']:.3g}** ({_da_band(da['Da_macro'])}), "
+            f"**Da_micro = {da['Da_micro']:.3g}** ({_da_band(da['Da_micro'])}).")
+
+
+def _da_assessment(da: dict) -> tuple[str, str, bool]:
+    """(traffic-light kind, text, micro_likely) from reactor-specific Da numbers."""
+    dmi, dma = da["Da_micro"], da["Da_macro"]
+    micro_likely = dmi >= 0.1
+    worst = max(dmi, dma)
+    if worst >= 1.0:
+        kind, head = "critical", "**Mixing-limited in this vessel**"
+    elif worst >= 0.1:
+        kind, head = "warning", "**Transitional in this vessel**"
+    else:
+        kind, head = "ok", "**Mixing-insensitive in this vessel**"
+    parts = [f"{head} - Da_micro = {dmi:.3g} ({_da_band(dmi)}), Da_macro = {dma:.3g} ({_da_band(dma)})."]
+    if dmi >= 0.1:
+        parts.append("Micromixing competes with the reaction: hold local ε at the feed point on "
+                     "scale-up and keep the feed near the impeller.")
+    if dma >= 0.1:
+        parts.append("Bulk blending is comparable to the reaction time: blend time grows as "
+                     "T^(2/3) at constant P/V, so re-check Da_macro at the next scale.")
+    if worst < 0.1:
+        parts.append("Both timescales are well below t_rxn; re-run this screen for the "
+                     "larger vessel before scale-up.")
+    return kind, " ".join(parts), micro_likely
 
 
 def _strip_md(text: str) -> str:
@@ -753,12 +844,14 @@ def _strip_md(text: str) -> str:
 def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                     meso_sensitive, competing, is_semi_batch, multiphase, phases,
                     has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known,
-                    using_approx=False, dh_estimated=False):
+                    using_approx=False, dh_estimated=False, da=None):
     findings: list[tuple[str, str, str]] = []
     kpi_phrase = _sensitive_kpi_phrase(test_rows)
     rem = _remaining_tests(b_done)
     rem_action = (f"complete {_fmt_tests(rem)} of the Bourne Protocol" if rem
                   else "re-run the Bourne Protocol decision tree")
+    proxy_tag = " (proxy kinetics)" if using_approx else ""
+    proxy_note = " Based on proxy kinetics - verify with measured data." if using_approx else ""
 
     # Bourne pre-screen
     if b_sensitive is True:
@@ -793,6 +886,13 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
         findings.append(("Micromixing", "⚪ Unknown",
                          "Reaction kinetics not available - micromixing cannot be assessed from "
                          "t_rxn. A Bourne pre-screen (Test 1) gives a direct experimental answer."))
+    elif da:
+        dmi = da["Da_micro"]
+        icon = "🔴 Likely sensitive" if dmi >= 1.0 else ("🟡 Transitional" if dmi >= 0.1 else "🟢 Unlikely")
+        findings.append(("Micromixing", icon + proxy_tag,
+                         f"Da_micro = {dmi:.3g} in {da['reactor']} ({da['N_rpm']:.0f} RPM, "
+                         f"{da['V_L']:.3g} L): t_E = {da['t_E']:.3g} s vs t_rxn = {t_rxn:.4g} s."
+                         + proxy_note))
     elif micro_likely:
         findings.append(("Micromixing", "🔴 Likely sensitive",
                          f"t_rxn = {t_rxn:.4g} s - fast enough that local energy dissipation "
@@ -825,6 +925,13 @@ def _build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely
         findings.append(("Macromixing (blend time)", "⚪ Unknown",
                          "Reaction kinetics not available - t_rxn cannot be compared to the "
                          "vessel blend time."))
+    elif da:
+        dma = da["Da_macro"]
+        icon = "🔴 Likely sensitive" if dma >= 1.0 else ("🟡 Transitional" if dma >= 0.1 else "🟢 Unlikely")
+        findings.append(("Macromixing (blend time)", icon + proxy_tag,
+                         f"Da_macro = {dma:.3g} in {da['reactor']}: θ₉₅ = {da['t_blend']:.3g} s vs "
+                         f"t_rxn = {t_rxn:.4g} s. Blend time grows ~T^(2/3) at constant P/V - "
+                         "re-check at the next scale." + proxy_note))
     elif t_rxn < 60:
         findings.append(("Macromixing (blend time)", "🟡 Check at scale",
                          f"t_rxn = {t_rxn:.4g} s is within the range of blend times in larger "
@@ -1025,12 +1132,7 @@ def on_ms_reaction_change(state):
     state.ms_rxn_dh = kd["dH"]
     solvent = str(row.get("solvent", "") or "")
     # auto-fill volumetric heat capacity from the solvent when known
-    if solvent and is_known_solvent(solvent):
-        try:
-            p = get_properties(solvent, kd["T"], 1.0)
-            state.ms_rho_cp = round(p["rho_kg_m3"] * p["Cp_J_per_kgK"] / 1000.0, 1)
-        except Exception:  # noqa: BLE001
-            pass
+    _update_rho_cp(state, solvent, kd["T"])
     state.ms_c0_heat = round(kd["C0"], 4) if kd["C0"] > 0 else 1.0
     _safe_recompute(state)
 
@@ -1038,6 +1140,9 @@ def on_ms_reaction_change(state):
 def on_ms_kin_change(state, var_name=None, value=None):
     if var_name == "ms_rxn_c0" and _sf(state.ms_rxn_c0) > 0:
         state.ms_c0_heat = round(_sf(state.ms_rxn_c0), 4)
+    if var_name == "ms_rxn_T":
+        row = _reaction_row(state.ms_reaction)
+        _update_rho_cp(state, str(row.get("solvent", "") or ""), _sf(state.ms_rxn_T, 25.0))
     _safe_recompute(state)
 
 
@@ -1047,6 +1152,14 @@ def on_ms_change(state):
     if state.ms_reaction != previous_reaction:
         on_ms_reaction_change(state)
         return
+    _safe_recompute(state)
+
+
+def on_ms_da_reactor_change(state):
+    """Seed the Step 5 operating point from the chosen vessel's mid-range."""
+    row = _reactor_row(state.ms_da_reactor)
+    state.ms_da_rpm = _mid(row, "N_rpm_min", "N_rpm_max", _sf(state.ms_da_rpm, 300.0))
+    state.ms_da_vl = _mid(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), _sf(state.ms_da_vl, 1.0)))
     _safe_recompute(state)
 
 
@@ -1063,26 +1176,26 @@ def on_ms_bourne_import(state):
     if not path:
         return
     try:
-        df = pd.read_csv(path, dtype=str, keep_default_na=False)
+        df = db.read_upload_csv(path, dtype=str, keep_default_na=False)
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Could not read the file: {exc}")
         return
     if not ({"field", "value"} <= set(df.columns)):
         notify(state, "E", "Not a Bourne results CSV (expected 'field','value' columns).")
         return
-    d = dict(zip(df["field"], df["value"]))
+    d = {str(k).strip(): str(v).strip() for k, v in zip(df["field"], df["value"])}
     if d.get("record_type") != "bourne_results":
         notify(state, "E", "That CSV is not a Bourne Protocol results export.")
         return
-    # map into the manual-entry controls
-    overall = (d.get("overall_sensitive") or "unknown").strip()
+    # map into the manual-entry controls (three-way: yes / no / inconclusive)
+    overall = (d.get("overall_sensitive") or "unknown").lower()
     if overall == "yes":
         state.ms_bourne_status = "Ran - sensitivity confirmed"
     elif overall == "no":
         state.ms_bourne_status = "Ran - no sensitivity at lab scale"
     else:
         state.ms_bourne_status = "Ran - inconclusive (Test 1 not completed)"
-    dom = (d.get("dominant_mechanism") or "").strip()
+    dom = d.get("dominant_mechanism", "")
     state.ms_bourne_mech = dom if dom in ("Micromixing", "Mesomixing", "Macromixing") else "Not resolved"
     done, rows = [], []
     names = {1: "Test 1 - Impeller speed", 2: "Test 2 - Feed rate/time", 3: "Test 3 - Feed location"}
@@ -1091,26 +1204,33 @@ def on_ms_bourne_import(state):
         if not assessed:
             continue
         done.append(f"Test {n}")
-        rows.append({"Test": names[n], "Finding": (d.get(f"test{n}_finding") or "-").strip() or "-",
-                     "Sensitive KPI(s)": (d.get(f"test{n}_sensitive_kpis") or "").strip()
+        rows.append({"Test": names[n], "Finding": d.get(f"test{n}_finding") or "-",
+                     "Sensitive KPI(s)": d.get(f"test{n}_sensitive_kpis")
                      or "None (no KPI over threshold)"})
     state.ms_bourne_tests = done or ["Test 1"]
     state.ms_bourne_findings_df = pd.DataFrame(rows) if rows else pd.DataFrame(
         columns=["Test", "Finding", "Sensitive KPI(s)"])
     meta_bits = []
-    for lbl, fld in [("Project", "project_name"), ("Reactor", "reactor"), ("Fluid", "fluid")]:
-        v = (d.get(fld) or "").strip()
+    for lbl, fld in [("Project", "project_name"), ("Step", "step_number"),
+                     ("Reactor", "reactor"), ("Fluid", "fluid"),
+                     ("Tentative mechanism", "dominant_mechanism_tentative")]:
+        v = d.get(fld, "")
         if v:
             meta_bits.append(f"**{lbl}:** {v}")
-    state.ms_bourne_meta = {
-        "project_name": (d.get("project_name") or "").strip(),
-        "reactor": (d.get("reactor") or "").strip(),
-        "fluid": (d.get("fluid") or "").strip(),
-        "test_status": (d.get("test_status") or "").strip(),
-        "protocol_version": (d.get("protocol_version") or "").strip(),
-    }
-    state.ms_bourne_meta = {k: v for k, v in state.ms_bourne_meta.items() if v}
+    meta_keys = ("project_name", "step_number", "unit_operation", "process_version",
+                 "reactor", "fluid", "working_volume_L", "test_status", "protocol_version",
+                 "test1_pm_range_ratio", "dominant_mechanism_tentative")
+    state.ms_bourne_meta = {k: d[k] for k in meta_keys if d.get(k)}
     state.ms_bourne_meta_caption = "Imported Bourne results - " + "  •  ".join(meta_bits) if meta_bits else ""
+    # Prefill blank Project Information fields from the Bourne export.
+    for attr, fld in (("ms_project_name", "project_name"), ("ms_step_text", "step_number"),
+                      ("ms_process_version", "process_version")):
+        if d.get(fld) and not str(getattr(state, attr, "") or "").strip():
+            setattr(state, attr, d[fld])
+    unit_op = d.get("unit_operation", "")
+    if (unit_op in ms_unit_operation_options
+            and getattr(state, "ms_unit_operation", "") in ("", ms_unit_operation_options[0])):
+        state.ms_unit_operation = unit_op
     notify(state, "S", "Bourne results imported.")
     if all(hasattr(state, field) for field in [
         "ms_started", "ms_reaction", "ms_kinetics_avail", "ms_phases",
@@ -1192,6 +1312,8 @@ def on_ms_reset(state):
     state.ms_dh_measured = "No - estimated"
     state.ms_rho_cp = 1800.0
     state.ms_c0_heat = 1.0
+    state.ms_da_mode = "Off"
+    state.ms_da_caption = ""
     # computed outputs
     state.ms_step0_assess = ""
     state.ms_step1_assess = ""
@@ -1428,9 +1550,25 @@ describes the time needed to homogenize the whole vessel.
 
 The estimates below compare micromixing time **t<sub>E</sub> ≈ 17.3·√(ν/ε)** and bulk
 blend time **θ<sub>95</sub> = 5.2·T^1.5·H^0.5/(N<sub>p</sub>^(1/3)·N·D²)** with the reaction time.
+Without a vessel, the screen uses fixed reaction-time bands; select a vessel to
+compute the actual **Da<sub>macro</sub>** and **Da<sub>micro</sub>** for a chosen operating point.
+
+<|{ms_da_mode}|toggle|lov={ms_da_mode_options}|label=Compute Damköhler numbers for a vessel|class_name=onoff-toggle|on_change=on_ms_change|>
+
+<|part|render={ms_da_mode == "On"}|
+<|layout|columns=2 1 1|class_name=form-grid|
+<|{ms_da_reactor}|selector|lov={ms_da_reactor_options}|dropdown|label=Vessel|on_change=on_ms_da_reactor_change|>
+
+<|{ms_da_rpm}|number|label=Agitation speed N (RPM)|on_change=on_ms_change|>
+
+<|{ms_da_vl}|number|label=Working volume (L)|on_change=on_ms_change|>
+|>
+|>
 
 <|part|render={ms_step5_assess != ""}|class_name=result-box|
 <|{ms_trxn_caption}|text|mode=markdown|>
+
+<|{ms_da_caption}|text|mode=markdown|>
 
 <|{ms_step5_assess}|text|mode=markdown|>
 |>

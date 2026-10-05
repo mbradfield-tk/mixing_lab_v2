@@ -23,6 +23,31 @@ REFERENCES (per function)
 import numpy as np
 
 
+def characteristic_reaction_time(order: str, k: float, C0: float = 0.0,
+                                 t_specified: float = 0.0) -> tuple[float, float, str]:
+    """Return (t_rxn, t_90, basis) for a reaction of the given order.
+
+    ``t_rxn`` is the characteristic (initial-rate) time used in every Damköhler
+    number: 1/k (1st / pseudo-1st order), 1/(k·C0) (2nd / pseudo-2nd order,
+    equimolar) or C0/k (zero order). ``t_90`` is the time to 90 % conversion, a
+    process-window figure that is 2.3–9x LONGER and therefore NOT conservative for
+    mixing sensitivity (Da = t_mix / t_rxn is largest for the shortest t_rxn).
+    A directly specified time is returned unchanged for both (its conversion
+    basis is unknown). All times in seconds; 0.0 when undeterminable.
+    """
+    if t_specified and t_specified > 0:
+        return float(t_specified), float(t_specified), "specified directly"
+    if not k or k <= 0:
+        return 0.0, 0.0, ""
+    o = str(order).strip()
+    if o in ("1", "pseudo-1"):
+        return 1.0 / k, np.log(10.0) / k, "1/k; 90% conversion = 2.303/k"
+    if o in ("2", "pseudo-2") and C0 > 0:
+        return 1.0 / (k * C0), 9.0 / (k * C0), "1/(k·C₀); 90% conversion = 9/(k·C₀)"
+    if o == "0" and C0 > 0:
+        return C0 / k, 0.9 * C0 / k, "C₀/k; 90% conversion = 0.9·C₀/k"
+    return 0.0, 0.0, "fallback (order/C₀ incomplete)"
+
 def damkohler_macro(t_blend: float, t_rxn: float) -> float:
     """Da_macro = θ_blend / t_rxn"""
     if t_rxn == 0:

@@ -36,6 +36,7 @@ from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
 from utils.calculations import (
+    characteristic_reaction_time,
     compute_damkohler_numbers,
     estimate_U_detailed,
     estimate_jacket_area,
@@ -263,13 +264,8 @@ def _kin_defaults(name: str) -> dict:
 
 
 def _derive_trxn(order: str, k: float, C0: float, t_specified: float) -> float:
-    if t_specified > 0:
-        return t_specified
-    if order in ("1", "pseudo-1") and k > 0:
-        return 1.0 / k
-    if order in ("2", "pseudo-2") and k * C0 > 0:
-        return 1.0 / (k * C0)
-    return 1.0
+    # Falls back to 1 s so the comparison still runs when kinetics are incomplete.
+    return characteristic_reaction_time(order, k, C0, t_specified)[0] or 1.0
 
 
 def _kin_caption(order: str, k: float, C0: float, t_spec: float, dH: float) -> str:

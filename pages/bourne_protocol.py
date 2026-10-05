@@ -12,12 +12,16 @@ mixing-sensitive. A decision tree then identifies the dominant mixing scale and
 gives scale-up recommendations.
 
 Test 1 supports three centre-point selection modes (default 0.2 W/kg, custom
-P/m, or custom RPM), tracking of multiple KPIs (combined by majority vote), and
-discrete impeller-speed setpoints that hold P/m constant as a fed-batch volume
-grows.
+P/m, or custom RPM), tracking of multiple KPIs with KPI-specific thresholds and
+an optional measurement-noise floor (rules in ``utils/bourne_kpi.py``), discrete
+impeller-speed setpoints that hold P/m constant as a fed-batch volume grows, a
+speed-vs-fill-volume iso-P/m plot, PDF export and a CSV hand-off to the Reaction
+Sensitivity Protocol. The decision tree (``_protocol_outcome``) treats mixed KPI
+signals and an inadequate (< 100x) P/m span as *inconclusive* rather than as a
+negative result.
 
-Deferred vs the Streamlit page (follow-ups): the speed-vs-fill-volume iso-line
-plot, qualitative KPI capture, confirmatory experiments, and PDF/CSV export.
+Not yet ported from the Streamlit page: qualitative KPI capture and confirmatory
+experiments.
 """
 from __future__ import annotations
 
@@ -50,6 +54,7 @@ from utils.solvent_properties import (
     resolve_solvent_name,
 )
 from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
+from utils import bourne_kpi as kpi
 from pages import _db_common as db
 from vessel_media import build_image_html, build_vessel_viewer_html, media_caption
 
@@ -71,7 +76,7 @@ RESPONSE_METRICS = ["Yield", "Purity", "Conversion", "Selectivity",
 # keeps the cell "free" (a custom value can still be typed in).
 KPI_METRIC_OPTIONS = RESPONSE_METRICS + [None]
 UNIT_OPTIONS = ["%", "ppm", "area%", "wt%", "mol%", "µm", "g/L", "AU", None]
-_SENS_THRESHOLD = 5.0  # % change from centre that counts as "sensitive"
+_SENS_THRESHOLD = kpi.SENS_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -149,52 +154,16 @@ def _fluid_diffusivity(name: str, T_C: float, P_atm: float = 1.0) -> float:
     return 2.3e-9
 
 
-def _assess_with_threshold(low: float, center: float, high: float,
-                          threshold: float = _SENS_THRESHOLD) -> tuple[float, bool]:
-    """Return (max % change from centre, sensitive?) for a specific KPI threshold.
-
-    For near-zero centers, use an absolute-difference criterion rather than a
-    blanket 100% rule so small but analytically real changes are still detected
-    without over-classifying every near-zero measurement as 100% different.
-    """
-    if abs(center) <= 1e-12:
-        span = max(abs(low), abs(center), abs(high))
-        if span == 0:
-            return 0.0, False
-        base = max(1.0, span)
-        max_pct = max(abs(v - center) / base * 100.0 for v in (low, center, high))
-        return max_pct, max_pct >= threshold
-    max_pct = max(abs(v - center) / abs(center) * 100.0 for v in (low, center, high))
-    return max_pct, max_pct >= threshold
+# KPI assessment rules live in utils/bourne_kpi.py (shared with the Reaction
+# Sensitivity Protocol import); the local names are kept for callers/tests.
+_assess_with_threshold = kpi.assess_with_threshold
+_kpi_threshold = kpi.kpi_threshold
+_kpi_criticality = kpi.kpi_criticality
 
 
 def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
     """Return (max % change from centre, sensitive?) using the default threshold."""
-    return _assess_with_threshold(low, center, high, _SENS_THRESHOLD)
-
-
-def _kpi_threshold(name: str) -> float:
-    """Return a KPI-specific sensitivity threshold in percent."""
-    text = str(name or "").lower()
-    if any(term in text for term in ("impurity", "particle size", "d50", "size")):
-        return 10.0
-    if any(term in text for term in ("yield", "conversion", "purity", "selectivity")):
-        return 5.0
-    return _SENS_THRESHOLD
-
-
-def _kpi_criticality(name: str) -> str:
-    """Classify KPI importance: critical vs secondary.
-
-    Impurity or selectivity-type KPIs are treated as critical because they
-    directly affect product quality and safety decisions; yield and purity-like
-    process metrics are treated as secondary unless the protocol specifically
-    identifies them as a dominant risk driver.
-    """
-    text = str(name or "").lower()
-    if any(term in text for term in ("impurity", "selectivity")):
-        return "critical"
-    return "secondary"
+    return kpi.assess_with_threshold(low, center, high, _SENS_THRESHOLD)
 
 
 def _n_for_pm(pm_wkg: float, V_m3: float, Np: float, D: float) -> float:
@@ -230,128 +199,35 @@ def _reactor_summary_df(row: pd.Series) -> pd.DataFrame:
 
 
 # Per-test KPI response column names (low / centre / high condition).
-KPI_COLUMNS = {
-    1: ("Low speed", "Centre", "High speed"),
-    2: ("Slow feed", "Centre", "Fast feed"),
-    3: ("Surface", "Mid", "Impeller"),
-}
+KPI_COLUMNS = kpi.KPI_COLUMNS
+_new_kpi_df = kpi.new_kpi_df
+_mirror_kpis = kpi.mirror_kpis
+_empty_result = kpi.empty_result
+_assess_kpis = kpi.assess_kpis
+_kpi_prefix = kpi.kpi_prefix
 
 
-def _new_kpi_df(test: int, seed_names=(("Yield", "%"),)) -> pd.DataFrame:
-    """Build a fresh KPI response table for a test with missing responses."""
-    low, ctr, high = KPI_COLUMNS[test]
-    rows = [{"KPI": n, "Unit": u, low: np.nan, ctr: np.nan, high: np.nan}
-            for n, u in seed_names]
-    return pd.DataFrame(rows)
-
-
-def _mirror_kpis(src_df: pd.DataFrame, test: int) -> pd.DataFrame:
-    """Copy KPI names/units from an upstream test, leaving the responses empty."""
-    names = [(str(r.get("KPI", "") or "Yield").strip() or "Yield",
-              str(r.get("Unit", "") or "").strip())
-             for _, r in src_df.iterrows()]
-    if not names:
-        names = [("Yield", "%")]
-    return _new_kpi_df(test, seed_names=names)
-
-
-def _empty_result(test: int) -> pd.DataFrame:
-    low, ctr, high = KPI_COLUMNS[test]
-    return pd.DataFrame(columns=["KPI", low, ctr, high, "Max Δ (%)", "Sensitive?"])
-
-
-def _assess_kpis(df: pd.DataFrame, test: int):
-    """Assess a KPI response table; return a result dict or None if no data.
-
-    Blank cells remain missing values rather than zeroes. Mixed KPI outcomes are
-    treated as inconclusive instead of being promoted to a confirmed sensitivity
-    verdict. If the observed effect falls within the measurement noise band
-    (standard deviation / analytical precision), it is treated as not sensitive.
-    """
-    low, ctr, high = KPI_COLUMNS[test]
-    results = []
-    for _, r in df.iterrows():
-        lo = _sf(r.get(low))
-        ce = _sf(r.get(ctr))
-        hi = _sf(r.get(high))
-
-        if pd.isna(lo) and pd.isna(ce) and pd.isna(hi):
-            continue
-        if lo == 0.0 and ce == 0.0 and hi == 0.0:
-            continue
-
-        name = (str(r.get("KPI", "") or "KPI").strip() or "KPI")
-        unit = str(r.get("Unit", "") or "").strip()
-        threshold = _kpi_threshold(name)
-        max_pct, sensitive = _assess_with_threshold(lo, ce, hi, threshold)
-
-        # Measurement variability: require the effect to exceed the noise floor
-        # before treating a KPI as sensitive. A mixed response with a small
-        # observed change relative to its standard deviation or analytical
-        # precision remains not sensitive.
-        std_dev = _sf(r.get("Std dev"))
-        precision = _sf(r.get("Precision"))
-        replicas = max(int(_sf(r.get("Replicates"), 1.0)), 1)
-        if std_dev > 0.0 or precision > 0.0:
-            noise = np.hypot(std_dev, precision)
-            if std_dev > 0.0 and replicas > 1:
-                noise = max(noise, std_dev / np.sqrt(replicas))
-            signal = max(abs(lo - ce), abs(hi - ce))
-            if signal <= 2.0 * noise:
-                sensitive = False
-
-        results.append({
-            "name": name,
-            "unit": unit,
-            "low": lo,
-            "ctr": ce,
-            "high": hi,
-            "max_pct": max_pct,
-            "sensitive": sensitive,
-            "threshold": threshold,
-            "criticality": _kpi_criticality(name),
-        })
-    if not results:
+def _assess_or_warn(state, df: pd.DataFrame, test: int):
+    """Assess a KPI table, warning about incomplete rows; None if nothing usable."""
+    res = kpi.assess_kpis(df, test)
+    incomplete = kpi.incomplete_rows(df, test)
+    if res is None:
+        msg = "Enter the low, centre and high responses for at least one KPI before assessing."
+        if incomplete:
+            msg += " Incomplete: " + "; ".join(incomplete) + "."
+        notify(state, "W", msg)
         return None
-    n_total = len(results)
-    n_sensitive = sum(1 for r in results if r["sensitive"])
-    critical_sensitive = any(
-        r["sensitive"] for r in results if r["criticality"] == "critical"
-    )
-    if critical_sensitive:
-        status = "sensitive"
-    elif n_sensitive == 0:
-        status = "not_sensitive"
-    elif n_sensitive == n_total:
-        status = "sensitive"
-    else:
-        status = "inconclusive"
-    table = pd.DataFrame([{
-        "KPI": f'{r["name"]} ({r["unit"]})' if r["unit"] else r["name"],
-        low: f'{r["low"]:g}', ctr: f'{r["ctr"]:g}', high: f'{r["high"]:g}',
-        "Max Δ (%)": f'{r["max_pct"]:.1f}%',
-        "Sensitive?": "Yes" if r["sensitive"] else "No",
-    } for r in results])
-    sens_names = "; ".join(
-        f'{r["name"]} ({r["max_pct"]:.1f}%)' for r in results if r["sensitive"])
-    return {
-        "results": results, "n_total": n_total, "n_sensitive": n_sensitive,
-        "status": status, "sensitive": status == "sensitive",
-        "sensitive_names": sens_names, "table": table,
-    }
+    if incomplete:
+        notify(state, "W", "Skipped incomplete KPI row(s): " + "; ".join(incomplete) + ".")
+    return res
 
 
-def _kpi_prefix(res: dict) -> str:
-    """Leading verdict sentence summarising the KPI outcome."""
-    n, N = res["n_sensitive"], res["n_total"]
-    thr = _SENS_THRESHOLD
-    if res["status"] == "sensitive":
-        return (f"⚠️ **Sensitive** — {n} of {N} KPI(s) changed ≥ {thr:.0f}% "
-                f"({res['sensitive_names']}).")
-    if res["status"] in ("may_be_sensitive", "inconclusive"):
-        return (f"⚠️ **Inconclusive** — only {n} of {N} KPI(s) changed "
-                f"≥ {thr:.0f}% ({res['sensitive_names']}); mixed signal.")
-    return f"✅ **Not sensitive** — no KPI changed ≥ {thr:.0f}% across {N} KPI(s)."
+def _status_of(state, test: int) -> str:
+    """'sensitive' / 'not_sensitive' / 'inconclusive' / '' (not assessed)."""
+    res = getattr(state, f"bp_t{test}_result", None)
+    if not getattr(state, f"bp_t{test}_assessed", False) or not res:
+        return ""
+    return str(res.get("status", "") or "")
 
 
 def _test1_range_ratio(state) -> float:
@@ -600,6 +476,8 @@ def _invalidate_current_test(state, test: int):
     This is for inline KPI-table edits; it should not recreate the initial
     "Start Protocol" state or hide Test 1 after it has already been assessed.
     """
+    state.bp_pdf_ready = False
+    state.bp_sens_csv_ready = False
     if test == 1:
         state.bp_t1_assessed = False
         state.bp_t1_sensitive = False
@@ -608,9 +486,7 @@ def _invalidate_current_test(state, test: int):
         state.bp_t1_kpi_result_df = _empty_result(1)
         state.bp_show_t2 = False
         _reset_downstream(state, 1)
-        return
-
-    if test == 2:
+    elif test == 2:
         state.bp_t2_assessed = False
         state.bp_t2_sensitive = False
         state.bp_t2_result = None
@@ -618,13 +494,13 @@ def _invalidate_current_test(state, test: int):
         state.bp_t2_kpi_result_df = _empty_result(2)
         state.bp_show_t3 = False
         _reset_downstream(state, 2)
-        return
-
-    state.bp_t3_assessed = False
-    state.bp_t3_sensitive = False
-    state.bp_t3_result = None
-    state.bp_t3_verdict = ""
-    state.bp_t3_kpi_result_df = _empty_result(3)
+    else:
+        state.bp_t3_assessed = False
+        state.bp_t3_sensitive = False
+        state.bp_t3_result = None
+        state.bp_t3_verdict = ""
+        state.bp_t3_kpi_result_df = _empty_result(3)
+    _build_summary(state)
 
 
 # ---------------------------------------------------------------------------
@@ -695,42 +571,63 @@ def on_bp_plan_sys_change(state):
 # ---------------------------------------------------------------------------
 # Test 1
 # ---------------------------------------------------------------------------
-def _build_t1(state):
+_T1_CONDITIONS = (("Low (0.1× P/m)", 0.1), ("Centre (1× P/m)", 1.0), ("High (10× P/m)", 10.0))
+
+
+def _t1_condition_rows(state) -> list[dict]:
+    """Raw (unformatted) Test 1 conditions after RPM clamping — the single source
+    for the on-page table, the P/m range check and the PDF snapshot."""
     D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
     T, H = _blend_geometry(state)
     D_mol = _fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P)
     nu = mu / rho if rho > 0 else 0.0
     V_m3 = state.bp_v_l / 1000.0
-    pm_c, info = _resolve_center_pm(state)
-    state.bp_t1_pm_eff = pm_c
-    state.bp_t1_ctr_info = info
+    pm_c = state.bp_t1_pm_eff
     rows = []
-    for label, factor in (("Low (0.1× P/m)", 0.1), ("Centre (1× P/m)", 1.0), ("High (10× P/m)", 10.0)):
-        pm = pm_c * factor
-        n_rps = _n_for_pm(pm, V_m3, Np, D)
+    for label, factor in _T1_CONDITIONS:
+        n_rps = _n_for_pm(pm_c * factor, V_m3, Np, D)
         n_rpm = n_rps * 60.0
         note = ""
         if state.bp_n_max > 0 and n_rpm > state.bp_n_max:
             n_rpm, note = state.bp_n_max, " (clamped to N_max)"
-            n_rps = n_rpm / 60.0
         if state.bp_n_min > 0 and n_rpm < state.bp_n_min:
             n_rpm, note = state.bp_n_min, " (clamped to N_min)"
-            n_rps = n_rpm / 60.0
+        n_rps = n_rpm / 60.0
         P = impeller_power(Np, rho, n_rps, D)
         eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
         eps_kg = eps / rho if rho > 0 else 0.0
         rows.append({
-            "Condition": label + note,
-            "N (RPM)": f"{n_rpm:,.1f}",
-            "P/V (W/L)": f"{eps / 1000.0:.4g}",
-            "P/m (W/kg)": f"{eps_kg:.4g}",
-            "Blend time (s)": f"{blend_time_turbulent(Np, n_rps, D, T, H):.3g}",
-            "Avg shear rate (1/s)": f"{average_shear_rate(P, mu, V_m3):.3g}",
-            "Tip speed (m/s)": f"{tip_speed(n_rps, D):.3g}",
-            "Re": f"{reynolds_number(n_rps, D, rho, mu):,.0f}",
-            "kLa_surface (1/s)": f"{kla_surface(eps_kg, nu, D_mol, T, V_m3):.3g}",
-            "t_E micro (s)": f"{micromixing_time_engulfment(eps_kg, nu):.3g}",
-            "η (µm)": f"{kolmogorov_length(nu, eps_kg) * 1e6:.3g}",
+            "Condition": label, "note": note, "Volume (L)": state.bp_v_l,
+            "N (RPM)": n_rpm, "P/V (W/L)": eps / 1000.0, "P/m (W/kg)": eps_kg,
+            "Blend time (s)": blend_time_turbulent(Np, n_rps, D, T, H),
+            "Avg shear rate (1/s)": average_shear_rate(P, mu, V_m3),
+            "Tip speed (m/s)": tip_speed(n_rps, D),
+            "Re": reynolds_number(n_rps, D, rho, mu),
+            "kLa_surface (1/s)": kla_surface(eps_kg, nu, D_mol, T, V_m3),
+            "t_E micro (s)": micromixing_time_engulfment(eps_kg, nu),
+            "η (µm)": kolmogorov_length(nu, eps_kg) * 1e6,
+        })
+    return rows
+
+
+def _build_t1(state):
+    pm_c, info = _resolve_center_pm(state)
+    state.bp_t1_pm_eff = pm_c
+    state.bp_t1_ctr_info = info
+    rows = []
+    for r in _t1_condition_rows(state):
+        rows.append({
+            "Condition": r["Condition"] + r["note"],
+            "N (RPM)": f"{r['N (RPM)']:,.1f}",
+            "P/V (W/L)": f"{r['P/V (W/L)']:.4g}",
+            "P/m (W/kg)": f"{r['P/m (W/kg)']:.4g}",
+            "Blend time (s)": f"{r['Blend time (s)']:.3g}",
+            "Avg shear rate (1/s)": f"{r['Avg shear rate (1/s)']:.3g}",
+            "Tip speed (m/s)": f"{r['Tip speed (m/s)']:.3g}",
+            "Re": f"{r['Re']:,.0f}",
+            "kLa_surface (1/s)": f"{r['kLa_surface (1/s)']:.3g}",
+            "t_E micro (s)": f"{r['t_E micro (s)']:.3g}",
+            "η (µm)": f"{r['η (µm)']:.3g}",
         })
     state.bp_t1_hydro_df = pd.DataFrame(rows)
     if state.bp_t1_adj_mode == "On":
@@ -843,6 +740,18 @@ def on_bp_t1_recalc(state):
     _build_t1(state)
 
 
+def on_bp_volume_change(state):
+    """Working volume feeds every test's conditions — invalidate and rebuild all."""
+    _invalidate_assessments(state)
+    _build_plan(state)
+
+
+def on_bp_t2_input_change(state):
+    """Feed-volume/rate/time edits change the Test 2 conditions only."""
+    _invalidate_current_test(state, 2)
+    _build_t2(state)
+
+
 # --- Fed-batch discrete speed adjustments ---------------------------------
 def _refresh_t1_adj(state):
     _build_t1_adj(state)
@@ -924,9 +833,7 @@ def on_bp_t3_kpi_delete(state, var_name, payload):
 
 
 def _append_kpi(df: pd.DataFrame, test: int) -> pd.DataFrame:
-    low, ctr, high = KPI_COLUMNS[test]
-    new = {"KPI": "", "Unit": "", low: 0.0, ctr: 0.0, high: 0.0}
-    return db.reset(pd.concat([df, pd.DataFrame([new])], ignore_index=True))
+    return db.reset(pd.concat([df, pd.DataFrame([kpi.blank_kpi_row(test)])], ignore_index=True))
 
 
 def _reset_downstream(state, from_test: int):
@@ -949,9 +856,8 @@ def _reset_downstream(state, from_test: int):
 
 
 def on_bp_t1_assess(state):
-    res = _assess_kpis(state.bp_t1_kpi_df, 1)
+    res = _assess_or_warn(state, state.bp_t1_kpi_df, 1)
     if res is None:
-        notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t1_kpi_result_df = res["table"]
     state.bp_t1_result = res
@@ -962,26 +868,28 @@ def on_bp_t1_assess(state):
     prefix = _kpi_prefix(res)
     ratio = _test1_range_ratio(state)
     range_ok = ratio >= 100.0
+    existing_t2 = getattr(state, "bp_t2_kpi_df", None)
     if res["status"] == "sensitive":
         state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2)
+        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
         state.bp_t1_verdict = (
             prefix + " Response moved across the 100× P/m range, so **mixing "
             "matters**. Proceed to **Test 2** to distinguish micro- vs meso-mixing.")
     elif res["status"] == "inconclusive":
         state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2)
+        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
         state.bp_t1_verdict = (
             prefix + " Mixed KPI response indicates **potential sensitivity**. "
             "Proceed to **Test 2** to resolve whether micro- vs meso-mixing is controlling.")
     elif not range_ok:
         state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2)
+        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
         state.bp_t1_verdict = (
             prefix + f" **No sensitivity detected over the tested range** — the actual "
-            f"P/m span was only {ratio:.1f}× ({ratio:.1f}x) after RPM clamping, so the "
-            "intended 100× screening range was not achieved. Repeat the screen with a wider "
-            "speed range or continue to the next test to rule out a hidden mixing signal.")
+            f"P/m span was only {ratio:.1f}× after RPM clamping, so the intended 100× "
+            "screening range was not achieved and the result is treated as **inconclusive**. "
+            "Repeat the screen with a wider speed range, or continue to the next test to rule "
+            "out a hidden mixing signal.")
     else:
         state.bp_show_t2 = False
         state.bp_t1_verdict = (
@@ -1024,9 +932,8 @@ def on_bp_t2_recalc(state):
 
 
 def on_bp_t2_assess(state):
-    res = _assess_kpis(state.bp_t2_kpi_df, 2)
+    res = _assess_or_warn(state, state.bp_t2_kpi_df, 2)
     if res is None:
-        notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t2_kpi_result_df = res["table"]
     state.bp_t2_result = res
@@ -1035,15 +942,16 @@ def on_bp_t2_assess(state):
     _refresh_table_csv_exports(state)
     _reset_downstream(state, 2)
     prefix = _kpi_prefix(res)
+    existing_t3 = getattr(state, "bp_t3_kpi_df", None)
     if res["status"] == "sensitive":
         state.bp_show_t3 = True
-        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3)
+        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3, existing_t3)
         state.bp_t2_verdict = (
             prefix + " Feed rate matters — the response is **consistent with mesomixing** "
             "(feed-plume dispersion). Proceed to **Test 3** to distinguish meso- vs macro-mixing.")
     elif res["status"] == "inconclusive":
         state.bp_show_t3 = True
-        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3)
+        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3, existing_t3)
         state.bp_t2_verdict = (
             prefix + " Mixed KPI response suggests **potential mesomixing sensitivity**; "
             "continue to **Test 3** to resolve whether the feed-rate effect is controlling.")
@@ -1086,14 +994,13 @@ def _build_t3(state):
 
 
 def on_bp_t3_recalc(state):
-    _invalidate_assessments(state)
+    _invalidate_current_test(state, 3)
     _build_t3(state)
 
 
 def on_bp_t3_assess(state):
-    res = _assess_kpis(state.bp_t3_kpi_df, 3)
+    res = _assess_or_warn(state, state.bp_t3_kpi_df, 3)
     if res is None:
-        notify(state, "W", "Enter at least one KPI response before assessing.")
         return
     state.bp_t3_kpi_result_df = res["table"]
     state.bp_t3_result = res
@@ -1102,11 +1009,16 @@ def on_bp_t3_assess(state):
     _refresh_table_csv_exports(state)
     state.bp_pdf_ready = False
     prefix = _kpi_prefix(res)
-    if res["sensitive"]:
+    if res["status"] == "sensitive":
         state.bp_t3_verdict = (
             prefix + " The response is **consistent with mesomixing**. Scale-up: match P/V, "
             "**extend the feed time** and **add feed points** to keep the feed plume in a "
             "high-dissipation zone.")
+    elif res["status"] == "inconclusive":
+        state.bp_t3_verdict = (
+            prefix + " The feed-location response is mixed, so **meso- vs macro-mixing is "
+            "unresolved**. Replicate Test 3 (and record the standard deviation) or widen the "
+            "ε contrast between feed points before choosing a scale-up rule.")
     else:
         state.bp_t3_verdict = (
             prefix + " The response is **consistent with macromixing**. Scale-up: keep **blend/"
@@ -1118,67 +1030,112 @@ def on_bp_t3_assess(state):
 # ---------------------------------------------------------------------------
 # Summary / decision tree
 # ---------------------------------------------------------------------------
+def _protocol_outcome(state) -> dict:
+    """Single source of truth for the decision tree, used by the on-page
+    summary, the PDF and the Sensitivity-Protocol CSV.
+
+    A Test 1 "not sensitive" result over an inadequate P/m span (< 100× after
+    RPM clamping) is treated as inconclusive. A mechanism is only *confirmed*
+    when Test 1 itself was sensitive and the intermediate tests were not mixed.
+    """
+    s1, s2, s3 = (_status_of(state, n) for n in (1, 2, 3))
+    ratio = _test1_range_ratio(state)
+    range_ok = ratio >= 100.0
+    s1_eff = "inconclusive" if (s1 == "not_sensitive" and not range_ok) else s1
+    confirmed = s1_eff == "sensitive"
+
+    if not s1:
+        dominant, next_test = "Incomplete", 1
+    elif s1_eff == "not_sensitive":
+        dominant, next_test = "Mixing-insensitive", 0
+    elif not s2:
+        dominant, next_test = "Incomplete", 2
+    elif s2 == "not_sensitive":
+        dominant, next_test = ("Micromixing" if confirmed else "Inconclusive"), 0
+    elif not s3:
+        dominant, next_test = "Incomplete", 3
+    elif s3 == "sensitive":
+        dominant, next_test = "Mesomixing", 0
+    elif s3 == "not_sensitive":
+        dominant, next_test = "Macromixing", 0
+    else:
+        dominant, next_test = "Inconclusive", 0
+
+    tentative = (dominant in ("Micromixing", "Mesomixing", "Macromixing")
+                 and (not confirmed or s2 == "inconclusive"))
+    return {"s1": s1, "s1_eff": s1_eff, "s2": s2, "s3": s3, "ratio": ratio,
+            "range_ok": range_ok, "confirmed": confirmed, "dominant": dominant,
+            "tentative": tentative, "next_test": next_test}
+
+
+def _test_lines(o: dict) -> list[str]:
+    """Human-readable per-test bullets reflecting the actual statuses."""
+    lines = []
+    if o["s1"] == "sensitive":
+        lines.append("- **Test 1:** sensitive to impeller speed → mixing matters.")
+    elif o["s1"] == "inconclusive":
+        lines.append("- **Test 1:** mixed KPI response to impeller speed (inconclusive).")
+    elif o["s1"] == "not_sensitive" and not o["range_ok"]:
+        lines.append(f"- **Test 1:** no response, but only a {o['ratio']:.1f}× P/m span was "
+                     "achieved (100× intended) — treated as inconclusive.")
+    elif o["s1"] == "not_sensitive":
+        lines.append("- **Test 1:** response insensitive to impeller speed.")
+    if o["s2"]:
+        lines.append({"sensitive": "- **Test 2:** sensitive to feed rate.",
+                      "not_sensitive": "- **Test 2:** insensitive to feed rate.",
+                      }.get(o["s2"], "- **Test 2:** mixed response to feed rate (inconclusive)."))
+    if o["s3"]:
+        lines.append({"sensitive": "- **Test 3:** sensitive to feed location.",
+                      "not_sensitive": "- **Test 3:** insensitive to feed location.",
+                      }.get(o["s3"], "- **Test 3:** mixed response to feed location (inconclusive)."))
+    return lines
+
+
+_MECH_CONCLUSION = {
+    "Mixing-insensitive": (
+        "**🟢 Dominant regime: mixing is NOT rate-limiting.** Scale up on geometric "
+        "similarity; no special mixing constraints."),
+    "Micromixing": (
+        "**🔬 Dominant regime: MICROMIXING.** Scale-up rule: **hold local ε constant** "
+        "(match P/V near the feed) — the reaction competes with engulfment-scale mixing."),
+    "Mesomixing": (
+        "**Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
+        "time, and add feed points** to control feed-plume dispersion."),
+    "Macromixing": (
+        "**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
+        "times short** — bulk homogeneity governs the outcome."),
+}
+
+
 def _build_summary(state):
     if not getattr(state, "bp_t1_assessed", False):
         state.bp_show_summary = False
         return
     state.bp_show_summary = True
-    lines = ["### Decision-tree conclusion", ""]
-    show_t2 = getattr(state, "bp_show_t2", False)
-    show_t3 = getattr(state, "bp_show_t3", False)
-    if not show_t2:
-        dominant = "Mixing-insensitive"
-        lines += [
-            "- **Test 1:** response insensitive to impeller speed.",
-            "",
-            "**🟢 Dominant regime: mixing is NOT rate-limiting.** Scale up on geometric "
-            "similarity; no special mixing constraints.",
-        ]
-    elif getattr(state, "bp_t2_assessed", False) and not show_t3:
-        dominant = "Micromixing"
-        lines += [
-            "- **Test 1:** sensitive to impeller speed → mixing matters.",
-            "- **Test 2:** insensitive to feed rate.",
-            "",
-            "**🔬 Dominant regime: MICROMIXING.** Scale-up rule: **hold local ε constant** "
-            "(match P/V near the feed) — the reaction competes with engulfment-scale mixing.",
-        ]
-    elif getattr(state, "bp_t3_assessed", False) and getattr(state, "bp_t3_sensitive", False):
-        dominant = "Mesomixing"
-        lines += [
-            "- **Test 1:** sensitive to impeller speed → mixing matters.",
-            "- **Test 2:** sensitive to feed rate.",
-            "- **Test 3:** sensitive to feed location.",
-            "",
-            "**Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
-            "time, and add feed points** to control feed-plume dispersion.",
-        ]
-    elif getattr(state, "bp_t3_assessed", False):
-        dominant = "Macromixing"
-        lines += [
-            "- **Test 1:** sensitive to impeller speed → mixing matters.",
-            "- **Test 2:** sensitive to feed rate.",
-            "- **Test 3:** insensitive to feed location.",
-            "",
-            "**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
-            "times short** — bulk homogeneity governs the outcome.",
-        ]
-    else:
-        dominant = "In progress"
-        if getattr(state, "bp_t2_assessed", False) and show_t3:
-            lines += [
-                "- **Test 1:** sensitive to impeller speed → mixing matters.",
-                "- **Test 2:** sensitive to feed rate.",
-                "",
-                "Tests 1 and 2 are both mixing-sensitive — run **Test 3** (feed "
-                "location) to distinguish **meso-** from **macro-mixing**.",
-            ]
+    o = _protocol_outcome(state)
+    lines = ["### Decision-tree conclusion", ""] + _test_lines(o) + [""]
+    dom = o["dominant"]
+    if dom in _MECH_CONCLUSION:
+        lines.append(_MECH_CONCLUSION[dom])
+        if o["tentative"]:
+            lines.append("")
+            lines.append("⚠️ **Tentative:** an upstream test was inconclusive, so this mechanism "
+                         "is the most consistent reading rather than a confirmed result. Replicate "
+                         "the inconclusive test before fixing the scale-up rule.")
+    elif dom == "Inconclusive":
+        if o["s3"] == "inconclusive":
+            lines.append("⚪ **Meso- vs macro-mixing unresolved** — the feed-location response was "
+                         "mixed. Replicate Test 3 or increase the ε contrast between feed points.")
         else:
-            lines += [
-                "- **Test 1:** sensitive to impeller speed → mixing matters.",
-                "",
-                "Continue with **Test 2** (feed rate) — and Test 3 if needed.",
-            ]
+            lines.append("⚪ **No confirmed mixing sensitivity** — Test 1 was inconclusive and the "
+                         "feed rate had no effect. Repeat Test 1 with replicates (record the standard "
+                         "deviation) and the full 100× P/m span before concluding.")
+    else:  # Incomplete
+        if o["next_test"] == 3:
+            lines.append("Tests 1 and 2 point to a mixing sensitivity — run **Test 3** (feed "
+                         "location) to distinguish **meso-** from **macro-mixing**.")
+        else:
+            lines.append("Continue with **Test 2** (feed rate) — and Test 3 if needed.")
     state.bp_summary = "\n".join(lines)
 
 
@@ -1206,34 +1163,13 @@ def _kpi_snapshot(res: dict, test: int) -> dict:
 
 
 def _t1_conditions_snap(state) -> list:
-    D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
-    mu = state.bp_mu
-    nu = mu / rho if rho > 0 else 0.0
-    tank_diameter, _ = _blend_geometry(state)
-    D_mol = _fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P)
-    V_m3 = state.bp_v_l / 1000.0
-    pm_c = state.bp_t1_pm_eff
+    keep = ("Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)",
+            "Tip speed (m/s)", "Avg shear rate (1/s)", "kLa_surface (1/s)")
     out = []
-    for label, factor in (("Low (0.1x P/m)", 0.1), ("Centre (1x P/m)", 1.0), ("High (10x P/m)", 10.0)):
-        n_rps = _n_for_pm(pm_c * factor, V_m3, Np, D)
-        n_rpm = n_rps * 60.0
-        if state.bp_n_max > 0 and n_rpm > state.bp_n_max:
-            n_rpm, n_rps = state.bp_n_max, state.bp_n_max / 60.0
-        if state.bp_n_min > 0 and n_rpm < state.bp_n_min:
-            n_rpm, n_rps = state.bp_n_min, state.bp_n_min / 60.0
-        P = impeller_power(Np, rho, n_rps, D)
-        eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
-        out.append({
-            "Condition": label,
-            "Volume (L)": state.bp_v_l,
-            "N (RPM)": n_rpm,
-            "P/m (W/kg)": eps / rho if rho > 0 else 0.0,
-            "P/V (W/L)": eps / 1000.0,
-            "Tip speed (m/s)": tip_speed(n_rps, D),
-            "Avg shear rate (1/s)": average_shear_rate(P, mu, V_m3),
-            "kLa_surface (1/s)": kla_surface(eps / rho if rho > 0 else 0.0,
-                                               nu, D_mol, tank_diameter, V_m3),
-        })
+    for r in _t1_condition_rows(state):
+        snap = {k: r[k] for k in keep}
+        snap["Condition"] = r["Condition"].replace("×", "x") + r["note"]
+        out.append(snap)
     return out
 
 
@@ -1286,47 +1222,46 @@ def _t3_conditions_snap(state) -> dict:
     V_m3 = state.bp_v_l / 1000.0
     n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
     P = impeller_power(Np, rho, n_rps, D)
-    eps_avg = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0  # W/m3
-    rows = [
-        {"Feed Location": "Surface", "eps_loc/eps_avg": 0.1, "eps_loc (W/m3)": 0.1 * eps_avg},
-        {"Feed Location": "Sub-surface (mid-tank)", "eps_loc/eps_avg": 1.0, "eps_loc (W/m3)": 1.0 * eps_avg},
-        {"Feed Location": "Impeller zone", "eps_loc/eps_avg": 3.0, "eps_loc (W/m3)": 3.0 * eps_avg},
-    ]
+    eps_avg = (power_per_volume(P, V_m3) / rho) if (V_m3 > 0 and rho > 0) else 0.0  # W/kg
+    rows = []
+    for loc, ratio in (
+        ("Surface", _sf(state.bp_t3_surface_ratio, 0.1)),
+        ("Sub-surface (mid-tank)", _sf(state.bp_t3_mid_ratio, 1.0)),
+        ("Impeller zone", _sf(state.bp_t3_impeller_ratio, 3.0)),
+    ):
+        ratio = max(ratio, 1e-9)
+        rows.append({"Feed Location": loc, "eps_loc/eps_avg": ratio,
+                     "eps_loc (W/kg)": ratio * eps_avg})
     return {"N_RPM": n_rps * 60.0, "feed_time_min": _feed_time_centre(state),
-            "eps_avg_W_m3": eps_avg, "rows": rows}
+            "eps_avg_W_kg": eps_avg, "rows": rows}
 
 
 def _dominant_and_conclusions(state):
     """Return (dominant regime, list of (test, verdict, icon) conclusions)."""
     def _verdict(res):
         n, N = res["n_sensitive"], res["n_total"]
+        thr = kpi.threshold_phrase(res) if res.get("results") else f"≥ {_SENS_THRESHOLD:.0f}%"
         if res["status"] == "sensitive":
-            return f"**Sensitive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
-        if res["status"] in ("may_be_sensitive", "inconclusive"):
-            return f"**Inconclusive** ({n}/{N} KPIs \u2265 {_SENS_THRESHOLD:.0f}%)"
+            return f"**Sensitive** ({n}/{N} KPIs {thr})"
+        if res["status"] == "inconclusive":
+            return f"**Inconclusive** ({n}/{N} KPIs {thr})"
         return f"**Not sensitive** (0/{N} KPIs)"
 
+    o = _protocol_outcome(state)
     conclusions = []
     if state.bp_t1_result:
-        conclusions.append(("Test 1 - Impeller speed", _verdict(state.bp_t1_result), ""))
+        v = _verdict(state.bp_t1_result)
+        if o["s1"] == "not_sensitive" and not o["range_ok"]:
+            v += f" - only a {o['ratio']:.1f}x P/m span was achieved; treated as inconclusive"
+        conclusions.append(("Test 1 - Impeller speed", v, ""))
     if state.bp_t2_result:
         conclusions.append(("Test 2 - Feed rate", _verdict(state.bp_t2_result), ""))
     if state.bp_t3_result:
         conclusions.append(("Test 3 - Feed location", _verdict(state.bp_t3_result), ""))
-
-    if not state.bp_t1_assessed:
-        dominant = "Incomplete"
-    elif not state.bp_t1_sensitive:
-        dominant = "Mixing-insensitive"
-    elif state.bp_t2_assessed and not state.bp_t2_sensitive:
-        dominant = "Micromixing"
-    elif state.bp_t3_assessed and state.bp_t3_sensitive:
-        dominant = "Mesomixing"
-    elif state.bp_t3_assessed and not state.bp_t3_sensitive:
-        dominant = "Macromixing"
-    else:
-        dominant = "Incomplete"
-    return dominant, conclusions
+    if o["tentative"]:
+        conclusions.append(("Confidence", "**Tentative** - an upstream test was inconclusive; "
+                            "replicate it before fixing the scale-up rule", ""))
+    return o["dominant"], conclusions
 
 
 def on_bp_export_pdf(state):
@@ -1373,15 +1308,26 @@ def on_bp_pdf_download(state):
     download(state, content=state.bp_pdf_bytes, name=state.bp_pdf_name)
 
 
-def _sens_test_finding(sensitive: bool, assessed: bool, test: int) -> str:
-    """Short per-test finding label for the Sensitivity Protocol CSV export."""
-    if not assessed:
+_SENS_FINDING = {
+    1: {"sensitive": "Mixing-sensitive (impeller speed)",
+        "not_sensitive": "Mixing-insensitive",
+        "inconclusive": "Inconclusive (mixed KPI response to impeller speed)"},
+    2: {"sensitive": "Sensitive to feed rate (mesomixing)",
+        "not_sensitive": "Insensitive to feed rate (micromixing-controlled)",
+        "inconclusive": "Inconclusive (mixed KPI response to feed rate)"},
+    3: {"sensitive": "Sensitive to feed location (mesomixing)",
+        "not_sensitive": "Insensitive to feed location (macromixing-controlled)",
+        "inconclusive": "Inconclusive (mixed KPI response to feed location)"},
+}
+
+
+def _sens_test_finding(status: str, test: int, range_ok: bool = True) -> str:
+    """Per-test finding label for the Sensitivity Protocol CSV export."""
+    if not status:
         return ""
-    if test == 1:
-        return "Mixing-sensitive (impeller speed)" if sensitive else "Mixing-insensitive"
-    if test == 2:
-        return "Sensitive to feed rate (mesomixing)" if sensitive else "Micromixing-controlled"
-    return "Sensitive to feed location (mesomixing)" if sensitive else "Macromixing-controlled"
+    if test == 1 and status == "not_sensitive" and not range_ok:
+        return "Inconclusive (no response, but P/m span < 100x)"
+    return _SENS_FINDING[test].get(status, "")
 
 
 def on_bp_export_sens_csv(state):
@@ -1390,9 +1336,11 @@ def on_bp_export_sens_csv(state):
         notify(state, "W", "Assess at least Test 1 before exporting.")
         return
     try:
-        dominant, _ = _dominant_and_conclusions(state)
-        mechanism = dominant if dominant in ("Micromixing", "Mesomixing", "Macromixing") else ""
-        overall = "yes" if state.bp_t1_sensitive else "no"
+        o = _protocol_outcome(state)
+        mechs = ("Micromixing", "Mesomixing", "Macromixing")
+        mechanism = o["dominant"] if (o["dominant"] in mechs and not o["tentative"]) else ""
+        tentative = o["dominant"] if (o["dominant"] in mechs and o["tentative"]) else ""
+        overall = {"sensitive": "yes", "not_sensitive": "no"}.get(o["s1_eff"], "inconclusive")
         unit_op = state.bp_unit_operation if state.bp_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
 
         def _kpis(res):
@@ -1400,20 +1348,28 @@ def on_bp_export_sens_csv(state):
 
         rows = [
             ("record_type", "bourne_results"),
+            ("protocol_version", "2"),
             ("project_name", str(state.bp_project_name)),
+            ("step_number", str(state.bp_step_text)),
+            ("unit_operation", unit_op),
+            ("process_version", str(state.bp_process_version)),
             ("reactor", str(state.bp_reactor)),
             ("fluid", str(state.bp_fluid)),
-            ("test1_assessed", "yes" if state.bp_t1_assessed else "no"),
-            ("test1_finding", _sens_test_finding(state.bp_t1_sensitive, state.bp_t1_assessed, 1)),
-            ("test1_sensitive_kpis", _kpis(state.bp_t1_result)),
-            ("test2_assessed", "yes" if state.bp_t2_assessed else "no"),
-            ("test2_finding", _sens_test_finding(state.bp_t2_sensitive, state.bp_t2_assessed, 2)),
-            ("test2_sensitive_kpis", _kpis(state.bp_t2_result)),
-            ("test3_assessed", "yes" if state.bp_t3_assessed else "no"),
-            ("test3_finding", _sens_test_finding(state.bp_t3_sensitive, state.bp_t3_assessed, 3)),
-            ("test3_sensitive_kpis", _kpis(state.bp_t3_result)),
+            ("working_volume_L", f"{_sf(state.bp_v_l):g}"),
+            ("test1_pm_range_ratio", f"{o['ratio']:.1f}"),
+        ]
+        for n in (1, 2, 3):
+            s = o[f"s{n}"]
+            rows += [
+                (f"test{n}_assessed", "yes" if s else "no"),
+                (f"test{n}_status", s),
+                (f"test{n}_finding", _sens_test_finding(s, n, o["range_ok"])),
+                (f"test{n}_sensitive_kpis", _kpis(getattr(state, f"bp_t{n}_result", None))),
+            ]
+        rows += [
             ("overall_sensitive", overall),
             ("dominant_mechanism", mechanism),
+            ("dominant_mechanism_tentative", tentative),
         ]
         buf = io.StringIO()
         writer = csv.writer(buf)
@@ -1496,7 +1452,7 @@ whether mixing matters and, if so, which scale — **micro**, **meso**, or
 <|{bp_P}|number|label=Pressure (atm)|on_change=on_bp_sys_change|>
 |>
 
-<|{bp_v_l}|number|label=Working volume (L)|>
+<|{bp_v_l}|number|label=Working volume (L)|on_change=on_bp_volume_change|>
 
 **Reactor limits**
 <|{bp_reactor_summary_df}|table|show_all|width=100%|>
@@ -1566,12 +1522,17 @@ RPM limits.
 |>
 
 ### Enter measured responses
-Track one or more KPIs — add a row per metric. Each is judged sensitive at a
-**≥ 5%** change from its centre value; the overall verdict uses a majority vote.
+Track one or more KPIs — add a row per metric. A KPI counts as sensitive when it
+changes by more than its threshold from the centre value (**5%** for yield /
+conversion / purity / selectivity, **10%** for impurity levels and particle size)
+and the change exceeds twice the measurement noise (optional **Std dev** and
+**Replicates** columns). The overall verdict is *sensitive* if any critical KPI
+(impurity, selectivity) or every KPI is sensitive, *not sensitive* if none is, and
+*inconclusive* for a mixed signal.
 
 <|part|height=18px|>
 
-<|{bp_t1_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
+<|{bp_t1_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t1_kpi_edit|on_add=on_bp_t1_kpi_add|on_delete=on_bp_t1_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 1|button|on_action=on_bp_t1_assess|class_name=compute-btn|>
 
@@ -1590,13 +1551,13 @@ Hold P/m at the centre and vary the **feed rate** over a 9× range. Insensitivit
 means the reaction is **micromixing**-controlled; sensitivity points to mesomixing.
 
 <|layout|columns=1 1 1 1|
-<|{bp_t2_feed_vol}|number|label=Total feed volume (mL)|>
+<|{bp_t2_feed_vol}|number|label=Total feed volume (mL)|on_change=on_bp_t2_input_change|>
 
-<|{bp_t2_mode}|toggle|lov={bp_t2_mode_options}|label=Define by|>
+<|{bp_t2_mode}|toggle|lov={bp_t2_mode_options}|label=Define by|on_change=on_bp_t2_input_change|>
 
-<|{bp_t2_rate}|number|label=Feed rate (mL/min)|>
+<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == "Feed rate"}|on_change=on_bp_t2_input_change|>
 
-<|{bp_t2_time}|number|label=Feed time (min)|>
+<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == "Feed time"}|on_change=on_bp_t2_input_change|>
 |>
 
 <|Recalculate conditions|button|on_action=on_bp_t2_recalc|>
@@ -1609,7 +1570,7 @@ means the reaction is **micromixing**-controlled; sensitivity points to mesomixi
 KPIs carry over from Test 1 — edit the responses (columns: **Slow feed / Centre /
 Fast feed**), add or remove rows as needed.
 
-<|{bp_t2_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t2_kpi_edit|on_add=on_bp_t2_kpi_add|on_delete=on_bp_t2_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
+<|{bp_t2_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t2_kpi_edit|on_add=on_bp_t2_kpi_add|on_delete=on_bp_t2_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 2|button|on_action=on_bp_t2_assess|class_name=compute-btn|>
 
@@ -1646,7 +1607,7 @@ measured or CFD-derived values when available.
 KPIs carry over from Test 2 — edit the responses (columns: **Surface / Mid /
 Impeller**).
 
-<|{bp_t3_kpi_df}|table|editable|rebuild|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t3_kpi_edit|on_add=on_bp_t3_kpi_add|on_delete=on_bp_t3_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
+<|{bp_t3_kpi_df}|table|editable|rebuild|lov[KPI]={KPI_METRIC_OPTIONS}|lov[Unit]={UNIT_OPTIONS}|on_edit=on_bp_t3_kpi_edit|on_add=on_bp_t3_kpi_add|on_delete=on_bp_t3_kpi_delete|width=100%|show_all|class_name=bp-kpi-table|>
 
 <|Assess Test 3|button|on_action=on_bp_t3_assess|class_name=compute-btn|>
 

@@ -1424,13 +1424,13 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
                 f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
             )
             pdf.ln(1)
-            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/m3)"]
+            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/kg)"]
             _t3_cond_rows = []
             for row in t3_conds.get("rows", []):
                 _t3_cond_rows.append([
                     row.get("Feed Location", ""),
-                    f"{row.get('eps_loc/eps_avg', 0):.1f}",
-                    f"{row.get('eps_loc (W/m3)', 0):.1f}",
+                    f"{row.get('eps_loc/eps_avg', 0):.2f}",
+                    f"{row.get('eps_loc (W/kg)', 0):.4g}",
                 ])
             if _t3_cond_rows:
                 pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
@@ -1680,13 +1680,13 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
                 f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
             )
             pdf.ln(1)
-            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/m3)"]
+            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/kg)"]
             _t3_cond_rows = []
             for row in t3_conds.get("rows", []):
                 _t3_cond_rows.append([
                     row.get("Feed Location", ""),
-                    f"{row.get('eps_loc/eps_avg', 0):.1f}",
-                    f"{row.get('eps_loc (W/m3)', 0):.1f}",
+                    f"{row.get('eps_loc/eps_avg', 0):.2f}",
+                    f"{row.get('eps_loc (W/kg)', 0):.4g}",
                 ])
             if _t3_cond_rows:
                 pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])

@@ -20,6 +20,7 @@ from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
 from utils.calculations import (
+    characteristic_reaction_time,
     compute_damkohler_numbers,
     estimate_U_detailed,
     estimate_jacket_area,
@@ -139,14 +140,7 @@ def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> dict:
 
 def _auto_t_rxn(order: str, k: float, C0: float, t_rxn: float) -> float:
     """Return characteristic reaction time, auto-computing from k if needed."""
-    if t_rxn and t_rxn > 0:
-        return t_rxn
-    if k and k > 0:
-        if str(order) in ("1", "pseudo-1"):
-            return 1.0 / k
-        if str(order) in ("2", "pseudo-2") and C0 > 0:
-            return 1.0 / (k * C0)
-    return 0.0
+    return characteristic_reaction_time(order, k, C0, t_rxn)[0]
 
 
 def _law_html(order: str) -> str:

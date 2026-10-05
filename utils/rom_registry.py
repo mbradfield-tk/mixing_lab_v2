@@ -23,27 +23,15 @@ from typing import Callable
 from utils.calculations import (
     compute_reactor_hydro,
     compute_damkohler_numbers,
+    hydro_basics,
+    assemble_hydro,
     blend_time_turbulent,
     micromixing_time_engulfment,
-    micromixing_time_local,
     kla_vant_riet,
     kla_surface,
-    power_number_correlation,
     epsilon_max_estimate,
     impeller_power,
     power_per_volume,
-    kolmogorov_length,
-    average_shear_rate,
-    maximum_shear_rate,
-    shear_stress,
-    tip_speed,
-    pumping_rate,
-    reynolds_number,
-    circulation_time,
-    torque,
-    torque_per_volume,
-    edcf,
-    froude_number,
 )
 
 
@@ -274,21 +262,6 @@ def compute_reactor_hydro_with_mode(
     else:
         param_modes = {p: mode.get(p, "Literature") for p in SUPPORTED_PARAMS}
 
-    # --- Basics ---
-    V = np.pi / 4 * D_tank**2 * H
-    nu = mu / rho if rho > 0 else 0.0
-    Re = reynolds_number(N, D_imp, rho, mu) if mu > 0 else 0.0
-
-    if Np is None or (isinstance(Np, float) and np.isnan(Np)):
-        Np_val = power_number_correlation(Re)
-    else:
-        Np_val = Np
-    if Nq is None or (isinstance(Nq, float) and np.isnan(Nq)):
-        from utils.calculations import pumping_number_default
-        Nq_val = pumping_number_default()
-    else:
-        Nq_val = Nq
-
     # Fast path: if every param is Literature, delegate entirely
     if all(m == "Literature" for m in param_modes.values()):
         hydro = compute_reactor_hydro(
@@ -311,9 +284,9 @@ def compute_reactor_hydro_with_mode(
             corrs = get_correlations(reactor_name, param=p, corr_type=m)
             _corr_cache[p] = corrs[0] if corrs else None
 
-    P = impeller_power(Np_val, rho, N, D_imp)
-    eps = power_per_volume(P, V) if V > 0 else 0.0
-    eps_kg = eps / rho if rho > 0 else 0.0
+    b = hydro_basics(N, D_imp, D_tank, H, rho, mu, Np, Nq)
+    V, nu, Re, Np_val, Nq_val = b["V"], b["nu"], b["Re"], b["Np"], b["Nq"]
+    P, eps, eps_kg = b["P"], b["eps"], b["eps_kg"]
 
     kw = _build_kwargs(N, D_imp, D_tank, H, rho, mu, V, nu, Re, P, eps, eps_kg,
                         Np_val, Nq_val, v_s, D_mol, coalescing)
@@ -326,6 +299,7 @@ def compute_reactor_hydro_with_mode(
         P = impeller_power(Np_val, rho, N, D_imp)
         eps = power_per_volume(P, V) if V > 0 else 0.0
         eps_kg = eps / rho if rho > 0 else 0.0
+        b.update(Np=Np_val, P=P, eps=eps, eps_kg=eps_kg)
         kw.update(Np=Np_val, P=P, P_V=eps, eps=eps_kg, eps_kg=eps_kg)
 
     # -- Blend time --
@@ -368,47 +342,9 @@ def compute_reactor_hydro_with_mode(
     else:
         kla_surf = kla_surface(eps_kg, nu, D_mol, D_tank, V)
 
-    # -- Remaining literature calculations (always) --
-    eta = kolmogorov_length(nu, eps_kg)
-    u_tip = tip_speed(N, D_imp)
-    Q = pumping_rate(Nq_val, N, D_imp)
-    t_micro_local = micromixing_time_local(eps_max_val, nu)
-    gamma_avg = average_shear_rate(P, mu, V)
-    gamma_max = maximum_shear_rate(eps_max_val, nu)
-    tau_avg = shear_stress(mu, gamma_avg)
-    t_c = circulation_time(Nq_val, V, D_imp, N)
-    _torque = torque(P, N)
-    _torque_per_vol = torque_per_volume(P, N, V)
-    _edcf = edcf(eps_max_val, t_c)
-    Fr = froude_number(N, D_imp)
-
-    hydro = {
-        "Volume (L)": V * 1000,
-        "Re": Re,
-        "Np": Np_val,
-        "Power (W)": P,
-        "P/V (W/m³)": eps,
-        "P/V (W/kg)": eps_kg,
-        "P/V (W/L)": eps / 1000,
-        "Tip speed (m/s)": u_tip,
-        "Pumping rate (m³/s)": Q,
-        "Blend time 95% (s)": t_blend,
-        "Circulation time (s)": t_c,
-        "Micromix time t_E (s)": t_micro,
-        "Micromix time t_E_local (s)": t_micro_local,
-        "Kolmogorov η (µm)": eta * 1e6,
-        "ε_max (W/kg)": eps_max_val,
-        "EDCF (W/kg/s)": _edcf,
-        "Torque (N·m)": _torque,
-        "Torque/V (N·m/m³)": _torque_per_vol,
-        "Froude number": Fr,
-        "Avg shear rate (1/s)": gamma_avg,
-        "Max shear rate (1/s)": gamma_max,
-        "Avg shear stress (Pa)": tau_avg,
-        "kLa (1/s)": kla,
-        "kLa_surface (1/s)": kla_surf,
-        "ν (m²/s)": nu,
-    }
+    hydro = assemble_hydro(
+        b, N=N, D_imp=D_imp, mu=mu, t_blend=t_blend, eps_max=eps_max_val,
+        t_micro=t_micro, kla=kla, kla_surf=kla_surf)
     return hydro, sources
 
 

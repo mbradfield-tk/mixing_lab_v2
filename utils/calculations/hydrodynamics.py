@@ -23,8 +23,9 @@ verification.
         Ref: Paul, Atiemo-Obeng & Kresta (eds.), *Handbook of Industrial
         Mixing*, Wiley (2004), Ch. 6.  [NOT in context/ - verify]
     power_number_correlation
-        Simplified laminar/transitional/turbulent fit (approximate, not a
-        published correlation).  [SOURCE MISSING - heuristic]
+        Three-regime model: laminar Np = K_L/Re (Rushton, Costich & Everett
+        1950; Bates, Fondy & Corpstein 1963), turbulent plateau (Paul et al.
+        2004, Ch. 6), log-log interpolation in between (approximation).
     edcf (Energy Dissipation / Circulation Function)
         Ref: Middleton, Pierce & Lynch (1986); Bourne (2003).
         [NOT in context/ - verify]
@@ -38,16 +39,33 @@ def reynolds_number(N: float, D: float, rho: float, mu: float) -> float:
     return rho * N * D**2 / mu
 
 
-def power_number_correlation(Re: float, Np_turb: float = 5.0) -> float:
+def power_number_correlation(Re: float, Np_turb: float = 5.0, K_L: float = 70.0,
+                             Re_lam: float = 10.0, Re_turb: float = 1.0e4) -> float:
+    """Power number across the laminar, transitional and turbulent regimes.
+
+    Used only when a vessel has no measured ``Np``; the defaults describe a
+    six-blade Rushton turbine in a baffled tank.
+
+    * Laminar (Re <= Re_lam):  Np = K_L / Re   (Np*Re = const). K_L ≈ 70 for the
+      Rushton turbine — Rushton, Costich & Everett (1950), Chem. Eng. Prog.
+      46(8):395 & 46(9):467; Bates, Fondy & Corpstein (1963), Ind. Eng. Chem.
+      Process Des. Dev. 2(4):310.
+    * Turbulent (Re >= Re_turb): Np = Np_turb (constant plateau; Paul,
+      Atiemo-Obeng & Kresta (eds.), Handbook of Industrial Mixing (2004), Ch. 6,
+      which also gives the Re ≈ 10 and Re ≈ 1e4 regime boundaries).
+    * Transitional: power-law (log-log linear) interpolation between the two
+      asymptotes. This is an approximation of the measured curve, which for a
+      baffled Rushton turbine passes through a shallow minimum near Re ≈ 1e2-1e3.
     """
-    Simplified Power-number model (turbulent plateau).
-    Np ≈ Np_turb for Re > ~10 000; laminar correction for low Re.
-    # """
-    # if Re < 10:
-    #     return 70 / Re          # laminar
-    # elif Re < 10000:
-    #     return Np_turb * (Re / 10000)**0.18  # transitional (approx)
-    return Np_turb              # turbulent
+    if Re <= 0 or not np.isfinite(Re):
+        return Np_turb
+    Np_lam_end = K_L / Re_lam
+    if Re <= Re_lam:
+        return K_L / Re
+    if Re >= Re_turb:
+        return Np_turb
+    frac = np.log(Re / Re_lam) / np.log(Re_turb / Re_lam)
+    return float(Np_lam_end * (Np_turb / Np_lam_end) ** frac)
 
 
 def impeller_power(Np: float, rho: float, N: float, D: float) -> float:

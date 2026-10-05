@@ -1,5 +1,10 @@
 # Vessel-height clarification — code changes
 
+> **Status:** historical snapshot. Describes the code as of commit `a6d920c` (2026-09-16); the referenced
+> branch may no longer exist and later commits have changed some of these files. Last reviewed 2026-10-05
+> (calculation pages now read the dish height via `pages/_db_common.bottom_dish_height`, which uses the
+> real CSV column `H_bot_dish_m`).
+
 Date: 2026-09-16. Committed as `a6d920c` ("CSV Overhaul") on branch `fix_blend_time`, 2026-09-16 16:49.
 To see the exact diff: `git show a6d920c` (13 files, +662 / −68).
 Companion documents: `README_csv_changes.md` (data edits) and `README_reactor_review.md` (rows to re-verify).

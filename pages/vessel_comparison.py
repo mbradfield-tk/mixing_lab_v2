@@ -553,7 +553,7 @@ def _corner_and_curves(names, ctx):
         V_max = _sf(r.get("V_L_max")) or _sf(r.get("V_L")) or V_geo
         V_min = _sf(r.get("V_L_min")) or V_max
         dish = str(r.get("bottom_dish", "") or "")
-        dish_height = _sf(r.get("H_bottom_dish_m"))
+        dish_height = db.bottom_dish_height(r)
         feed_pipe_mm = ctx.get("feed_pipe_mm", {}).get(name)
         d_feed_pipe_m = (feed_pipe_mm / 1000.0 if feed_pipe_mm and feed_pipe_mm > 0
                         else _sf(r.get("D_feed_pipe_m")))
@@ -697,7 +697,7 @@ def _reactor_geo(name):
         "D_imp": D_imp, "D_tank": D_tank, "H_max": H_max,
         "Np": _sf(r.get("Np"), 1.27), "Nq": _sf(r.get("Nq"), 0.79),
         "bottom_dish": str(r.get("bottom_dish", "") or ""),
-        "bottom_dish_height": _sf(r.get("H_bottom_dish_m")),
+        "bottom_dish_height": db.bottom_dish_height(r),
     }
 
 

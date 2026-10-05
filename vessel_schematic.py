@@ -120,9 +120,6 @@ def _geometry(row: pd.Series) -> dict | None:
         return None
     R = D / 2.0
     bottom, top = _s(row, "bottom_dish"), _s(row, "top_dish")
-    measured_bottom_depth = _f(row, "H_bottom_dish_m")
-    bot_depth = measured_bottom_depth if measured_bottom_depth > 0 else _dish_depth(bottom, R)
-    top_depth = _dish_depth(top, R)
     bot_shape, top_shape = _dish_shape(bottom), _dish_shape(top)
     top_depth = _dish_depth(top, R)
     # Bottom-dish height comes from the CSV (H_bot_dish_m = H_max_m - L_tan_tan_m);

@@ -201,15 +201,11 @@ d_imp = safe_float(_r.get("D_imp_m"), 0.05)
 n_rpm = _avg_range(_r, "N_rpm_min", "N_rpm_max", 300.0)
 np_in = safe_float(_r.get("Np"), 1.27)
 v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
-h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("L_tan_tan_m"), 0.2))
-_bottom0 = str(_r.get("bottom_dish", ""))
-h_liquid = liquid_height_from_volume(v_l, d_tank, h_max, _bottom0)
-a_ht = estimate_jacket_area(d_tank, h_liquid, _bottom0)
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(
-    v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m")))
+    v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), db.bottom_dish_height(_r))
 a_ht = _round_sig(estimate_jacket_area(
-    d_tank, h_liquid, str(_r.get("bottom_dish", "")), safe_float(_r.get("H_bottom_dish_m"))))
+    d_tank, h_liquid, str(_r.get("bottom_dish", "")), db.bottom_dish_height(_r)))
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -414,13 +410,9 @@ def on_sweep_color_range_mode_change(state):
 def _refresh_area(state):
     """Recompute the jacket heat-transfer area from the current liquid volume."""
     row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
-    bottom = str(row.get("bottom_dish", ""))
-    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, bottom)
-    state.a_ht = estimate_jacket_area(state.d_tank, h, bottom)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
     dish = str(row.get("bottom_dish", ""))
-    dish_height = safe_float(row.get("H_bottom_dish_m"))
+    dish_height = db.bottom_dish_height(row)
     h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, dish, dish_height)
     state.a_ht = _round_sig(estimate_jacket_area(state.d_tank, h, dish, dish_height))
 
@@ -755,7 +747,7 @@ def _build_ua_sweeps(state) -> None:
     row = _reactor_row(state.selected_reactor)
     h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
     bottom = str(row.get("bottom_dish", ""))
-    dish_height = safe_float(row.get("H_bottom_dish_m"))
+    dish_height = db.bottom_dish_height(row)
     base = _shared_ht_data(state)
 
     # (1) UA vs stir speed at the current volume (A held constant).
@@ -824,7 +816,7 @@ def _compute_parameter_sweep(state) -> None:
     reactor = _reactor_row(state.selected_reactor)
     h_max = safe_float(reactor.get("H_max_m"), safe_float(reactor.get("H_m"), 0.2))
     bottom = str(reactor.get("bottom_dish", ""))
-    dish_height = safe_float(reactor.get("H_bottom_dish_m"))
+    dish_height = db.bottom_dish_height(reactor)
 
     for iy, y_value in enumerate(y_values):
         for ix, x_value in enumerate(x_values):

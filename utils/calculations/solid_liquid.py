@@ -65,14 +65,20 @@ def particle_reynolds(d_p: float, v_t: float, rho_L: float,
 
 
 def zwietering_njs(S: float, nu: float, d_p: float, delta_rho: float,
-                   rho_L: float, X: float, D_imp: float,
+                   rho_L: float, X_wt_pct: float, D_imp: float,
                    g: float = 9.81) -> float:
-    """Zwietering (1958) just-suspended speed."""
-    if D_imp <= 0 or rho_L <= 0 or X <= 0 or d_p <= 0:
+    """Zwietering (1958) just-suspended speed N_js (rev/s).
+
+    N_js = S ν^0.1 d_p^0.2 (g Δρ/ρ_L)^0.45 X^0.13 D^-0.85 with ``nu`` in m²/s,
+    ``d_p`` in m, densities in kg/m³, ``D_imp`` in m and ``X_wt_pct`` the solids
+    loading in **wt-% (0–100, g solid per 100 g liquid)** — the form used by
+    Zwietering; passing a mass fraction (0–1) under-predicts N_js by ~1.8×.
+    """
+    if D_imp <= 0 or rho_L <= 0 or X_wt_pct <= 0 or d_p <= 0:
         return 0.0
     return (S * nu**0.1 * d_p**0.2
             * (g * delta_rho / rho_L)**0.45
-            * X**0.13 * D_imp**(-0.85))
+            * X_wt_pct**0.13 * D_imp**(-0.85))
 
 
 def gmb_njs(z: float, Np: float, D_imp: float, d_p: float,

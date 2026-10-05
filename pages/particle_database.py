@@ -132,7 +132,7 @@ def on_particle_import(state):
     if not path:
         return
     try:
-        new_df = pd.read_csv(path)
+        new_df = db.read_upload_csv(path)
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return

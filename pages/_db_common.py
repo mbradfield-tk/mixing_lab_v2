@@ -18,6 +18,7 @@ row position even after deletions.
 """
 from __future__ import annotations
 
+import hmac
 import os
 import re
 import tempfile
@@ -31,6 +32,21 @@ import pandas as pd
 _io_lock = threading.Lock()
 # fresh_csv cache: str(path) -> (mtime, DataFrame)
 _fresh_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+
+# Admin gate for the editable database pages. Override the built-in defaults via
+# MIXING_LAB_ADMIN_USER / MIXING_LAB_ADMIN_PW on deployed servers; the defaults
+# only guard against accidental edits and are not a security boundary.
+_ADMIN_USER = os.environ.get("MIXING_LAB_ADMIN_USER", "admin")
+_ADMIN_PW = os.environ.get("MIXING_LAB_ADMIN_PW", "admin_tak_2026")
+
+
+def admin_credentials_ok(user: str | None, password: str | None) -> bool:
+    """Constant-time check of the admin username/password pair."""
+    u = (user or "").strip().encode("utf-8")
+    p = (password or "").encode("utf-8")
+    user_ok = hmac.compare_digest(u, _ADMIN_USER.encode("utf-8"))
+    pw_ok = hmac.compare_digest(p, _ADMIN_PW.encode("utf-8"))
+    return user_ok and pw_ok
 
 
 def load_csv(path: Path, columns: list[str]) -> pd.DataFrame:
@@ -65,6 +81,49 @@ def append_csv(new_df: pd.DataFrame, path: Path) -> int:
                if path.exists() else new_df)
         _atomic_write(out, path)
         return len(out)
+
+
+def fix_mojibake(value):
+    """Repair double-encoded UTF-8 text (e.g. ``35Â°`` -> ``35°``).
+
+    Some exports (Excel) re-save UTF-8 as if it were Latin-1, mangling accented
+    characters. Only strings carrying the tell-tale ``Â``/``Ã`` markers are
+    round-tripped back through latin-1/utf-8; everything else is left untouched.
+    """
+    if not isinstance(value, str) or ("Â" not in value and "Ã" not in value):
+        return value
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
+def clean_uploaded_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip mojibake from every text cell of a freshly-read import frame."""
+    result = df.copy()
+    for col in result.columns:
+        if result[col].dtype == object:
+            result[col] = result[col].map(fix_mojibake)
+    return result
+
+
+def read_upload_csv(path: str, **read_kwargs) -> pd.DataFrame:
+    """Read a user-uploaded CSV tolerantly and repair mojibake.
+
+    Tries UTF-8 (with BOM), then the common Excel export encodings (Excel for
+    Mac's plain CSV is Mac-Roman, Windows exports are cp1252) and finally
+    latin-1, which never fails. Parse errors other than decoding propagate.
+    """
+    df = None
+    for enc in ("utf-8-sig", "mac_roman", "cp1252"):
+        try:
+            df = pd.read_csv(path, encoding=enc, **read_kwargs)
+            break
+        except UnicodeDecodeError:
+            continue
+    if df is None:
+        df = pd.read_csv(path, encoding="latin-1", **read_kwargs)
+    return clean_uploaded_frame(df)
 
 
 def fresh_csv(path: Path, columns: list[str] | None = None) -> pd.DataFrame:
@@ -123,6 +182,28 @@ def csv_bytes(df: pd.DataFrame) -> bytes:
 def reset(df: pd.DataFrame) -> pd.DataFrame:
     """Return ``df`` with a fresh contiguous index."""
     return df.reset_index(drop=True)
+
+
+def _num(val, default: float = 0.0) -> float:
+    try:
+        f = float(val)
+    except (TypeError, ValueError):
+        return default
+    return default if f != f else f  # NaN check
+
+
+def bottom_dish_height(row: pd.Series) -> float:
+    """Measured bottom-dish height (m) for a reactor row, 0.0 when unknown.
+
+    The CSV column is ``H_bot_dish_m``; the legacy ``H_bottom_dish_m`` spelling is
+    still accepted, then ``H_max_m - L_tan_tan_m`` is used as a derived fallback.
+    """
+    for key in ("H_bot_dish_m", "H_bottom_dish_m"):
+        h = _num(row.get(key))
+        if h > 0:
+            return h
+    h_max, l_tt = _num(row.get("H_max_m")), _num(row.get("L_tan_tan_m"))
+    return h_max - l_tt if h_max > 0 and l_tt > 0 and h_max > l_tt else 0.0
 
 
 def _coerce(df: pd.DataFrame, col: str, value):

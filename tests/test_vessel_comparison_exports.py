@@ -21,6 +21,7 @@ def test_vessel_comparison_csv_exports_match_current_tables():
         vc_scale_full_df=pd.DataFrame({"P/V (W/L)": [0.03303]}),
         vc_scale_pct_df=pd.DataFrame({"P/V (W/L)": ["+0.0%"]}),
         vc_impact_df=pd.DataFrame({"P/V x": [1.0]}),
+        vc_feed_plan_df=pd.DataFrame({"Reactor": ["Basis"], "Feed time (min)": [12.0]}),
     )
 
     _build_csv_exports(state)

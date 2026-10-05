@@ -1,5 +1,8 @@
 # Reactor rows to re-verify
 
+> **Status:** review list as of commit `a6d920c` (2026-09-16). Rows fixed since then are not removed
+> automatically — re-check against the current `data/reactors.csv`. Last reviewed 2026-10-05.
+
 Date: 2026-09-16 (data as committed in `a6d920c` on `fix_blend_time`). Every row of `data/reactors.csv` that has
 missing geometry, a physically inconsistent dimension, a questionable dish label, or a schematic-vs-calculation
 disagreement above 1 % of `H_max_m`. Rows are in **CSV order**. Rows not listed here (RX-001–004, 007, 008, 015,

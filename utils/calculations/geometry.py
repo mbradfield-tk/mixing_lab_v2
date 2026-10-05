@@ -69,6 +69,10 @@ def dish_geometry(D_tank: float, dish_type: str = "",
     if "conic" in dish:
         h_dish = measured_height if measured_height > 0 else cone_depth(D_tank, dish)
         V_dish = np.pi / 12 * D_tank**2 * h_dish
+    elif measured_height > 0:
+        # Measured depth wins for every curved head: height-fitted ellipsoidal cap.
+        h_dish = measured_height
+        V_dish = np.pi * D_tank**2 * h_dish / 6.0
     elif "hemi" in dish or "round" in dish:
         # hemispherical head: depth = R, volume = 2/3 pi R^3
         h_dish = D_tank / 2
@@ -81,15 +85,8 @@ def dish_geometry(D_tank: float, dish_type: str = "",
         h_dish = 0.1935 * D_tank
         V_dish = 0.0847 * D_tank**3
     else:
-        if measured_height > 0:
-            h_dish = measured_height
-            V_dish = np.pi * D_tank**2 * h_dish / 6.0
-        elif "torisph" in dish or "din" in dish or "dished" in dish:
-            h_dish = 0.1935 * D_tank
-            V_dish = 0.0847 * D_tank**3
-        else:
-            h_dish = D_tank / 4
-            V_dish = np.pi * D_tank**3 / 24
+        h_dish = D_tank / 4
+        V_dish = np.pi * D_tank**3 / 24
 
     return V_dish, h_dish
 

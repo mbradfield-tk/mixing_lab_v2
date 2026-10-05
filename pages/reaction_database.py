@@ -17,9 +17,7 @@ from pages import _db_common as db
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 REACTION_CSV = DATA_DIR / "reactions.csv"
 
-# Lightweight gate against accidental edits, matching the Vessel Database.
-ADMIN_USER = "admin"
-ADMIN_PW = "admin_tak_2026"
+# Admin gate lives in _db_common (shared with the Vessel Database).
 
 COLUMNS = [
     "reaction_name", "type", "order", "k_value", "k_units", "C0_mol_L",
@@ -133,7 +131,7 @@ def _require_admin(state) -> bool:
 # Admin authentication
 # ---------------------------------------------------------------------------
 def on_admin_unlock(state):
-    if (state.admin_user or "").strip() == ADMIN_USER and (state.admin_pw or "") == ADMIN_PW:
+    if db.admin_credentials_ok(state.admin_user, state.admin_pw):
         state.admin_authenticated = True
         state.admin_status = "🔓 Editing unlocked. Changes save automatically to the CSV."
         state.admin_pw = ""
@@ -248,7 +246,7 @@ def on_reaction_import(state):
     if not path:
         return
     try:
-        new_df = pd.read_csv(path)
+        new_df = db.read_upload_csv(path)
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return

@@ -4,6 +4,7 @@ import os
 import sys
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,10 +60,11 @@ def test_full_height_corner_is_shown_for_every_top_shape():
 def test_measured_bottom_dish_height_overrides_dish_type_estimate():
     row = pd.Series({
         "D_tank_m": 0.1,
+        "L_tan_tan_m": 0.12,
         "H_m": 0.13,
         "bottom_dish": "Torispherical",
         "top_dish": "Flat",
-        "H_bottom_dish_m": 0.01,
+        "H_bot_dish_m": 0.01,
         "impeller_count": 0,
     })
 
@@ -73,6 +75,15 @@ def test_measured_bottom_dish_height_overrides_dish_type_estimate():
     assert geometry["bot_depth"] == 0.01
     assert depth == 0.01
     assert volume > 0
+
+
+def test_bottom_dish_height_reads_csv_column_with_derived_fallback():
+    from pages._db_common import bottom_dish_height
+
+    assert bottom_dish_height(pd.Series({"H_bot_dish_m": 0.02})) == 0.02
+    assert bottom_dish_height(pd.Series({"H_bottom_dish_m": 0.03})) == 0.03
+    assert bottom_dish_height(pd.Series({"H_max_m": 0.5, "L_tan_tan_m": 0.4})) == pytest.approx(0.1)
+    assert bottom_dish_height(pd.Series({"H_bot_dish_m": float("nan")})) == 0.0
 
 
 def test_measured_dish_height_is_shared_by_heat_transfer_backend():

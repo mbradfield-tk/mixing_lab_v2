@@ -278,39 +278,14 @@ def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "",
     return A_dish_full + np.pi * D_tank * max(H - h_dish, 0.0)
 
 
-def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float, bottom_dish: str = "") -> float:
-    """Liquid height (m) from fill volume, accounting for the bottom dish.
-
-    Delegates to :func:`utils.calculations.geometry.liquid_height_from_volume` so the
-    heat-transfer page uses the same dish-aware geometry as the other calculation pages.
-    """
-    from utils.calculations.geometry import liquid_height_from_volume as _dish_aware
-
-    return _dish_aware(V_L, D_tank, H_max, bottom_dish)
 def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float,
                               bottom_dish: str = "",
                               bottom_dish_height_m: float | None = None) -> float:
-    if V_L <= 0 or D_tank <= 0:
-        return 0.0
-    V_m3 = V_L / 1000.0
-    dish = (bottom_dish or "").lower()
-    measured_height = float(bottom_dish_height_m or 0.0)
-    if "conic" in dish:
-        h_dish = measured_height if measured_height > 0 else _cone_depth(D_tank, dish)
-        V_dish = np.pi * D_tank**2 * h_dish / 12.0
-    elif measured_height > 0:
-        h_dish = measured_height
-        V_dish = np.pi * D_tank**2 * h_dish / 6.0
-    elif "torisph" in dish or "din" in dish or "dished" in dish:
-        h_dish = 0.1935 * D_tank
-        V_dish = 0.0847 * D_tank**3
-    else:
-        h_dish = D_tank / 4
-        V_dish = np.pi * D_tank**3 / 24.0
-    area = np.pi * (D_tank / 2.0) ** 2
-    H = (V_m3 / V_dish * h_dish if V_m3 <= V_dish and V_dish > 0
-         else h_dish + (V_m3 - V_dish) / area)
-    return min(H, H_max) if H_max > 0 else H
+    """Liquid height (m) from fill volume — delegates to the shared dish-aware
+    geometry in :mod:`utils.calculations.geometry` so every page agrees."""
+    from utils.calculations.geometry import liquid_height_from_volume as _shared
+
+    return _shared(V_L, D_tank, H_max, bottom_dish, bottom_dish_height_m)
 
 
 def impeller_power(Np: float, rho: float, N_rps: float, D_imp: float) -> float:

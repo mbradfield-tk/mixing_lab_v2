@@ -1,5 +1,8 @@
 # `data/reactors.csv` — change log
 
+> **Status:** historical snapshot of the 2026-09-16 overhaul (commit `a6d920c`). The CSV has been edited
+> since; use `git log -- data/reactors.csv` for the current history. Last reviewed 2026-10-05.
+
 Date: 2026-09-16. Committed as `a6d920c` ("CSV Overhaul") on branch `fix_blend_time`; the pre-change file is
 `git show a6d920c^:data/reactors.csv`. Every edit made to the reactor database during the vessel-height
 clarification, in the order it happened, with the reason. Values in metres unless stated. "Round" numbers group

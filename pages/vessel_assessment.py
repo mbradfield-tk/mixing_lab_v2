@@ -605,7 +605,7 @@ def _correlation_applicability(state, hydro: dict) -> str:
 
     h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), tank_d))
     dish = str(row.get("bottom_dish", "") or "")
-    dish_height = _sf(row.get("H_bottom_dish_m"))
+    dish_height = db.bottom_dish_height(row)
     h_liq = liquid_height_from_volume(
         _sf(state.va_v_l), tank_d, h_max, dish, dish_height)
     submergence = h_liq / imp_d if imp_d > 0 else 0.0
@@ -652,7 +652,7 @@ def _hydro_at(state, n_rpm: float, v_l: float) -> dict:
     row = _reactor_row(state.va_reactor)
     h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
     dish = str(row.get("bottom_dish", "") or "")
-    dish_height = _sf(row.get("H_bottom_dish_m"))
+    dish_height = db.bottom_dish_height(row)
     h_liq = liquid_height_from_volume(
         v_l, state.va_d_tank, h_max, dish, dish_height)
     v_s, coal = _gas_params(state)
@@ -796,7 +796,7 @@ def on_va_compute(state):
         row = _reactor_row(state.va_reactor)
         h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
         dish = str(row.get("bottom_dish", "") or "")
-        dish_height = _sf(row.get("H_bottom_dish_m"))
+        dish_height = db.bottom_dish_height(row)
         h_liq = liquid_height_from_volume(
             state.va_v_l, state.va_d_tank, h_max, dish, dish_height)
         area = estimate_jacket_area(state.va_d_tank, h_liq, dish, dish_height)

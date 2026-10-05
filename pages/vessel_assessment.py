@@ -328,6 +328,16 @@ _ENV_LOG = {"Da_macro", "Da_micro", "Da_GL"}
 va_env_class = "env-rows-2"
 va_env_caption = ""
 
+# 3D response surfaces z = f(N, V) — generated on demand (button) because the
+# N×V grid costs ~375 hydro evaluations per parameter set.
+_SURF_N_PTS, _SURF_V_PTS = 25, 15
+va_surf_fig = go.Figure()
+va_surf_class = "env-rows-2"
+va_surf_caption = ""
+va_surf_ready = False
+va_surf_stale = False   # True when results/params changed after the surfaces were built
+va_surf_btn_class = "compute-btn"
+
 # Hydrodynamics results-table rows: (hydro-dict key, display name, unit).
 _HYDRO_ROWS = [
     ("Re", "Reynolds number", "–"),
@@ -467,7 +477,31 @@ def on_va_env_change(state):
     t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
     if t_rxn > 0:
         _build_envelope(state, t_rxn)
+        _mark_surface_stale(state)
         state.va_pdf_ready = False
+
+
+def _mark_surface_stale(state):
+    """Flag the 3D surfaces as out-of-date relative to the current results."""
+    if state.va_surf_ready and not state.va_surf_stale:
+        state.va_surf_stale = True
+        state.va_surf_btn_class = "compute-btn"
+
+
+def on_va_surface(state):
+    """Build the 3D response surfaces for the current assessment (on demand)."""
+    if not state.va_result_ready or state.va_stale:
+        notify(state, "W", "Compute the assessment before generating 3D surfaces.")
+        return
+    t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
+    if t_rxn <= 0:
+        notify(state, "E", "Provide a reaction time or rate constant (> 0) first.")
+        return
+    _build_surface(state, t_rxn)
+    state.va_surf_ready = True
+    state.va_surf_stale = False
+    state.va_surf_btn_class = "compute-btn-ok"
+    notify(state, "S", "3D response surfaces generated.")
 
 
 def _build_csv_exports(state):
@@ -785,6 +819,7 @@ def on_va_compute(state):
         state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
+    _mark_surface_stale(state)
     _build_csv_exports(state)
 
     state._va_cache = {
@@ -804,57 +839,55 @@ def on_va_compute(state):
     notify(state, "S", "Assessment computed.")
 
 
-def _build_envelope(state, t_rxn: float):
-    """Plot each SELECTED parameter as an operating *region*: an RPM sweep
-    bounded by the vessel's minimum and maximum fill volume, with the current
-    operating point marked. The subplot grid adapts to the number of chosen
-    parameters."""
+def _env_params(state) -> list[str]:
     params = [p for p in (state.va_env_params or []) if p in va_env_params_options]
-    if not params:
-        params = ["Da_macro"]
+    return params or ["Da_macro"]
+
+
+def _env_ranges(state) -> tuple[np.ndarray, float, float]:
+    """(RPM sweep array, V_min, V_max) for the selected vessel, with fallbacks
+    around the current operating point when the DB range is missing."""
     row = _reactor_row(state.va_reactor)
     n_lo = _sf(row.get("N_rpm_min"), max(state.va_n_rpm * 0.1, 10.0))
     n_hi = _sf(row.get("N_rpm_max"), state.va_n_rpm)
     if n_hi <= n_lo:
         n_lo, n_hi = state.va_n_rpm * 0.2, state.va_n_rpm * 1.2
-    n_arr = np.linspace(n_lo, n_hi, 40)
-
-    # Fill-volume range: from the reactor DB, falling back around the current V.
     v_min = _sf(row.get("V_L_min"), 0.0)
     v_max = _sf(row.get("V_L_max"), 0.0)
     if v_max <= v_min or v_min <= 0:
         v_min = max(state.va_v_l * 0.5, 1e-6)
         v_max = max(state.va_v_l, v_min * 1.5)
+    return np.linspace(n_lo, n_hi, 40), v_min, v_max
 
-    def _val(h: dict, d: dict, p: str) -> float:
-        if p == "Da_macro":
-            return d["Da_macro"]
-        if p == "Da_micro":
-            return d["Da_micro"]
-        if p == "Da_GL":
-            return d["Da_GL"]
-        return h[p]
+
+def _point_values(state, n_rpm: float, v_l: float, t_rxn: float, params: list[str]) -> dict:
+    """Evaluate the selected envelope parameters at one (N, V) point."""
+    h = _hydro_at(state, n_rpm, v_l)
+    d = compute_damkohler_numbers(
+        h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
+        kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"])
+    return {p: (d[p] if p.startswith("Da_") else h[p]) for p in params}
+
+
+def _build_envelope(state, t_rxn: float):
+    """Plot each SELECTED parameter as an operating *region*: an RPM sweep
+    bounded by the vessel's minimum and maximum fill volume, with the current
+    operating point marked. The subplot grid adapts to the number of chosen
+    parameters."""
+    params = _env_params(state)
+    n_arr, v_min, v_max = _env_ranges(state)
 
     def _sweep(v_l: float) -> dict:
         out = {p: [] for p in params}
-        for n in n_arr:
-            h = _hydro_at(state, n, v_l)
-            d = compute_damkohler_numbers(
-                h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-                kLa=h["kLa (1/s)"], kLa_surface=h["kLa_surface (1/s)"])
+        for n_rpm in n_arr:
+            vals = _point_values(state, n_rpm, v_l, t_rxn, params)
             for p in params:
-                out[p].append(_val(h, d, p))
+                out[p].append(vals[p])
         return {p: np.array(v) for p, v in out.items()}
 
     hi_v = _sweep(v_max)
     lo_v = _sweep(v_min)
-
-    # Current operating point (current RPM at current fill volume).
-    hc = _hydro_at(state, state.va_n_rpm, state.va_v_l)
-    dc = compute_damkohler_numbers(
-        hc["Blend time 95% (s)"], hc["Micromix time t_E (s)"], t_rxn,
-        kLa=hc["kLa (1/s)"], kLa_surface=hc["kLa_surface (1/s)"])
-    current = {p: _val(hc, dc, p) for p in params}
+    current = _point_values(state, state.va_n_rpm, state.va_v_l, t_rxn, params)
 
     n = len(params)
     cols = min(3, n)
@@ -914,7 +947,75 @@ def _build_envelope(state, t_rxn: float):
     state.va_env_fig = fig
     state.va_env_class = f"env-rows-{min(rows, 8)}"
     state.va_env_caption = (f"**Operating envelope** — RPM sweep across "
-                            f"V = {v_min:.0f}–{v_max:.0f} L")
+                            f"V = {v_min:.3g}–{v_max:.3g} L")
+
+
+def _build_surface(state, t_rxn: float):
+    """3D response surfaces z = f(N, V) for each selected parameter over the
+    vessel's full RPM × fill-volume window, with the operating point marked."""
+    params = _env_params(state)
+    n_full, v_min, v_max = _env_ranges(state)
+    n_arr = np.linspace(n_full[0], n_full[-1], _SURF_N_PTS)
+    v_arr = np.linspace(v_min, v_max, _SURF_V_PTS)
+
+    # Plotly Surface expects z[j, i] with rows along y (volume), columns along x (RPM).
+    z = {p: np.empty((len(v_arr), len(n_arr))) for p in params}
+    for j, v_l in enumerate(v_arr):
+        for i, n_rpm in enumerate(n_arr):
+            vals = _point_values(state, n_rpm, v_l, t_rxn, params)
+            for p in params:
+                z[p][j, i] = vals[p]
+    current = _point_values(state, state.va_n_rpm, state.va_v_l, t_rxn, params)
+
+    n = len(params)
+    cols = min(3, n)
+    rows = int(np.ceil(n / cols))
+    fig = make_subplots(
+        rows=rows, cols=cols, subplot_titles=params,
+        specs=[[{"type": "surface"}] * cols for _ in range(rows)],
+        vertical_spacing=0.06, horizontal_spacing=0.03)
+
+    for idx, p in enumerate(params):
+        r, c = idx // cols + 1, idx % cols + 1
+        zp = z[p]
+        log_z = p in _ENV_LOG and bool(np.all(zp > 0))
+        fig.add_trace(go.Surface(
+            x=n_arr, y=v_arr, z=zp, colorscale="Viridis", showscale=False,
+            opacity=0.9, name=p, showlegend=False,
+            hovertemplate=("N = %{x:.0f} RPM<br>V = %{y:.3g} L<br>"
+                           + p + " = %{z:.3g}<extra></extra>"),
+            contours={"z": {"show": True, "usecolormap": True,
+                            "project": {"z": True}}},
+        ), row=r, col=c)
+        if log_z:
+            # Translucent planes at the 0.1 / 1.0 mixing-sensitivity thresholds.
+            for thr, col_ in ((0.1, "orange"), (1.0, "red")):
+                fig.add_trace(go.Surface(
+                    x=n_arr, y=v_arr, z=np.full_like(zp, thr),
+                    colorscale=[[0, col_], [1, col_]], showscale=False,
+                    opacity=0.25, hoverinfo="skip", showlegend=False), row=r, col=c)
+        fig.add_trace(go.Scatter3d(
+            x=[state.va_n_rpm], y=[state.va_v_l], z=[current[p]], mode="markers",
+            marker={"symbol": "diamond", "size": 7, "color": "red",
+                    "line": {"width": 1, "color": "black"}},
+            name="Operating point", legendgroup="op", showlegend=(idx == 0),
+        ), row=r, col=c)
+        fig.update_scenes(
+            xaxis={"title": "N (RPM)"}, yaxis={"title": "V (L)"},
+            zaxis={"title": p, "type": "log" if log_z else "linear"},
+            camera={"eye": {"x": 1.6, "y": -1.6, "z": 0.9}},
+            row=r, col=c)
+
+    fig_height = max(360, rows * 360)
+    fig.update_layout(
+        height=fig_height, margin={"t": 60, "b": 10, "l": 0, "r": 0},
+        legend={"orientation": "h", "y": 1.02, "yanchor": "bottom",
+                "x": 0.5, "xanchor": "center"})
+    state.va_surf_fig = fig
+    state.va_surf_class = f"env-rows-{min(rows, 8)}"
+    state.va_surf_caption = (
+        f"**Response surfaces** — N = {n_arr[0]:.0f}–{n_arr[-1]:.0f} RPM × "
+        f"V = {v_min:.3g}–{v_max:.3g} L ({_SURF_N_PTS}×{_SURF_V_PTS} grid)")
 
 
 # ---------------------------------------------------------------------------
@@ -1132,6 +1233,28 @@ panels mark the 0.1 and 1.0 mixing-sensitivity thresholds.
 <|{va_env_caption}|text|mode=markdown|>
 
 <|chart|figure={va_env_fig}|class_name={va_env_class}|rebuild=True|>
+|>
+
+<|part|class_name=va-card|
+## Response Surfaces (3D)
+Each parameter selected above is evaluated over the full **agitation speed ×
+fill volume** window of the vessel as an interactive 3D surface (drag to rotate,
+scroll to zoom, hover for values). The red ◆ marks the current operating point;
+translucent planes on the Damköhler panels mark the 0.1 and 1.0
+mixing-sensitivity thresholds. Surfaces are generated on demand because the
+N × V grid is computationally heavier than the envelope sweep.
+
+<|Generate 3D surfaces|button|on_action=on_va_surface|class_name={va_surf_btn_class}|>
+
+<|part|render={va_surf_stale}|
+**⚠️ Results or parameter selection changed since the surfaces were built — click _Generate 3D surfaces_ to refresh.**
+|>
+
+<|part|render={va_surf_ready}|
+<|{va_surf_caption}|text|mode=markdown|>
+
+<|chart|figure={va_surf_fig}|class_name={va_surf_class}|rebuild=True|>
+|>
 |>
 
 <|part|class_name=va-card|

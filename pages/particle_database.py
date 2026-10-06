@@ -1,30 +1,24 @@
 """Particle Database page (Taipy) — browse, edit, add, import/export particles.
 
-Ported from the Streamlit ``4_Particle_Database.py`` page. The editable table
-persists every change straight to ``data/particles.csv``.
+Ported from the Streamlit ``4_Particle_Database.py`` page. CRUD, validation and
+persistence go through :data:`core.repositories.particles`.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import pandas as pd
 from taipy.gui import Markdown, notify
 
+from core import repositories as repos
 from utils.menu_icons import inject_icons
 from pages import _db_common as db
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-PARTICLE_CSV = DATA_DIR / "particles.csv"
-
-COLUMNS = [
-    "particle_name", "rho_p_kg_m3", "d10_um", "d50_um", "d90_um",
-    "shape_description", "shape_factor", "notes",
-]
+REPO = repos.particles
+PARTICLE_CSV = REPO.path
+COLUMNS = REPO.columns
 
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-particle_df = db.load_csv(PARTICLE_CSV, COLUMNS)
+particle_df = REPO.load()
 particle_search = ""
 particle_view_df = particle_df
 particle_export = db.csv_bytes(particle_df)
@@ -46,17 +40,16 @@ particle_upload = ""
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _persist(state) -> None:
-    db.save_csv(state.particle_df, PARTICLE_CSV)
-    state.particle_export = db.csv_bytes(state.particle_df)
-    state.particle_msg = f"{len(state.particle_df)} particles in database."
+def _persist(state, df) -> None:
+    state.particle_df = df
+    state.particle_export = db.csv_bytes(df)
+    state.particle_msg = f"{len(df)} particles in database."
     state.particle_view_df = _apply_search(state)
 
 
-def _apply_search(state) -> pd.DataFrame:
+def _apply_search(state):
     """Full frame, or a filtered (read-only) view while searching."""
-    query = (state.particle_search or "").strip()
-    return db.filter_rows(state.particle_df, query) if query else state.particle_df
+    return REPO.search(state.particle_df, state.particle_search)[0]
 
 
 def on_particle_search(state):
@@ -76,53 +69,37 @@ def _searching(state) -> bool:
 def on_particle_edit(state, var_name, payload):
     if _searching(state):
         return
-    state.particle_df = db.apply_edit(state.particle_df.copy(), payload)
-    _persist(state)
+    _persist(state, REPO.edit(state.particle_df, payload, db.ANONYMOUS))
     notify(state, "S", "Saved.")
 
 
 def on_particle_delete(state, var_name, payload):
     if _searching(state):
         return
-    state.particle_df = db.delete_row(state.particle_df.copy(), payload)
-    _persist(state)
+    _persist(state, REPO.delete(state.particle_df, payload, db.ANONYMOUS))
     notify(state, "I", "Row deleted.")
 
 
 def on_particle_add(state, var_name, payload):
     if _searching(state):
         return
-    state.particle_df = db.add_blank(state.particle_df.copy(), COLUMNS)
-    _persist(state)
+    _persist(state, REPO.add_blank(state.particle_df, db.ANONYMOUS))
 
 
 def on_particle_add_row(state):
-    name = (state.part_new_name or "").strip()
-    if not name:
-        notify(state, "W", "Enter a particle name.")
-        return
-    if db.name_taken(state.particle_df, "particle_name", name):
-        notify(state, "E", f"A particle named '{name}' already exists.")
-        return
+    data = {
+        "particle_name": state.part_new_name, "rho_p_kg_m3": state.part_new_rho,
+        "d10_um": state.part_new_d10, "d50_um": state.part_new_d50,
+        "d90_um": state.part_new_d90, "shape_description": state.part_new_shape,
+        "shape_factor": state.part_new_factor, "notes": state.part_new_notes,
+    }
     try:
-        d10, d50, d90 = (float(state.part_new_d10), float(state.part_new_d50),
-                         float(state.part_new_d90))
-        rho_p = float(state.part_new_rho)
-        factor = float(state.part_new_factor)
-    except (TypeError, ValueError):
-        notify(state, "E", "Density, sizes and shape factor must be numeric.")
+        df = REPO.create(state.particle_df, data, db.ANONYMOUS)
+    except ValueError as exc:
+        notify(state, "E", str(exc))
         return
-    if not (d10 <= d50 <= d90):
-        notify(state, "E", "Particle sizes must satisfy d10 ≤ d50 ≤ d90.")
-        return
-    new = pd.DataFrame([{
-        "particle_name": name, "rho_p_kg_m3": rho_p,
-        "d10_um": d10, "d50_um": d50, "d90_um": d90,
-        "shape_description": state.part_new_shape,
-        "shape_factor": factor, "notes": state.part_new_notes,
-    }])
-    state.particle_df = db.reset(pd.concat([state.particle_df, new], ignore_index=True))
-    _persist(state)
+    _persist(state, df)
+    name = (state.part_new_name or "").strip()
     state.part_new_name = ""
     notify(state, "S", f"Added '{name}'.")
 
@@ -136,8 +113,7 @@ def on_particle_import(state):
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return
-    state.particle_df = db.reset(new_df)
-    _persist(state)
+    _persist(state, REPO.replace(new_df, db.ANONYMOUS))
     notify(state, "S", f"Imported {len(new_df)} particles (replaced database).")
 
 

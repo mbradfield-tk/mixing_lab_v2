@@ -10,23 +10,18 @@ and an operating-envelope sweep across the RPM range and fill-volume band.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
-from utils.solvent_properties import (
-    is_known_solvent,
-    list_solvents,
-    resolve_solvent_name,
-)
-from utils.rom_registry import available_modes
 from utils.report_builder import build_vessel_assessment_pdf, report_filename
+from core import catalog
 from core import operating_point as op
+from core import repositories as repos
 from core import sensitivity_rules as rules
+from core.catalog import available_modes, is_known_solvent, resolve_solvent_name
 from core.kinetics import effective_t_rxn as _auto_t_rxn
 from core.envelope import envelope_data, solve_operating_point, surface_data
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
@@ -45,14 +40,6 @@ from core.records import (
 )
 from pages import _db_common as db
 from pages._vessel_media import build_vessel_viewer_html, media_caption
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
-reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
-particles_df = pd.read_csv(DATA_DIR / "particles.csv")
-fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
-
-RECORDED_CSV = DATA_DIR / "recorded_results.csv"
 
 # 3D vessel viewer render height (px). The Taipy `part` pane is sized a little
 # taller so the image is fully visible without scrolling.
@@ -131,13 +118,13 @@ def _refresh_corr(state):
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
-reaction_class_options = db.reaction_names(reactions_df, "yes")
-reaction_measured_options = db.reaction_names(reactions_df, "no")
+reactor_options = catalog.reactor_names()
+reaction_class_options = catalog.reaction_names("yes")
+reaction_measured_options = catalog.reaction_names("no")
 reaction_source_options = ["Measured kinetics", "Reaction classes"]
 reaction_options = reaction_measured_options or reaction_class_options
-fluid_options = sorted(list_solvents() + fluids_df["fluid_name"].dropna().astype(str).tolist())
-particle_options = sorted(particles_df["particle_name"].dropna().astype(str).unique().tolist())
+fluid_options = catalog.fluid_names()
+particle_options = catalog.particle_names()
 
 # ---------------------------------------------------------------------------
 # State — Section 1: Vessel & System
@@ -491,7 +478,7 @@ def on_va_save_results(state):
         "Da_SL": dam.get("Da_SL", ""), "Assessment": dam.get("Assessment", ""),
     }
     try:
-        db.append_csv(pd.DataFrame([row]), RECORDED_CSV)
+        repos.results.append([row], db.ANONYMOUS)
         notify(state, "S", "Saved 1 result — view it on the Recorded Results page.")
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Save failed: {exc}")

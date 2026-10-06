@@ -17,41 +17,21 @@ screening is implemented.
 """
 from __future__ import annotations
 
-from itertools import combinations
-from pathlib import Path
-
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations.liquid_liquid import (
-    minimum_dispersion_speed,
-    phase_separation_check,
-)
 from pages import _db_common as db
-from core.miscibility import settled_phases
+from core import catalog
+from core import fluids
+from core import repositories as repos
 from core import solvents as solvent_curves
 from viz import fluids as viz_fluids
-from utils.solvent_properties import (
-    SOLVENT_DB,
-    boiling_point_at_pressure,
-    get_properties,
-    is_known_solvent,
-    list_solvents,
-    solvent_info_table,
-    solvent_miscibility,
-)
-from utils.validation import TEMP_MIN_C, TEMP_MAX_C
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-FLUID_CSV = DATA_DIR / "fluids.csv"
-
-COLUMNS = [
-    "fluid_name", "rho_kg_m3", "mu_Pa_s", "D_mol_m2_s", "surface_tension_N_m",
-    "notes", "Cp_J_per_kgK", "k_W_per_mK", "hsp_d", "hsp_p", "hsp_h",
-]
+REPO = repos.fluids
+FLUID_CSV = REPO.path
+COLUMNS = REPO.columns
 
 # ---------------------------------------------------------------------------
 # Sub-view tabs
@@ -64,15 +44,15 @@ fluid_tab = "Solvent Library"
 # ---------------------------------------------------------------------------
 # Solvent library (built-in, read-only)
 # ---------------------------------------------------------------------------
-solvent_library_df = pd.DataFrame(solvent_info_table())
-solvent_options = list_solvents()
+solvent_library_df = pd.DataFrame(fluids.library_table())
+solvent_options = catalog.solvent_names()
 solvent_search = ""
 solvent_library_view_df = solvent_library_df
 
 # ---------------------------------------------------------------------------
 # Custom fluids (editable, persisted)
 # ---------------------------------------------------------------------------
-fluid_df = db.load_csv(FLUID_CSV, COLUMNS)
+fluid_df = REPO.load()
 fluid_search = ""
 fluid_view_df = fluid_df
 fluid_export = db.csv_bytes(fluid_df)
@@ -106,7 +86,7 @@ solvent_prop_fig = go.Figure()
 # ---------------------------------------------------------------------------
 # Blend view
 # ---------------------------------------------------------------------------
-blend_available = sorted(SOLVENT_DB.keys())
+blend_available = list(solvent_options)
 blend_selected: list[str] = []
 blend_basis = "Volume"
 blend_basis_options = ["Volume", "Mass"]
@@ -136,25 +116,24 @@ blend_phase_fig = _phase_placeholder_fig("Compute a blend to see the predicted p
 # ---------------------------------------------------------------------------
 def _refresh_available() -> list[str]:
     custom = fluid_df["fluid_name"].dropna().astype(str).tolist() if not fluid_df.empty else []
-    return sorted(SOLVENT_DB.keys()) + custom
+    return solvent_options + custom
 
 
 blend_available = _refresh_available()
 
 
-def _persist(state) -> None:
-    db.save_csv(state.fluid_df, FLUID_CSV)
-    state.fluid_export = db.csv_bytes(state.fluid_df)
-    state.fluid_msg = f"{len(state.fluid_df)} custom fluids (plus {len(solvent_options)} built-in solvents)."
-    custom = state.fluid_df["fluid_name"].dropna().astype(str).tolist() if not state.fluid_df.empty else []
-    state.blend_available = sorted(SOLVENT_DB.keys()) + custom
+def _persist(state, df) -> None:
+    state.fluid_df = df
+    state.fluid_export = db.csv_bytes(df)
+    state.fluid_msg = f"{len(df)} custom fluids (plus {len(solvent_options)} built-in solvents)."
+    custom = df["fluid_name"].dropna().astype(str).tolist() if not df.empty else []
+    state.blend_available = solvent_options + custom
     state.fluid_view_df = _apply_fluid_search(state)
 
 
 def _apply_fluid_search(state) -> pd.DataFrame:
     """Full custom-fluids frame, or a filtered (read-only) view while searching."""
-    query = (state.fluid_search or "").strip()
-    return db.filter_rows(state.fluid_df, query) if query else state.fluid_df
+    return REPO.search(state.fluid_df, state.fluid_search)[0]
 
 
 def on_fluid_search(state):
@@ -176,31 +155,13 @@ def on_solvent_library_search(state):
 
 def _fluid_props(fname: str, df: pd.DataFrame, T: float = 25.0) -> dict | None:
     """Return property dict for a solvent (at T) or custom fluid (fixed)."""
-    if is_known_solvent(fname):
-        p = get_properties(fname, T)
-        return {k: p[k] for k in (
-            "rho_kg_m3", "mu_Pa_s", "D_mol_m2_s", "surface_tension_N_m",
-            "Cp_J_per_kgK", "k_W_per_mK")}
-    if not df.empty and fname in df["fluid_name"].astype(str).values:
-        row = df[df["fluid_name"].astype(str) == fname].iloc[0]
-        try:
-            return {
-                "rho_kg_m3": float(row["rho_kg_m3"]),
-                "mu_Pa_s": float(row["mu_Pa_s"]),
-                "D_mol_m2_s": float(row["D_mol_m2_s"]),
-                "surface_tension_N_m": float(row["surface_tension_N_m"]),
-                "Cp_J_per_kgK": float(row.get("Cp_J_per_kgK", 4182.0) or 4182.0),
-                "k_W_per_mK": float(row.get("k_W_per_mK", 0.607) or 0.607),
-            }
-        except (TypeError, ValueError):  # non-numeric cell -> treat as missing
-            return None
-    return None
+    return fluids.component_props(fname, df, T)
 
 
 def _compute_solvent_props(name: str, P_atm: float, T_C: float):
-    sd = SOLVENT_DB[name]
-    bp_at_P = boiling_point_at_pressure(P_atm, sd)
-    props = get_properties(name, T_C, P_atm)
+    props = fluids.solvent_state(name, P_atm, T_C)
+    bp_at_P = props["bp_at_P_C"]
+    mp_C = props["liquid_range_C"][0]
     props_df = pd.DataFrame([
         {"Property": "Density ρ", "Value": f"{props['rho_kg_m3']:.2f}", "Units": "kg/m³"},
         {"Property": "Viscosity μ", "Value": f"{props['mu_Pa_s']:.6f}", "Units": "Pa·s"},
@@ -210,16 +171,16 @@ def _compute_solvent_props(name: str, P_atm: float, T_C: float):
         {"Property": "Thermal conductivity k", "Value": f"{props['k_W_per_mK']:.4f}", "Units": "W/m·K"},
         {"Property": "Vapour pressure", "Value": f"{props['vapor_pressure_atm']:.4f}", "Units": "atm"},
         {"Property": "b.p. at P", "Value": f"{bp_at_P:.1f}", "Units": "°C"},
-        {"Property": "Normal b.p.", "Value": f"{sd.bp_C:.1f}", "Units": "°C"},
+        {"Property": "Normal b.p.", "Value": f"{props['bp_C']:.1f}", "Units": "°C"},
         {"Property": "m.p.", "Value": f"{props['mp_C']:.1f}", "Units": "°C"},
         {"Property": "MW", "Value": f"{props['mw']:.2f}", "Units": "g/mol"},
         {"Property": "CAS", "Value": str(props["cas"]), "Units": "–"},
     ])
     if props["in_range"]:
-        range_msg = f"Liquid range at {P_atm:.3f} atm: {sd.mp_C:.0f} – {bp_at_P:.0f} °C."
+        range_msg = f"Liquid range at {P_atm:.3f} atm: {mp_C:.0f} – {bp_at_P:.0f} °C."
     else:
         range_msg = (f"⚠️ {T_C:.1f} °C is outside the liquid range "
-                     f"({sd.mp_C:.0f} – {bp_at_P:.0f} °C) — values are extrapolated.")
+                     f"({mp_C:.0f} – {bp_at_P:.0f} °C) — values are extrapolated.")
 
     fig = viz_fluids.property_curves(name, solvent_curves.property_curves(name, P_atm), T_C)
     return props_df, range_msg, fig
@@ -236,52 +197,38 @@ solvent_props_df, solvent_range_msg, solvent_prop_fig = _compute_solvent_props(
 def on_fluid_edit(state, var_name, payload):
     if _fluid_searching(state):
         return
-    state.fluid_df = db.apply_edit(state.fluid_df.copy(), payload)
-    _persist(state)
+    _persist(state, REPO.edit(state.fluid_df, payload, db.ANONYMOUS))
     notify(state, "S", "Saved.")
 
 
 def on_fluid_delete(state, var_name, payload):
     if _fluid_searching(state):
         return
-    state.fluid_df = db.delete_row(state.fluid_df.copy(), payload)
-    _persist(state)
+    _persist(state, REPO.delete(state.fluid_df, payload, db.ANONYMOUS))
     notify(state, "I", "Row deleted.")
 
 
 def on_fluid_add(state, var_name, payload):
     if _fluid_searching(state):
         return
-    state.fluid_df = db.add_blank(state.fluid_df.copy(), COLUMNS)
-    _persist(state)
+    _persist(state, REPO.add_blank(state.fluid_df, db.ANONYMOUS))
 
 
 def on_fluid_add_row(state):
-    name = (state.flu_new_name or "").strip()
-    if not name:
-        notify(state, "W", "Enter a fluid name.")
-        return
-    if is_known_solvent(name):
-        notify(state, "W", f"'{name}' is already in the solvent library — no need to add it.")
-        return
-    if db.name_taken(state.fluid_df, "fluid_name", name):
-        notify(state, "E", f"A custom fluid named '{name}' already exists.")
-        return
+    data = {
+        "fluid_name": state.flu_new_name, "notes": state.flu_new_notes,
+        "rho_kg_m3": state.flu_new_rho, "mu_Pa_s": state.flu_new_mu,
+        "D_mol_m2_s": state.flu_new_D, "surface_tension_N_m": state.flu_new_sigma,
+        "Cp_J_per_kgK": state.flu_new_Cp, "k_W_per_mK": state.flu_new_k,
+        "hsp_d": state.flu_new_hd, "hsp_p": state.flu_new_hp, "hsp_h": state.flu_new_hh,
+    }
     try:
-        props = {
-            "rho_kg_m3": float(state.flu_new_rho), "mu_Pa_s": float(state.flu_new_mu),
-            "D_mol_m2_s": float(state.flu_new_D),
-            "surface_tension_N_m": float(state.flu_new_sigma),
-            "Cp_J_per_kgK": float(state.flu_new_Cp), "k_W_per_mK": float(state.flu_new_k),
-            "hsp_d": float(state.flu_new_hd), "hsp_p": float(state.flu_new_hp),
-            "hsp_h": float(state.flu_new_hh),
-        }
-    except (TypeError, ValueError):
-        notify(state, "E", "All property fields must be numeric.")
+        df = REPO.create(state.fluid_df, data, db.ANONYMOUS)
+    except ValueError as exc:
+        notify(state, "E", str(exc))
         return
-    new = pd.DataFrame([{"fluid_name": name, "notes": state.flu_new_notes, **props}])
-    state.fluid_df = db.reset(pd.concat([state.fluid_df, new], ignore_index=True))
-    _persist(state)
+    _persist(state, df)
+    name = (state.flu_new_name or "").strip()
     state.flu_new_name = ""
     notify(state, "S", f"Added '{name}'.")
 
@@ -295,8 +242,7 @@ def on_fluid_import(state):
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return
-    state.fluid_df = db.reset(new_df)
-    _persist(state)
+    _persist(state, REPO.replace(new_df, db.ANONYMOUS))
     notify(state, "S", f"Imported {len(new_df)} custom fluids (replaced database).")
 
 
@@ -331,68 +277,26 @@ def _join_pairs(pairs: list[str], limit: int = 3) -> str:
     return "; ".join(pairs[:limit]) + f"; +{len(pairs) - limit} more"
 
 
-def _build_phase_fig(comp_props: list[dict], pair_misc: dict) -> go.Figure:
-    """Settled liquid phases stacked by density (partition from core.miscibility)."""
-    return viz_fluids.phase_stack(*settled_phases(comp_props, pair_misc))
-
-
 def on_blend_compute(state):
     inp = state.blend_input_df
     if inp.empty:
         notify(state, "W", "Select components and enter amounts first.")
         return
-    comps = inp["Component"].astype(str).tolist()
     try:
         amounts = {str(r["Component"]): float(r["Amount"]) for _, r in inp.iterrows()}
     except (TypeError, ValueError):
         notify(state, "E", "Component amounts must be numeric.")
         return
-    total = sum(amounts.values())
-    if total <= 0:
-        notify(state, "E", "Total amount must be > 0.")
+    try:
+        res = fluids.blend(amounts, state.blend_basis == "Volume", float(state.blend_T),
+                           state.fluid_df, float(state.blend_dispersion_speed),
+                           float(state.blend_dispersion_d), float(state.blend_dispersion_h),
+                           float(state.blend_sigma_ll))
+    except ValueError as exc:
+        notify(state, "E", str(exc))
         return
-    T = float(state.blend_T)
-    is_vol = state.blend_basis == "Volume"
-
-    comp_props, missing = [], []
-    for comp in comps:
-        p = _fluid_props(comp, state.fluid_df, T)
-        if p is None:
-            missing.append(comp)
-        else:
-            comp_props.append({"name": comp, "input": amounts[comp] / total, **p})
-    if missing:
-        notify(state, "E", f"No properties for: {', '.join(missing)}")
-        return
-    bad = [cp["name"] for cp in comp_props
-           if not (cp["rho_kg_m3"] > 0 and cp["mu_Pa_s"] > 0 and cp["D_mol_m2_s"] > 0)]
-    if bad:
-        notify(state, "E",
-               f"Invalid properties (ρ, μ and D must be > 0) for: {', '.join(bad)}")
-        return
-
-    if is_vol:
-        for cp in comp_props:
-            cp["vol_frac"] = cp["input"]
-        masses = [cp["vol_frac"] * cp["rho_kg_m3"] for cp in comp_props]
-        tm = sum(masses)
-        for cp, m in zip(comp_props, masses):
-            cp["mass_frac"] = m / tm
-    else:
-        for cp in comp_props:
-            cp["mass_frac"] = cp["input"]
-        vols = [cp["mass_frac"] / cp["rho_kg_m3"] for cp in comp_props]
-        tv = sum(vols)
-        for cp, v in zip(comp_props, vols):
-            cp["vol_frac"] = v / tv
-
-    # Literature mixing rules
-    blend_rho = 1.0 / sum(cp["mass_frac"] / cp["rho_kg_m3"] for cp in comp_props)
-    blend_mu = float(np.exp(sum(cp["mass_frac"] * np.log(cp["mu_Pa_s"]) for cp in comp_props)))
-    blend_D = float(np.exp(sum(cp["mass_frac"] * np.log(cp["D_mol_m2_s"]) for cp in comp_props)))
-    blend_sig = sum(cp["vol_frac"] * cp["surface_tension_N_m"] for cp in comp_props)
-    blend_Cp = sum(cp["mass_frac"] * cp["Cp_J_per_kgK"] for cp in comp_props)
-    blend_k = sum(cp["vol_frac"] * cp["k_W_per_mK"] for cp in comp_props)
+    comp_props, mixed = res["components"], res["blend"]
+    blend_rho, blend_mu = mixed["rho_kg_m3"], mixed["mu_Pa_s"]
 
     rows = [{
         "Component": cp["name"],
@@ -409,87 +313,51 @@ def on_blend_compute(state):
         "Component": "Blend",
         "Vol %": "100.0", "Mass %": "100.0",
         "ρ (kg/m³)": f"{blend_rho:.1f}", "μ (Pa·s)": f"{blend_mu:.6f}",
-        "σ (N/m)": f"{blend_sig:.4f}", "D (m²/s)": f"{blend_D:.3e}",
-        "Cp (J/kg·K)": f"{blend_Cp:.1f}", "k (W/m·K)": f"{blend_k:.4f}",
+        "σ (N/m)": f"{mixed['surface_tension_N_m']:.4f}", "D (m²/s)": f"{mixed['D_mol_m2_s']:.3e}",
+        "Cp (J/kg·K)": f"{mixed['Cp_J_per_kgK']:.1f}", "k (W/m·K)": f"{mixed['k_W_per_mK']:.4f}",
     })
     state.blend_result_df = pd.DataFrame(rows)
 
-    # Pairwise miscibility screening
-    misc_rows = []
-    pair_misc: dict[tuple[str, str], dict] = {}
-    reactive_pairs, immiscible_pairs, unknown_pairs = [], [], []
-    for n1, n2 in combinations(comps, 2):
-        m = solvent_miscibility(n1, n2, custom_fluids=state.fluid_df)
-        pair_misc[(n1, n2)] = m
-        label = f"{n1} / {n2}"
-        misc_rows.append({
-            "Pair": label,
-            "Assessment": m["assessment"],
-            "R_a (MPa½)": f"{m['Ra']:.1f}" if m.get("Ra") is not None else "—",
-            "Source": m["source"],
-        })
-        if m.get("reactive"):
-            reactive_pairs.append(label)
-        elif m["miscible"] is False:
-            immiscible_pairs.append(label)
-        elif m["miscible"] is None:
-            unknown_pairs.append(label)
+    misc_rows = [{
+        "Pair": p["label"],
+        "Assessment": p["misc"]["assessment"],
+        "R_a (MPa½)": f"{p['misc']['Ra']:.1f}" if p["misc"].get("Ra") is not None else "—",
+        "Source": p["misc"]["source"],
+    } for p in res["pairs"]]
     state.blend_misc_df = pd.DataFrame(misc_rows) if misc_rows else pd.DataFrame(
         columns=["Pair", "Assessment", "R_a (MPa½)", "Source"])
 
-    if reactive_pairs:
+    if res["phases"] is None:
         state.blend_phase_fig = _phase_placeholder_fig(
             "⚠️ Reactive pair — chemical reaction on mixing;<br>"
             "physical phase stratification does not apply.")
     else:
-        state.blend_phase_fig = _build_phase_fig(comp_props, pair_misc)
+        state.blend_phase_fig = viz_fluids.phase_stack(*res["phases"])
 
     # Preliminary liquid-liquid dispersion screen for immiscible pairs. The
     # user-entered interfacial tension and vessel inputs make the assumptions
     # explicit; this is not a substitute for an emulsion stability model.
-    state.blend_dispersion_df = pd.DataFrame(columns=blend_dispersion_df.columns)
-    if immiscible_pairs:
-        props_by_name = {cp["name"]: cp for cp in comp_props}
-        dispersion_rows = []
-        for n1, n2 in combinations(comps, 2):
-            if f"{n1} / {n2}" not in immiscible_pairs:
-                continue
-            first, second = props_by_name.get(n1), props_by_name.get(n2)
-            if not first or not second:
-                continue
-            continuous, dispersed = (first, second) if first["vol_frac"] >= second["vol_frac"] else (second, first)
-            pair_fraction = first["vol_frac"] + second["vol_frac"]
-            phi_d = dispersed["vol_frac"] / pair_fraction if pair_fraction > 0 else 0.0
-            sep = phase_separation_check(
-                max(float(state.blend_dispersion_speed), 0.0),
-                max(float(state.blend_dispersion_d), 0.0),
-                max(float(state.blend_dispersion_h), 0.0),
-                continuous["rho_kg_m3"], dispersed["rho_kg_m3"], continuous["mu_Pa_s"],
-                max(float(state.blend_sigma_ll), 0.0), phi_d)
-            n_min = minimum_dispersion_speed(
-                max(float(state.blend_dispersion_d), 0.0),
-                max(float(state.blend_sigma_ll), 0.0),
-                continuous["rho_kg_m3"], phi_d)
-            dispersion_rows.append({
-                "Pair": f"{n1} / {n2}",
-                "Weber number": f"{sep['We']:.3g}",
-                "d₃₂ (µm)": f"{sep['d32 (µm)']:.3g}",
-                "N_min (1/s)": f"{n_min:.3g}",
-                "N/N_min": f"{(float(state.blend_dispersion_speed) / n_min) if n_min > 0 else 0.0:.3g}",
-                "Rest separation": sep["Assessment"],
-            })
-        state.blend_dispersion_df = pd.DataFrame(dispersion_rows, columns=blend_dispersion_df.columns)
+    state.blend_dispersion_df = pd.DataFrame([{
+        "Pair": d["pair"],
+        "Weber number": f"{d['We']:.3g}",
+        "d₃₂ (µm)": f"{d['d32_um']:.3g}",
+        "N_min (1/s)": f"{d['N_min_1_s']:.3g}",
+        "N/N_min": f"{d['N_over_N_min']:.3g}",
+        "Rest separation": d["assessment"],
+    } for d in res["dispersion"]], columns=blend_dispersion_df.columns)
 
-    if reactive_pairs:
-        state.blend_status = (f"⚠️ Reacts chemically on mixing ({_join_pairs(reactive_pairs)}) — "
+    pairs_of = {cls: [p["label"] for p in res["pairs"] if p["class"] == cls]
+                for cls in ("reactive", "immiscible", "unknown")}
+    if res["status"] == "reactive":
+        state.blend_status = (f"⚠️ Reacts chemically on mixing ({_join_pairs(pairs_of['reactive'])}) — "
                               "this is not a physical blend; averaged properties do not apply.")
         notify(state, "E", "Reactive pair detected.")
-    elif immiscible_pairs:
-        state.blend_status = (f"⚠️ Immiscible / partially miscible ({_join_pairs(immiscible_pairs)}) — "
+    elif res["status"] == "immiscible":
+        state.blend_status = (f"⚠️ Immiscible / partially miscible ({_join_pairs(pairs_of['immiscible'])}) — "
                               "the blend may split into phases; averaged properties may not apply.")
         notify(state, "W", "Immiscible pair detected.")
-    elif unknown_pairs:
-        state.blend_status = (f"❔ Miscibility unknown — no HSP data for {_join_pairs(unknown_pairs)}. "
+    elif res["status"] == "unknown":
+        state.blend_status = (f"❔ Miscibility unknown — no HSP data for {_join_pairs(pairs_of['unknown'])}. "
                               f"If single-phase: ρ = {blend_rho:.1f} kg/m³, μ = {blend_mu:.6f} Pa·s.")
         notify(state, "I", "Some pairs have unknown miscibility.")
     else:

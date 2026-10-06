@@ -780,6 +780,26 @@ def heat_cool_setup_error(t_start: float, t_target: float, t_jacket: float) -> s
     return None
 
 
+# Display label -> compute_batch input key of each sweepable U/UA input.
+SWEEP_PARAMETERS = {
+    "Stir speed (rpm)": "n_rpm",
+    "Liquid volume (L)": "v_l",
+    "Impeller diameter (m)": "d_imp",
+    "Tank diameter (m)": "d_tank",
+    "Fluid density (kg/m3)": "rho",
+    "Fluid viscosity (Pa.s)": "mu",
+    "Fluid Cp (J/kg.K)": "cp",
+    "Fluid conductivity (W/m.K)": "k_fluid",
+    "Jacket velocity (m/s)": "v_jacket",
+    "Jacket hydraulic diameter (m)": "d_hyd_jacket",
+    "Wall conductivity (W/m.K)": "wall_k",
+    "Wall thickness (mm)": "wall_thickness_mm",
+    "Lining conductivity (W/m.K)": "lining_k",
+    "Lining thickness (mm)": "lining_thickness_mm",
+    "Fouling resistance (m2.K/W)": "fouling",
+    "Wall-side viscosity (Pa.s)": "mu_wall",
+}
+
 # Upper sweep bound per input when neither a DB range nor a current value exists.
 SWEEP_ZERO_VALUE_MAX = {
     "d_imp": 1.0, "d_tank": 2.0, "rho": 2000.0, "mu": 0.1,

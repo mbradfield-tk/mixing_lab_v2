@@ -27,22 +27,19 @@ properties are shared across the selection. Point evaluations come from
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import heat_balance_assessment
-from utils.rom_registry import available_modes_multi
-from utils.solvent_properties import SOLVENT_DB, resolve_solvent_name
 from utils.report_builder import build_reactor_comparison_pdf, report_filename
-from core import operating_point as op
+from core import catalog
 from core import kinetics
 from core import records
+from core import repositories as repos
 from core import scale_up
+from core.catalog import available_modes_multi, resolve_solvent_name
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from core.records import (
     particle_row as _particle_row,
@@ -55,14 +52,6 @@ from pages import _db_common as db
 from viz import vessel as viz_vessel
 from reports import snapshots
 from pages._vessel_media import build_multi_vessel_viewer_html
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
-reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
-particles_df = pd.read_csv(DATA_DIR / "particles.csv")
-fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
-
-RECORDED_CSV = DATA_DIR / "recorded_results.csv"
 
 CORNER_LABELS = scale_up.CORNER_LABELS
 _BASE_PLOT_PARAMS = scale_up.BASE_PLOT_PARAMS
@@ -102,15 +91,13 @@ def _fluid_props(name: str, T_C: float, P_atm: float) -> tuple[float, float, flo
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-reactor_options = reactors_df["reactor_name"].dropna().astype(str).tolist()
-_solvent_names = sorted(SOLVENT_DB.keys())
-_custom_names = fluids_df["fluid_name"].dropna().astype(str).tolist()
-fluid_options = _solvent_names + _custom_names
-reaction_class_options = db.reaction_names(reactions_df, "yes")
-reaction_measured_options = db.reaction_names(reactions_df, "no")
+reactor_options = catalog.reactor_names(sort=False)
+fluid_options = catalog.fluid_names_grouped()
+reaction_class_options = catalog.reaction_names("yes")
+reaction_measured_options = catalog.reaction_names("no")
 reaction_source_options = ["Measured kinetics", "Reaction classes"]
 reaction_options = reaction_measured_options or reaction_class_options
-particle_options = particles_df["particle_name"].dropna().astype(str).tolist()
+particle_options = catalog.particle_names(sort=False)
 scale_solve_options = ["RPM (specify volume)", "Volume (specify RPM)"]
 # This page's own wording for the coalescence options.
 _COAL_LABELS = {Coalescence.COALESCING: "Coalescing (pure liquid)",
@@ -539,23 +526,14 @@ def _build_heat_summary(state, env_df, reactor_info, ctx):
     if not ctx["incl_heat"]:
         state.vc_heat_df = pd.DataFrame()
         return
-    rows = []
-    for name in reactor_info:
-        sub = env_df[(env_df["Reactor"] == name) & (env_df["Corner"] == CORNER_LABELS[1])]
-        if sub.empty:
-            continue
-        c = sub.iloc[0]
-        Q_gen, Q_cool = c.get("Q_gen (W)", 0.0), c.get("Q_cool (W)", 0.0)
-        ratio = Q_gen / Q_cool * 100.0 if Q_cool > 0 else np.inf
-        rows.append({
-            "Reactor": name, "Volume (L)": f"{c['V_L']:.1f}",
-            "U (W/m²·K)": f"{c.get('U (W/m²·K)', 0):.0f}",
-            "A (m²)": f"{c.get('A_ht (m²)', 0):.3f}",
-            "Q_gen (W)": f"{Q_gen:.1f}", "Q_cool (W)": f"{Q_cool:.1f}",
-            "Q_gen/Q_cool (%)": f"{ratio:.1f}%" if ratio < 1e4 else "∞",
-            "Assessment": heat_balance_assessment(Q_gen, Q_cool),
-        })
-    state.vc_heat_df = pd.DataFrame(rows)
+    state.vc_heat_df = pd.DataFrame([{
+        "Reactor": h["reactor"], "Volume (L)": f"{h['V_L']:.1f}",
+        "U (W/m²·K)": f"{h['U']:.0f}",
+        "A (m²)": f"{h['A_ht']:.3f}",
+        "Q_gen (W)": f"{h['Q_gen']:.1f}", "Q_cool (W)": f"{h['Q_cool']:.1f}",
+        "Q_gen/Q_cool (%)": f"{h['ratio_pct']:.1f}%" if h["ratio_pct"] < 1e4 else "∞",
+        "Assessment": h["assessment"],
+    } for h in scale_up.heat_summary_data(env_df, reactor_info)])
 
 
 def _build_scaling(state, names, reactor_info, ctx):
@@ -566,40 +544,20 @@ def _build_scaling(state, names, reactor_info, ctx):
         return
     basis = state.vc_basis
     param = state.vc_scale_param
-    solve_rpm = state.vc_scale_solve_for.startswith("RPM")
-    if basis not in reactor_info:
-        state.vc_scale_df = pd.DataFrame([{"Reactor": basis, "Status": "Basis geometry missing"}])
-        state.vc_scale_full_df = pd.DataFrame()
-        state.vc_scale_pct_df = pd.DataFrame()
-        return
-
-    b_N = _sf(state.vc_basis_rpm) / 60.0
-    b_hydro = op.hydro(ctx["inputs"][basis], b_N, _sf(state.vc_basis_vol))
-    target_value = b_hydro.get(param, np.nan)
-
-    results = [{"Reactor": basis, "Role": "Basis", "RPM": _sf(state.vc_basis_rpm),
-                "Volume (L)": _sf(state.vc_basis_vol), param: target_value, "Status": "—"}]
-    full = [{"Reactor": basis, "Role": "Basis", "RPM": _sf(state.vc_basis_rpm),
-             "Volume (L)": _sf(state.vc_basis_vol), **b_hydro}]
-
     known = {}
     if not state.vc_targets_df.empty:
         val_col = [c for c in state.vc_targets_df.columns if c != "Reactor"][0]
         known = {str(r["Reactor"]): _sf(r[val_col]) for _, r in state.vc_targets_df.iterrows()}
-
-    for name in names:
-        if name == basis or name not in reactor_info:
-            continue
-        inp = ctx["inputs"][name]
-        rpm_window, vol_window = scale_up.matching_window(_reactor_row(name), inp.geometry)
-        m = scale_up.match_parameter(
-            lambda n, v, _inp=inp: op.hydro(_inp, n, v), param, target_value,
-            solve_rpm=solve_rpm, known=known.get(name, 0.0),
-            rpm_window=rpm_window, vol_window=vol_window)
-        results.append({"Reactor": name, "Role": "Target", "RPM": m["RPM"],
-                        "Volume (L)": m["Volume (L)"], param: m["value"], "Status": m["status"]})
-        full.append({"Reactor": name, "Role": "Target", "RPM": m["RPM"],
-                     "Volume (L)": m["Volume (L)"], **m["hydro"]})
+    match = scale_up.scale_up_match(
+        names, reactor_info, ctx["inputs"], basis, param, _sf(state.vc_basis_rpm),
+        _sf(state.vc_basis_vol), solve_rpm=state.vc_scale_solve_for.startswith("RPM"),
+        known=known)
+    if match is None:
+        state.vc_scale_df = pd.DataFrame([{"Reactor": basis, "Status": "Basis geometry missing"}])
+        state.vc_scale_full_df = pd.DataFrame()
+        state.vc_scale_pct_df = pd.DataFrame()
+        return
+    results, full = match["results"], match["full"]
 
     res_df = pd.DataFrame(results)
     for c in res_df.columns:
@@ -706,9 +664,8 @@ def on_vc_save_results(state):
     if not rows:
         notify(state, "W", "Nothing to save.")
         return
-    new_df = pd.DataFrame(rows)
     try:
-        db.append_csv(new_df, RECORDED_CSV)
+        repos.results.append(rows, db.ANONYMOUS)
         notify(state, "S",
                f"Saved {len(rows)} vessel result(s) — view them on the Recorded Results page.")
     except Exception as exc:  # noqa: BLE001

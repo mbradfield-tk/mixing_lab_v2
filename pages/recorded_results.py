@@ -11,16 +11,15 @@ with the **Refresh** button (``db.fresh_csv`` re-reads on mtime change).
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 from taipy.gui import Markdown, notify
 
+from core import repositories as repos
 from utils.menu_icons import inject_icons
 from pages import _db_common as db
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-RESULTS_CSV = DATA_DIR / "recorded_results.csv"
+REPO = repos.results
+RESULTS_CSV = REPO.path
 
 _FILTER_COLS = [("reactor", "Reactor"), ("reaction", "Reaction"), ("fluid", "Fluid")]
 
@@ -29,7 +28,7 @@ _FILTER_COLS = [("reactor", "Reactor"), ("reaction", "Reaction"), ("fluid", "Flu
 # Helpers
 # ---------------------------------------------------------------------------
 def _load() -> pd.DataFrame:
-    return db.fresh_csv(RESULTS_CSV).copy()
+    return REPO.load()
 
 
 def _options(df: pd.DataFrame, col: str) -> list[str]:
@@ -47,23 +46,8 @@ def _fmt_display(df: pd.DataFrame) -> pd.DataFrame:
     return disp
 
 
-def _filtered(df: pd.DataFrame, reactors, reactions, fluids) -> pd.DataFrame:
-    out = df
-    for col, sel in (("reactor", reactors), ("reaction", reactions), ("fluid", fluids)):
-        if sel and col in out.columns:
-            out = out[out[col].astype(str).isin([str(s) for s in sel])]
-    return out
-
-
-def _summary_counts(df: pd.DataFrame) -> tuple[int, int, int]:
-    """(reaction-limited, potentially sensitive, mixing-sensitive/limited)."""
-    if "Assessment" not in df.columns or df.empty:
-        return 0, 0, 0
-    a = df["Assessment"].astype(str)
-    limited = a.str.contains("mixing-limited|Mixing-sensitive", case=False)
-    potential = ~limited & a.str.contains("Potentially sensitive", case=False)
-    n_limited, n_potential = int(limited.sum()), int(potential.sum())
-    return len(a) - n_limited - n_potential, n_potential, n_limited
+_filtered = repos.filter_results
+_summary_counts = repos.result_counts
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +113,7 @@ def on_rr_clear_cancel(state):
 
 def on_rr_clear_yes(state):
     try:
-        db.save_csv(state.rr_df.iloc[0:0], RESULTS_CSV)
+        REPO.clear(state.rr_df, db.ANONYMOUS)
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Clear failed: {exc}")
         return

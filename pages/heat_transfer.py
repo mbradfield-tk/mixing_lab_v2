@@ -19,6 +19,7 @@ from core.heat_transfer import (
     LINING_CONDUCTIVITY,
     LINING_THICKNESS_DEFAULT,
     NUSSELT_CORRELATIONS,
+    SWEEP_PARAMETERS,
     WALL_CONDUCTIVITY,
     adiabatic_rise,
     compute_batch,
@@ -46,7 +47,7 @@ from utils.report_builder import (
     report_filename,
     report_header_label,
 )
-from utils.solvent_properties import list_solvents
+from core import catalog
 from core.options import Toggle, is_on
 from core.records import (
     range_midpoint as _avg_range,
@@ -63,14 +64,11 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 FLUID_REF_T_C = 25.0
 
 reactors_df, fluids_df, htm_db = load_csvs(DATA_DIR)
-reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
 
 reactor_options = sorted(reactors_df["reactor_name"].dropna().unique().tolist())
-# Built-in solvent library plus user custom fluids from fluids.csv.
-_custom_fluid_names = fluids_df["fluid_name"].dropna().astype(str).tolist()
-fluid_options = sorted(set(list_solvents()) | set(_custom_fluid_names))
-reaction_class_options = db.reaction_names(reactions_df, "yes")
-reaction_measured_options = db.reaction_names(reactions_df, "no")
+fluid_options = catalog.fluid_names()
+reaction_class_options = catalog.reaction_names("yes")
+reaction_measured_options = catalog.reaction_names("no")
 reaction_source_options = ["Measured kinetics", "Reaction classes"]
 reaction_options = reaction_measured_options or reaction_class_options
 htm_options = list(htm_db.keys())
@@ -86,24 +84,7 @@ _fluid_properties = thermal_props
 _round_sig = round_sig
 
 
-SWEEP_PARAMETER_KEYS = {
-    "Stir speed (rpm)": "n_rpm",
-    "Liquid volume (L)": "v_l",
-    "Impeller diameter (m)": "d_imp",
-    "Tank diameter (m)": "d_tank",
-    "Fluid density (kg/m3)": "rho",
-    "Fluid viscosity (Pa.s)": "mu",
-    "Fluid Cp (J/kg.K)": "cp",
-    "Fluid conductivity (W/m.K)": "k_fluid",
-    "Jacket velocity (m/s)": "v_jacket",
-    "Jacket hydraulic diameter (m)": "d_hyd_jacket",
-    "Wall conductivity (W/m.K)": "wall_k",
-    "Wall thickness (mm)": "wall_thickness_mm",
-    "Lining conductivity (W/m.K)": "lining_k",
-    "Lining thickness (mm)": "lining_thickness_mm",
-    "Fouling resistance (m2.K/W)": "fouling",
-    "Wall-side viscosity (Pa.s)": "mu_wall",
-}
+SWEEP_PARAMETER_KEYS = SWEEP_PARAMETERS
 SWEEP_PARAMETER_OPTIONS = list(SWEEP_PARAMETER_KEYS)
 SWEEP_COLOR_THEME_OPTIONS = ["Turbo", "Viridis", "Cool/Warm", "X-ray"]
 SWEEP_COLOR_RANGE_OPTIONS = ["Automatic", "Custom"]

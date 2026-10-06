@@ -15,7 +15,7 @@ import numpy as np
 
 from core.messages import Action, Finding, Message, kind_of_label
 from core.options import BourneStatus, Competing, DhAction, Kinetics, Mechanism, Phase
-from utils.bourne_kpi import SENS_THRESHOLD, threshold_phrase
+from utils.bourne_kpi import SENS_THRESHOLD, kpi_prefix, threshold_phrase
 from utils.calculations import characteristic_reaction_time
 
 TEST_PURPOSE = {1: "impeller speed", 2: "feed rate/time", 3: "feed location"}
@@ -761,6 +761,78 @@ def bourne_test_lines(o: dict) -> list[str]:
 
 BOURNE_TEST_TITLES = {1: "Test 1 - Impeller speed", 2: "Test 2 - Feed rate",
                       3: "Test 3 - Feed location"}
+
+
+def bourne_test_verdict(test: int, res: dict, ratio: float = 100.0) -> tuple[str, bool]:
+    """(Markdown verdict, run the next test?) after assessing Bourne ``test`` with the
+    ``assess_kpis`` result ``res``; ``ratio`` = achieved Test 1 P/m span."""
+    prefix, status = kpi_prefix(res), res["status"]
+    if test == 1:
+        if status == "sensitive":
+            return (prefix + " Response moved across the 100× P/m range, so **mixing "
+                    "matters**. Proceed to **Test 2** to distinguish micro- vs meso-mixing.", True)
+        if status == "inconclusive":
+            return (prefix + " Mixed KPI response indicates **potential sensitivity**. "
+                    "Proceed to **Test 2** to resolve whether micro- vs meso-mixing is "
+                    "controlling.", True)
+        if ratio < 100.0:
+            return (prefix + f" **No sensitivity detected over the tested range** — the actual "
+                    f"P/m span was only {ratio:.1f}× after RPM clamping, so the intended 100× "
+                    "screening range was not achieved and the result is treated as "
+                    "**inconclusive**. Repeat the screen with a wider speed range, or continue to "
+                    "the next test to rule out a hidden mixing signal.", True)
+        return (prefix + " The protocol stops here — standard geometric-similarity "
+                "scale-up is adequate.", False)
+    if test == 2:
+        if status == "sensitive":
+            return (prefix + " Feed rate matters — the response is **consistent with "
+                    "mesomixing** (feed-plume dispersion). Proceed to **Test 3** to distinguish "
+                    "meso- vs macro-mixing.", True)
+        if status == "inconclusive":
+            return (prefix + " Mixed KPI response suggests **potential mesomixing "
+                    "sensitivity**; continue to **Test 3** to resolve whether the feed-rate "
+                    "effect is controlling.", True)
+        return (prefix + " The response is **consistent with micromixing**. Scale-up rule: "
+                "**hold the local energy dissipation ε constant** (match P/V near the feed "
+                "point).", False)
+    if status == "sensitive":
+        return (prefix + " The response is **consistent with mesomixing**. Scale-up: match "
+                "P/V, **extend the feed time** and **add feed points** to keep the feed plume "
+                "in a high-dissipation zone.", False)
+    if status == "inconclusive":
+        return (prefix + " The feed-location response is mixed, so **meso- vs macro-mixing "
+                "is unresolved**. Replicate Test 3 (and record the standard deviation) or "
+                "widen the ε contrast between feed points before choosing a scale-up rule.",
+                False)
+    return (prefix + " The response is **consistent with macromixing**. Scale-up: keep "
+            "**blend/circulation times short** (bulk homogeneity governs the outcome).", False)
+
+
+def bourne_summary_md(o: dict) -> str:
+    """Decision-tree conclusion (Markdown) for a ``bourne_outcome``."""
+    lines = ["### Decision-tree conclusion", ""] + bourne_test_lines(o) + [""]
+    dom = o["dominant"]
+    if dom in MECH_CONCLUSION:
+        lines.append(MECH_CONCLUSION[dom])
+        if o["tentative"]:
+            lines.append("")
+            lines.append("⚠️ **Tentative:** an upstream test was inconclusive, so this mechanism "
+                         "is the most consistent reading rather than a confirmed result. Replicate "
+                         "the inconclusive test before fixing the scale-up rule.")
+    elif dom == "Inconclusive":
+        if o["s3"] == "inconclusive":
+            lines.append("⚪ **Meso- vs macro-mixing unresolved** — the feed-location response was "
+                         "mixed. Replicate Test 3 or increase the ε contrast between feed points.")
+        else:
+            lines.append("⚪ **No confirmed mixing sensitivity** — Test 1 was inconclusive and the "
+                         "feed rate had no effect. Repeat Test 1 with replicates (record the standard "
+                         "deviation) and the full 100× P/m span before concluding.")
+    elif o["next_test"] == 3:
+        lines.append("Tests 1 and 2 point to a mixing sensitivity — run **Test 3** (feed "
+                     "location) to distinguish **meso-** from **macro-mixing**.")
+    else:
+        lines.append("Continue with **Test 2** (feed rate) — and Test 3 if needed.")
+    return "\n".join(lines)
 
 
 def bourne_conclusions(o: dict, results: dict) -> list[tuple[str, str, str]]:

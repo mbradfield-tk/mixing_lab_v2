@@ -10,6 +10,7 @@ import pandas as pd
 from core import operating_point as op
 from core.envelope import solve_root
 from core.records import VesselGeometry, reactor_row, sf
+from utils.calculations import heat_balance_assessment
 
 CORNER_LABELS = ["min RPM / max V", "max RPM / max V",
                  "min RPM / min V", "max RPM / min V"]
@@ -210,6 +211,58 @@ def match_parameter(hydro_at: Callable[[float, float], dict], param: str, target
     n_rps, vol = point(x)
     return {"RPM": n_rps * 60.0, "Volume (L)": vol, "value": value, "status": status,
             "hydro": hydro_at(n_rps, vol)}
+
+
+def scale_up_match(names: list[str], reactor_info: dict, inputs: dict, basis: str, param: str,
+                   basis_rpm: float, basis_vol: float, *, solve_rpm: bool,
+                   known: dict[str, float] | None = None) -> dict | None:
+    """Match ``param`` of the basis vessel (at ``basis_rpm`` / ``basis_vol``) on every other
+    vessel in ``names``; ``known`` = the fixed volume (``solve_rpm``) or RPM per vessel.
+
+    Returns {target, results: [{Reactor, Role, RPM, Volume (L), <param>, Status}],
+    full: [{Reactor, Role, RPM, Volume (L), **hydro}]}, or None when the basis has no geometry.
+    """
+    if basis not in reactor_info:
+        return None
+    known = known or {}
+    b_hydro = op.hydro(inputs[basis], basis_rpm / 60.0, basis_vol)
+    target = b_hydro.get(param, np.nan)
+    results = [{"Reactor": basis, "Role": "Basis", "RPM": basis_rpm, "Volume (L)": basis_vol,
+                param: target, "Status": "—"}]
+    full = [{"Reactor": basis, "Role": "Basis", "RPM": basis_rpm, "Volume (L)": basis_vol,
+             **b_hydro}]
+    for name in names:
+        if name == basis or name not in reactor_info:
+            continue
+        inp = inputs[name]
+        rpm_window, vol_window = matching_window(reactor_row(name), inp.geometry)
+        m = match_parameter(
+            lambda n, v, _inp=inp: op.hydro(_inp, n, v), param, target,
+            solve_rpm=solve_rpm, known=known.get(name, 0.0),
+            rpm_window=rpm_window, vol_window=vol_window)
+        results.append({"Reactor": name, "Role": "Target", "RPM": m["RPM"],
+                        "Volume (L)": m["Volume (L)"], param: m["value"], "Status": m["status"]})
+        full.append({"Reactor": name, "Role": "Target", "RPM": m["RPM"],
+                     "Volume (L)": m["Volume (L)"], **m["hydro"]})
+    return {"target": target, "results": results, "full": full}
+
+
+def heat_summary_data(env_df: pd.DataFrame, names) -> list[dict]:
+    """Heat balance of each vessel at its max-RPM / max-volume corner."""
+    rows = []
+    for name in names:
+        sub = env_df[(env_df["Reactor"] == name) & (env_df["Corner"] == CORNER_LABELS[1])]
+        if sub.empty:
+            continue
+        c = sub.iloc[0]
+        q_gen, q_cool = c.get("Q_gen (W)", 0.0), c.get("Q_cool (W)", 0.0)
+        rows.append({
+            "reactor": name, "V_L": c["V_L"], "U": c.get("U (W/m²·K)", 0),
+            "A_ht": c.get("A_ht (m²)", 0), "Q_gen": q_gen, "Q_cool": q_cool,
+            "ratio_pct": q_gen / q_cool * 100.0 if q_cool > 0 else np.inf,
+            "assessment": heat_balance_assessment(q_gen, q_cool),
+        })
+    return rows
 
 
 def feed_plan_data(reactor_info: dict, basis: str, feed_volume_mL: float,

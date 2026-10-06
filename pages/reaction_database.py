@@ -1,44 +1,26 @@
 """Reaction Database page (Taipy) — browse, edit, add, import/export kinetics.
 
-Ported from the Streamlit ``2_Reaction_Database.py`` page. The editable table
-persists every change straight to ``data/reactions.csv`` (single-user, in-place,
-as in the Streamlit app).
+Ported from the Streamlit ``2_Reaction_Database.py`` page. CRUD, validation and the
+admin write policy go through :data:`core.repositories.reactions`.
 """
 from __future__ import annotations
-
-from pathlib import Path
 
 import pandas as pd
 from taipy.gui import Markdown, notify
 
+from core import repositories as repos
 from utils.menu_icons import inject_icons
 from pages import _db_common as db
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-REACTION_CSV = DATA_DIR / "reactions.csv"
-
-# Admin gate lives in _db_common (shared with the Vessel Database).
-
-COLUMNS = [
-    "reaction_name", "type", "order", "k_value", "k_units", "C0_mol_L",
-    "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "class", "notes", "reaction_scheme",
-]
-
-
-def _normalize_reaction_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure imported/legacy reaction data has a normalized class flag."""
-    result = df.copy()
-    if "class" not in result.columns:
-        insert_at = result.columns.get_loc("notes") if "notes" in result else len(result.columns)
-        result.insert(insert_at, "class", "no")
-    result["class"] = (result["class"].fillna("no").astype(str).str.strip().str.lower()
-                        .replace({"": "no"}))
-    return result
+REPO = repos.reactions
+REACTION_CSV = REPO.path
+COLUMNS = REPO.columns
+_normalize_reaction_df = repos.normalize_reactions
 
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-reaction_df = _normalize_reaction_df(db.load_csv(REACTION_CSV, COLUMNS))
+reaction_df = REPO.load()
 reaction_search = ""
 reaction_class_search = ""
 reaction_measured_search = ""
@@ -75,23 +57,23 @@ reaction_upload = ""
 admin_authenticated = False
 admin_user = ""
 admin_pw = ""
-admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the databases."
+admin_status = db.admin_status_initial()
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _persist(state) -> None:
-    db.save_csv(state.reaction_df, REACTION_CSV)
-    state.reaction_export = db.csv_bytes(state.reaction_df)
-    state.reaction_msg = f"{len(state.reaction_df)} reactions in database."
-    state.reaction_scheme_options = ["— none —"] + state.reaction_df["reaction_name"].dropna().astype(str).tolist()
+def _persist(state, df) -> None:
+    state.reaction_df = df
+    state.reaction_export = db.csv_bytes(df)
+    state.reaction_msg = f"{len(df)} reactions in database."
+    state.reaction_scheme_options = ["— none —"] + df["reaction_name"].dropna().astype(str).tolist()
     _refresh_views(state)
 
 
 def _apply_search(df: pd.DataFrame, query: str) -> pd.DataFrame:
     """Return one reaction subset, optionally filtered by its search text."""
-    return db.filter_rows(df, query) if query.strip() else df
+    return REPO.search(df, query)[0]
 
 
 def _refresh_views(state) -> None:
@@ -131,37 +113,42 @@ def _require_admin(state) -> bool:
 # Admin authentication
 # ---------------------------------------------------------------------------
 def on_admin_unlock(state):
-    if db.admin_credentials_ok(state.admin_user, state.admin_pw):
-        state.admin_authenticated = True
-        state.admin_status = "🔓 Editing unlocked. Changes save automatically to the CSV."
+    ok, state.admin_status, kind, msg = db.unlock_attempt(state.admin_user, state.admin_pw)
+    state.admin_authenticated = ok
+    if ok:
         state.admin_pw = ""
-        notify(state, "S", "Admin editing unlocked.")
-    else:
-        state.admin_authenticated = False
-        state.admin_status = "❌ Invalid credentials. Editing remains locked."
-        notify(state, "E", "Invalid admin credentials.")
+    notify(state, kind, msg)
 
 
 def on_admin_lock(state):
     state.admin_authenticated = False
     state.admin_user = ""
     state.admin_pw = ""
-    state.admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the databases."
+    state.admin_status = db.admin_status_initial()
     notify(state, "I", "Editing locked.")
 
 
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
+def _write(state, action, *args) -> bool:
+    """Run a repository write; notify and return False when it is refused."""
+    try:
+        _persist(state, action(*args, principal=db.as_principal(state.admin_authenticated)))
+    except (PermissionError, ValueError) as exc:
+        notify(state, "E" if isinstance(exc, ValueError) else "W", str(exc))
+        return False
+    return True
+
+
 def on_reaction_edit(state, var_name, payload):
     if not _require_admin(state):
         return
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to edit the database.")
         return
-    state.reaction_df = db.apply_edit(state.reaction_df.copy(), payload)
-    _persist(state)
-    notify(state, "S", "Saved.")
+    if _write(state, REPO.edit, state.reaction_df, payload):
+        notify(state, "S", "Saved.")
 
 
 def on_reaction_delete(state, var_name, payload):
@@ -170,9 +157,8 @@ def on_reaction_delete(state, var_name, payload):
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to edit the database.")
         return
-    state.reaction_df = db.delete_row(state.reaction_df.copy(), payload)
-    _persist(state)
-    notify(state, "I", "Row deleted.")
+    if _write(state, REPO.delete, state.reaction_df, payload):
+        notify(state, "I", "Row deleted.")
 
 
 def on_reaction_add(state, var_name, payload):
@@ -181,10 +167,8 @@ def on_reaction_add(state, var_name, payload):
     if (state.reaction_class_search or state.reaction_measured_search).strip():
         notify(state, "W", "Clear the search box to add to the database.")
         return
-    state.reaction_df = db.add_blank(state.reaction_df.copy(), COLUMNS)
-    state.reaction_df.loc[state.reaction_df.index[-1], "class"] = (
-        "yes" if "class" in str(var_name).lower() else "no")
-    _persist(state)
+    _write(state, REPO.add_blank, state.reaction_df,
+           {"class": "yes" if "class" in str(var_name).lower() else "no"})
 
 
 def on_reaction_scheme_select(state):
@@ -201,42 +185,19 @@ def on_reaction_scheme_select(state):
 
 
 def on_reaction_add_row(state):
-    name = (state.rxn_new_name or "").strip()
-    if not name:
-        notify(state, "W", "Enter a reaction name.")
-        return
-    if db.name_taken(state.reaction_df, "reaction_name", name):
-        notify(state, "E", f"A reaction named '{name}' already exists.")
-        return
-    try:
-        t_rxn = float(state.rxn_new_trxn)
-        k_val = float(state.rxn_new_k)
-        c0_val = float(state.rxn_new_C0)
-        dh_val = float(state.rxn_new_dH)
-    except (TypeError, ValueError):
-        notify(state, "E", "k, C0, t_rxn and ΔH must be numeric.")
-        return
-    order = state.rxn_new_order
-    if t_rxn == 0 and k_val > 0:
-        if order in ("1", "pseudo-1"):
-            t_rxn = 1.0 / k_val
-        elif order in ("2", "pseudo-2") and c0_val > 0:
-            t_rxn = 1.0 / (k_val * c0_val)
-    if k_val <= 0 and t_rxn <= 0:
-        notify(state, "E", "Enter a rate constant k (> 0) or a reaction time (> 0).")
-        return
-    new = pd.DataFrame([{
-        "reaction_name": name, "type": state.rxn_new_type, "order": order,
-        "k_value": k_val, "k_units": state.rxn_new_k_units, "C0_mol_L": c0_val,
-        "t_rxn_s": t_rxn, "T_C": state.rxn_new_T, "solvent": state.rxn_new_solvent,
-        "delta_H_kJ_mol": dh_val, "class": state.rxn_new_class,
-        "notes": state.rxn_new_notes,
+    data = {
+        "reaction_name": state.rxn_new_name, "type": state.rxn_new_type,
+        "order": state.rxn_new_order, "k_value": state.rxn_new_k,
+        "k_units": state.rxn_new_k_units, "C0_mol_L": state.rxn_new_C0,
+        "t_rxn_s": state.rxn_new_trxn, "T_C": state.rxn_new_T,
+        "solvent": state.rxn_new_solvent, "delta_H_kJ_mol": state.rxn_new_dH,
+        "class": state.rxn_new_class, "notes": state.rxn_new_notes,
         "reaction_scheme": state.rxn_new_scheme,
-    }])
-    state.reaction_df = db.reset(pd.concat([state.reaction_df, new], ignore_index=True))
-    _persist(state)
-    state.rxn_new_name = ""
-    notify(state, "S", f"Added '{name}'.")
+    }
+    if _write(state, REPO.create, state.reaction_df, data):
+        name = (state.rxn_new_name or "").strip()
+        state.rxn_new_name = ""
+        notify(state, "S", f"Added '{name}'.")
 
 
 def on_reaction_import(state):
@@ -250,9 +211,8 @@ def on_reaction_import(state):
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return
-    state.reaction_df = _normalize_reaction_df(db.reset(new_df))
-    _persist(state)
-    notify(state, "S", f"Imported {len(new_df)} reactions (replaced database).")
+    if _write(state, REPO.replace, new_df):
+        notify(state, "S", f"Imported {len(new_df)} reactions (replaced database).")
 
 
 # ---------------------------------------------------------------------------

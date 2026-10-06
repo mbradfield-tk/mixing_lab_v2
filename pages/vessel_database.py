@@ -7,21 +7,19 @@ with admin credentials to guard against accidental changes.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 from taipy.gui import Markdown, notify
 
 from pages import _db_common as db
+from core import repositories as repos
+from core import tables
 from core import vessel_import as vimport
 from utils.menu_icons import inject_icons
 from pages._vessel_media import build_vessel_viewer_html, media_caption
 from viz.vessel_schematic import brim_volume, build_vessel_schematic
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-REACTOR_CSV = DATA_DIR / "reactors.csv"
-
-# Admin gate lives in _db_common (env-var override + constant-time compare).
+REPO = repos.reactors
+REACTOR_CSV = REPO.path
 
 
 def _reverse_map(columns: list[str]) -> dict[str, str]:
@@ -34,16 +32,13 @@ _search_name_for = vimport.search_name_for
 _refresh_search_names = vimport.refresh_search_names
 _fill_missing_search_names = vimport.fill_missing_search_names
 _apply_import_change = vimport.apply_import_change
-
-
-def _build_import_changes(existing: pd.DataFrame, new_df: pd.DataFrame) -> list[dict]:
-    return vimport.build_import_changes(existing, new_df, label=db.friendly)
+_build_import_changes = REPO.import_changes
 
 
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
-vessel_raw_df = db.load_csv(REACTOR_CSV, ["reactor_name"])  # source of truth (raw columns)
+vessel_raw_df = REPO.load()                                # source of truth (raw columns)
 vessel_columns = list(vessel_raw_df.columns)
 vessel_colmap = _reverse_map(vessel_columns)               # friendly -> raw
 vessel_df = db.friendly_columns(vessel_raw_df)             # displayed / edited (friendly columns)
@@ -54,15 +49,8 @@ VESSEL_SEARCH_NAME_OWNER = "Name & Owner"
 VESSEL_SEARCH_ALL = "All fields"
 
 # Text match by default; the comparison operators filter a single numeric column.
-VESSEL_SEARCH_CONTAINS = "contains"
-_NUMERIC_OPS = {
-    "=": lambda series, value: series == value,
-    "<": lambda series, value: series < value,
-    "<=": lambda series, value: series <= value,
-    ">": lambda series, value: series > value,
-    ">=": lambda series, value: series >= value,
-}
-vessel_search_op_options = [VESSEL_SEARCH_CONTAINS] + list(_NUMERIC_OPS)
+VESSEL_SEARCH_CONTAINS = tables.SEARCH_CONTAINS
+vessel_search_op_options = tables.SEARCH_OPS
 
 
 def _search_field_options(columns: list[str]) -> list[str]:
@@ -91,7 +79,7 @@ selected_vessel = ("TMA EasyMax-102" if "TMA EasyMax-102" in vessel_options
 admin_authenticated = False
 admin_user = ""
 admin_pw = ""
-admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the database."
+admin_status = db.admin_status_initial()
 
 vessel_upload = ""
 
@@ -240,27 +228,10 @@ def _search_columns(field: str) -> list[str] | None:
 
 def _apply_search(state) -> pd.DataFrame:
     """Return the full friendly frame, or a filtered (read-only) view when searching."""
-    query = (state.vessel_search or "").strip()
-    field = state.vessel_search_field
-    op = state.vessel_search_op
-    if not query:
-        state.vessel_search_status = ""
-        return state.vessel_df
-    if op == VESSEL_SEARCH_CONTAINS:
-        state.vessel_search_status = ""
-        return db.filter_rows(state.vessel_df, query, columns=_search_columns(field))
-    if field in (VESSEL_SEARCH_NAME_OWNER, VESSEL_SEARCH_ALL):
-        state.vessel_search_status = f"Pick a single field to compare with {op}."
-        return state.vessel_df
-    try:
-        value = float(query)
-    except ValueError:
-        state.vessel_search_status = f"Enter a number to compare with {op}."
-        return state.vessel_df
-    numeric = _numeric_series(state.vessel_df[field])
-    result = db.reset(state.vessel_df[_NUMERIC_OPS[op](numeric, value)])
-    state.vessel_search_status = f"{len(result)} of {len(state.vessel_df)} vessels where {field} {op} {query}."
-    return result
+    view, state.vessel_search_status = tables.search(
+        state.vessel_df, state.vessel_search, _search_columns(state.vessel_search_field),
+        state.vessel_search_op, noun="vessels")
+    return view
 
 
 def _clear_row_selection(state) -> None:
@@ -268,10 +239,7 @@ def _clear_row_selection(state) -> None:
     state.vessel_selected_caption = ""
 
 
-def _numeric_series(series: pd.Series) -> pd.Series:
-    """Coerce a column to numbers, tolerating thousands separators like ``14,774``."""
-    cleaned = series.astype(str).str.replace(",", "", regex=False).str.strip()
-    return pd.to_numeric(cleaned, errors="coerce")
+_numeric_series = tables.numeric_series
 
 
 def on_vessel_row_select(state, var_name, payload):
@@ -314,11 +282,22 @@ def _searching(state) -> bool:
 
 
 def _persist(state) -> None:
-    db.save_csv(state.vessel_raw_df, REACTOR_CSV)
     state.vessel_export = db.csv_bytes(state.vessel_raw_df)
     state.vessel_msg = f"{len(state.vessel_raw_df)} vessels in database."
     state.vessel_options = sorted(
         state.vessel_raw_df["reactor_name"].dropna().astype(str).unique().tolist())
+
+
+def _write(state, action, *args) -> bool:
+    """Run a repository write into ``vessel_raw_df``; notify and return False if refused."""
+    try:
+        state.vessel_raw_df = action(*args, principal=db.as_principal(state.admin_authenticated))
+    except PermissionError as exc:
+        notify(state, "W", str(exc))
+        return False
+    _refresh_display(state)
+    _persist(state)
+    return True
 
 
 def _require_admin(state) -> bool:
@@ -332,22 +311,18 @@ def _require_admin(state) -> bool:
 # Admin authentication
 # ---------------------------------------------------------------------------
 def on_admin_unlock(state):
-    if db.admin_credentials_ok(state.admin_user, state.admin_pw):
-        state.admin_authenticated = True
-        state.admin_status = "🔓 Editing unlocked. Changes save automatically to the CSV."
+    ok, state.admin_status, kind, msg = db.unlock_attempt(state.admin_user, state.admin_pw)
+    state.admin_authenticated = ok
+    if ok:
         state.admin_pw = ""
-        notify(state, "S", "Admin editing unlocked.")
-    else:
-        state.admin_authenticated = False
-        state.admin_status = "❌ Invalid credentials. Editing remains locked."
-        notify(state, "E", "Invalid admin credentials.")
+    notify(state, kind, msg)
 
 
 def on_admin_lock(state):
     state.admin_authenticated = False
     state.admin_user = ""
     state.admin_pw = ""
-    state.admin_status = "🔒 Editing is locked. Unlock with admin credentials to modify the database."
+    state.admin_status = db.admin_status_initial()
     notify(state, "I", "Editing locked.")
 
 
@@ -359,32 +334,23 @@ def on_vessel_edit(state, var_name, payload):
         return
     raw_payload = dict(payload)
     raw_payload["col"] = state.vessel_colmap.get(payload["col"], payload["col"])
-    state.vessel_raw_df = db.apply_edit(state.vessel_raw_df.copy(), raw_payload)
-    state.vessel_raw_df = _refresh_search_names(state.vessel_raw_df)
-    _refresh_display(state)
-    _persist(state)
-    notify(state, "S", "Saved.")
+    if _write(state, REPO.edit, state.vessel_raw_df, raw_payload):
+        notify(state, "S", "Saved.")
 
 
 def on_vessel_delete(state, var_name, payload):
     if _searching(state) or not _require_admin(state):
         return
-    state.vessel_raw_df = db.delete_row(state.vessel_raw_df.copy(), payload)
-    _refresh_display(state)
-    _clear_row_selection(state)
-    _persist(state)
-    notify(state, "I", "Row deleted.")
+    if _write(state, REPO.delete, state.vessel_raw_df, payload):
+        _clear_row_selection(state)
+        notify(state, "I", "Row deleted.")
 
 
 def on_vessel_add(state, var_name, payload):
     if _searching(state) or not _require_admin(state):
         return
-    state.vessel_raw_df = db.add_blank(state.vessel_raw_df.copy(), state.vessel_columns)
-    state.vessel_raw_df, _ = _assign_missing_reactor_ids(state.vessel_raw_df)
-    state.vessel_raw_df = _refresh_search_names(state.vessel_raw_df)
-    _refresh_display(state)
-    _clear_row_selection(state)
-    _persist(state)
+    if _write(state, REPO.add_blank, state.vessel_raw_df):
+        _clear_row_selection(state)
 
 
 def _refresh_schematic(state):
@@ -499,10 +465,14 @@ def on_vessel_import_cancel(state):
 
 def _finalize_import(state):
     cache = state._vessel_import_cache
-    df, assigned_count = _assign_missing_reactor_ids(cache["working"])
-    df = _fill_missing_search_names(df)
     applied, skipped = cache["applied"], cache["skipped"]
-    state.vessel_raw_df = db.reset(df)
+    try:
+        df, assigned_count = REPO.apply_import(cache["working"],
+                                               db.as_principal(state.admin_authenticated))
+    except PermissionError as exc:
+        notify(state, "W", str(exc))
+        return
+    state.vessel_raw_df = df
     _refresh_display(state)
     _clear_row_selection(state)
     _persist(state)

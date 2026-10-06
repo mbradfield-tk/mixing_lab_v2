@@ -9,22 +9,29 @@ import numpy as np
 import pandas as pd
 
 from core import bourne_plan as plan
-from core import envelope, kinetics, scale_up
+from core import catalog, envelope, fluids, kinetics, scale_up
 from core import operating_point as op
+from core import repositories as repos
 from core import schemas as s
 from core import sensitivity_rules as rules
 from core.messages import Message
-from core.options import FeedBasis, FeedLocation
+from core.options import (
+    BourneStatus, CenterMode, Coalescence, Competing, CorrSource, DhAction, DhBasis, FeedBasis,
+    FeedLocation, GasTransfer, Kinetics, Mechanism, Phase,
+)
 from core.records import (
-    DATA_DIR, VesselGeometry, fluid_props, range_midpoint, reactor_row, sf, thermal_props,
+    DATA_DIR, VesselGeometry, bottom_dish_height, fluid_props, range_midpoint, reactor_row, sf,
+    thermal_props,
 )
 from core.serialize import jsonable
 from core.heat_transfer import (
     LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS, WALL_CONDUCTIVITY,
-    find_best_material_key, heat_cool_setup_error, load_csvs, reactor_jacket_area,
+    compute_batch, compute_reaction_profile, find_best_material_key, heat_cool_setup_error,
+    load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
+    sweep_range_defaults, u_ua_surface, ua_sweep_series,
 )
 from utils import bourne_kpi
-from utils.rom_registry import available_modes, available_modes_multi
+from core.catalog import available_modes, available_modes_multi
 
 
 def _reactor(name: str) -> pd.Series:
@@ -243,7 +250,7 @@ def compare(req: s.ComparisonRequest) -> dict:
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
-def bourne_system(req: s.BourneReportRequest) -> plan.BourneSystem:
+def bourne_system(req: s.BournePlanRequest) -> plan.BourneSystem:
     row = _reactor(req.reactor)
     v_l = req.V_L or range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
     props = fluid_props(req.fluid, req.T_C, req.P_atm)
@@ -269,12 +276,58 @@ def kpi_assessment(rows: list[s.KpiResponse], test: int) -> dict:
     return res
 
 
-def bourne_evaluation(req: s.BourneReportRequest) -> dict:
-    """Test conditions, KPI verdicts and decision-tree outcome for the Bourne report."""
-    sys = bourne_system(req)
+def _centre_pm(req: s.BournePlanRequest, sys: plan.BourneSystem) -> tuple[float, str]:
     if req.centre == "custom_rpm" and not req.centre_rpm:
         raise ValueError("centre = 'custom_rpm' needs centre_rpm.")
-    pm, _info = plan.resolve_center_pm(sys, req.centre, req.centre_pm_W_kg, req.centre_rpm or 0.0)
+    return plan.resolve_center_pm(sys, req.centre, req.centre_pm_W_kg, req.centre_rpm or 0.0)
+
+
+def bourne_plan(req: s.BournePlanRequest) -> s.BournePlanResult:
+    """Test 1-3 operating conditions (before any KPI is measured)."""
+    sys = bourne_system(req)
+    pm, info = _centre_pm(req, sys)
+    row = _reactor(req.reactor)
+    t1 = plan.test1_conditions(sys, pm)
+    steps = [("Initial", sys.V_L)] + [(f"Adj. {i + 1}", v) for i, v in
+                                      enumerate(req.fed_batch_volumes_L) if v > 0]
+    setpoints, _ = plan.speed_setpoints(sys, pm, steps)
+    ratios = plan.t3_location_ratios(req.surface_ratio, req.mid_ratio, req.impeller_ratio)
+    return s.BournePlanResult(
+        centre_pm_W_kg=pm, centre_info=info, centerpoint=jsonable(plan.centerpoint_metrics(sys, pm)),
+        test1=jsonable(t1), test1_pm_span=plan.pm_range_ratio([r["P/m (W/kg)"] for r in t1]),
+        speed_plan=jsonable(plan.t1_speed_plan(
+            sys, pm, sf(row.get("V_L_min"), 0.0),
+            sf(row.get("V_L_max"), sf(row.get("V_L"), sys.V_L)), req.fed_batch_volumes_L)),
+        setpoints=[s.SpeedSetpoint(
+            step=sp["Step"], V_L=sp["Volume (L)"], low_rpm=sp["Low (RPM)"][0],
+            centre_rpm=sp["Centre (RPM)"][0], high_rpm=sp["High (RPM)"][0],
+            clamped=[c for c in ("low", "centre", "high")
+                     if sp[f"{c.capitalize()} (RPM)"][1]]) for sp in setpoints],
+        test2=jsonable(plan.test2_conditions(req.feed_volume_mL, req.feed_basis == FeedBasis.RATE,
+                                             req.feed_rate_mL_min, req.feed_time_min)),
+        test3=jsonable(plan.test3_conditions(sys, pm, ratios)))
+
+
+def bourne_assess(req: s.BourneAssessRequest) -> s.BourneAssessResult:
+    """Per-test KPI verdicts and the decision-tree outcome."""
+    ev = bourne_evaluation(req)
+    ratio = ev["outcome"]["ratio"]
+    tests = []
+    for n, res in ev["results"].items():
+        if res is None:
+            continue
+        verdict, run_next = rules.bourne_test_verdict(n, res, ratio)
+        tests.append(s.BourneTestOut(test=n, status=res["status"], verdict=verdict,
+                                     run_next_test=run_next, kpis=jsonable(res["table"])))
+    o = ev["outcome"]
+    return s.BourneAssessResult(tests=tests, dominant=o["dominant"], tentative=o["tentative"],
+                                next_test=o["next_test"], summary=rules.bourne_summary_md(o))
+
+
+def bourne_evaluation(req: s.BourneAssessRequest) -> dict:
+    """Test conditions, KPI verdicts and decision-tree outcome for the Bourne report."""
+    sys = bourne_system(req)
+    pm, _info = _centre_pm(req, sys)
     t1_rows = plan.test1_conditions(sys, pm)
     results = {1: kpi_assessment(req.test1, 1),
                2: kpi_assessment(req.test2, 2) if req.test2 else None,
@@ -366,3 +419,152 @@ def reaction_profile_inputs(req: s.ReactionProfileRequest) -> tuple[dict, dict, 
     data.update({"rxn_order": rx.order, "rxn_k": rx.k, "rxn_c0": rx.C0_mol_L,
                  "rxn_dH": rx.dH_kJ_mol})
     return data, htm_db, row, labels
+
+
+def _resolved(data: dict, labels: dict) -> s.HeatTransferResolved:
+    return s.HeatTransferResolved(
+        N_rpm=data["n_rpm"], V_L=data["v_l"], D_tank_m=data["d_tank"], D_imp_m=data["d_imp"],
+        A_ht_m2=data["a_ht"], htm=data["htm_name"],
+        nusselt_correlation=data["nusselt_correlation"], **labels)
+
+
+def _coefficients(r, a_ht: float) -> s.Coefficients:
+    return s.Coefficients(
+        Re=jsonable(r.re), Pr=jsonable(r.pr), Nu=jsonable(r.nu), h_i_W_m2K=jsonable(r.h_i),
+        h_o_W_m2K=jsonable(r.h_o), U_W_m2K=jsonable(r.u), A_ht_m2=jsonable(a_ht),
+        UA_W_K=jsonable(r.u * a_ht), agitator_power_W=jsonable(r.p_agitator_w))
+
+
+def heat_cool(req: s.HeatCoolRequest) -> s.HeatCoolResult:
+    """Batch heat-up / cool-down: coefficients, temperature profiles, comparisons, UA sweeps."""
+    data, htm_db, row, labels = heat_cool_inputs(req)
+    r = compute_batch(data, htm_db)
+    items = resistance_items(r.h_i, r.h_o, data["wall_k"], data["wall_thickness_mm"],
+                             data["lining_k"], data["lining_thickness_mm"], data["fouling"])
+    ua = ua_sweep_series(data, htm_db, row, data["a_ht"])
+    return s.HeatCoolResult(
+        resolved=_resolved(data, labels), coefficients=_coefficients(r, data["a_ht"]),
+        q_max_W=jsonable(r.q_max_w), dT_dt_C_per_min=jsonable(r.dt_dt_c_per_min),
+        time_analytical_s=jsonable(r.time_analytical_s),
+        time_constant_jacket_s=jsonable(r.time_const_jacket_s),
+        time_variable_jacket_s=jsonable(r.time_variable_jacket_s),
+        constant_jacket={"t_s": jsonable(r.t_const), "T_C": jsonable(r.T_const),
+                         "q_W": jsonable(r.q_const)},
+        variable_jacket={"t_s": jsonable(r.t_var), "T_C": jsonable(r.T_var),
+                         "q_W": jsonable(r.q_var), "T_jacket_out_C": jsonable(r.Tj_out)},
+        correlations=jsonable(r.corr_comparison), media=jsonable(r.htm_comparison),
+        summary=jsonable(r.summary),
+        resistances=[s.Resistance(name=n, R_m2K_W=jsonable(rv), share_pct=jsonable(p))
+                     for n, rv, p in resistance_breakdown(items)],
+        ua_vs_speed={"N_rpm": jsonable(ua["rpm"]), "UA_W_K": jsonable(ua["ua_rpm"])},
+        ua_vs_volume={"V_L": jsonable(ua["volume"]), "UA_W_K": jsonable(ua["ua_volume"])})
+
+
+def reaction_profile(req: s.ReactionProfileRequest) -> s.ReactionProfileResult:
+    """Batch temperature driven by an exo-/endothermic reaction against the jacket."""
+    data, htm_db, _row, labels = reaction_profile_inputs(req)
+    r = compute_reaction_profile(data, htm_db)
+    return s.ReactionProfileResult(
+        resolved=_resolved(data, labels), coefficients=_coefficients(r, data["a_ht"]),
+        profile={"t_s": jsonable(r.t), "T_C": jsonable(r.T), "conversion": jsonable(r.conversion),
+                 "q_rxn_W": jsonable(r.q_rxn), "q_jacket_W": jsonable(r.q_jacket)},
+        T_peak_C=jsonable(r.T_peak_c), t_peak_s=jsonable(r.t_peak_s),
+        T_adiabatic_C=jsonable(r.T_adiabatic_c), t_complete_s=jsonable(r.t_complete_s),
+        q_rxn_max_W=jsonable(r.q_rxn_max_w), final_conversion=jsonable(r.final_conversion),
+        summary=jsonable(r.summary))
+
+
+def ua_surface(req: s.UaSurfaceRequest) -> s.UaSurfaceResult:
+    """U and UA over a grid of two swept heat-transfer inputs."""
+    data, htm_db, row, _labels = heat_transfer_inputs(req)
+    ranges = []
+    for key, rng in ((req.x_parameter, req.x_range), (req.y_parameter, req.y_range)):
+        ranges.append(rng or sweep_range_defaults(row, key, data[key]))
+    x = np.linspace(*ranges[0], req.n_points)
+    y = np.linspace(*ranges[1], req.n_points)
+    u, ua = u_ua_surface(
+        data, htm_db, req.x_parameter, x, req.y_parameter, y, data["a_ht"],
+        h_max=sf(row.get("H_max_m"), sf(row.get("H_m"), 0.2)),
+        bottom_dish=str(row.get("bottom_dish", "")), dish_height=bottom_dish_height(row))
+    return s.UaSurfaceResult(
+        x_parameter=req.x_parameter, y_parameter=req.y_parameter, x=jsonable(x), y=jsonable(y),
+        U_W_m2K=jsonable(u), UA_W_K=jsonable(ua), U_limits=jsonable(surface_color_limits(u)),
+        UA_limits=jsonable(surface_color_limits(ua)))
+
+
+# ---------------------------------------------------------------------------
+# Scale-up matching (Vessel Comparison)
+# ---------------------------------------------------------------------------
+def scale_up_match(req: s.ScaleUpRequest) -> s.ScaleUpResult:
+    """Operating point on every compared vessel that reproduces the basis vessel's parameter."""
+    names = list(req.comparison.reactors)
+    if req.basis_reactor not in names:
+        raise ValueError("basis_reactor must be one of comparison.reactors.")
+    ctx = comparison_context(req.comparison)
+    cmp = scale_up.compare_vessels(names, ctx, n_interp=2)
+    solve_rpm = req.solve_for == "N_rpm"
+    fixed = {}
+    for name in names:
+        row = _reactor(name)
+        default = (range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 0.0)) if solve_rpm
+                   else range_midpoint(row, "N_rpm_min", "N_rpm_max", 0.0))
+        fixed[name] = req.fixed.get(name, default)
+    key = s.core_key(req.parameter)
+    match = scale_up.scale_up_match(names, cmp["reactor_info"], cmp["inputs"], req.basis_reactor,
+                                    key, req.basis_N_rpm, req.basis_V_L, solve_rpm=solve_rpm,
+                                    known=fixed)
+    if match is None:
+        raise ValueError(f"'{req.basis_reactor}' has no usable geometry and speed range.")
+    rows = []
+    for res, full in zip(match["results"], match["full"]):
+        hydro = {s.CORE_KEYS.get(k, k): jsonable(v) for k, v in full.items()
+                 if k not in ("Reactor", "Role", "RPM")}
+        rows.append(s.ScaleUpRow(
+            reactor=res["Reactor"], role=res["Role"].lower(), N_rpm=jsonable(res["RPM"]),
+            V_L=jsonable(res["Volume (L)"]), value=jsonable(res[key]), status=res["Status"],
+            hydro=hydro))
+    return s.ScaleUpResult(parameter=req.parameter, target=jsonable(match["target"]), rows=rows)
+
+
+# ---------------------------------------------------------------------------
+# Fluids
+# ---------------------------------------------------------------------------
+def solvent_state(req: s.SolventStateRequest) -> dict:
+    return jsonable(fluids.solvent_state(req.name, req.P_atm, req.T_C))
+
+
+def blend(req: s.BlendRequest) -> s.BlendResult:
+    amounts = {c.name: c.amount for c in req.components}
+    res = fluids.blend(amounts, req.basis == "volume", req.T_C, repos.fluids.load(),
+                       req.dispersion_speed_1_s, req.dispersion_D_imp_m, req.dispersion_H_m,
+                       req.interfacial_tension_N_m)
+    phases = res["phases"]
+    return s.BlendResult(
+        status=res["status"],
+        components=[jsonable({k: v for k, v in cp.items() if k != "input"})
+                    for cp in res["components"]],
+        blend=jsonable(res["blend"]),
+        pairs=[s.BlendPair(label=p["label"], a=p["a"], b=p["b"], classification=p["class"],
+                           assessment=str(p["misc"]["assessment"]),
+                           Ra_MPa05=jsonable(p["misc"].get("Ra")), source=str(p["misc"]["source"]))
+               for p in res["pairs"]],
+        phases=jsonable(phases[0]) if phases else None,
+        phases_unknown_split=bool(phases[1]) if phases else False,
+        dispersion=jsonable(res["dispersion"]))
+
+
+# ---------------------------------------------------------------------------
+# Option lists
+# ---------------------------------------------------------------------------
+OPTION_ENUMS = {e.__name__: e for e in (
+    CorrSource, FeedLocation, GasTransfer, Coalescence, CenterMode, FeedBasis, Mechanism,
+    BourneStatus, Kinetics, Phase, Competing, DhAction, DhBasis)}
+
+
+def options() -> s.OptionsResult:
+    return s.OptionsResult(
+        reactors=catalog.reactor_names(), reactions_measured=catalog.reaction_names("no"),
+        reaction_classes=catalog.reaction_names("yes"), fluids=catalog.fluid_names(),
+        particles=catalog.particle_names(),
+        enums={name: [s.OptionItem(code=m.value, label=m.label) for m in enum]
+               for name, enum in OPTION_ENUMS.items()})

@@ -52,10 +52,7 @@ from core.records import (
 from pages import _db_common as db
 from reports import snapshots
 from pages._vessel_media import build_image_html
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
-reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
+from core import catalog
 
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images" / "general"
 ms_decision_tree_html = build_image_html(
@@ -81,11 +78,10 @@ _heat_transfer_summary = rules.heat_transfer_summary
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-reaction_class_options = db.reaction_names(reactions_df, "yes")
-reaction_measured_options = db.reaction_names(reactions_df, "no")
+reaction_class_options = catalog.reaction_names("yes")
+reaction_measured_options = catalog.reaction_names("no")
 reaction_options = reaction_measured_options or reaction_class_options
-_dh_ref_df = reactions_df[reactions_df["delta_H_kJ_mol"].apply(lambda v: _sf(v) != 0.0)]
-dh_ref_options = sorted(_dh_ref_df["reaction_name"].dropna().astype(str).tolist()) or ["(none available)"]
+dh_ref_options = catalog.reactions_with_enthalpy() or ["(none available)"]
 
 _SELECT = "- select -"
 _NOT_RESOLVED = "Not resolved"
@@ -189,7 +185,7 @@ ms_trxn_caption = ""
 ms_step5_assess = ""
 ms_da_mode = Toggle.OFF.label
 ms_da_mode_options = Toggle.labels()
-ms_da_reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
+ms_da_reactor_options = catalog.reactor_names()
 ms_da_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in ms_da_reactor_options
                  else (ms_da_reactor_options[0] if ms_da_reactor_options else ""))
 _da_r0 = _reactor_row(ms_da_reactor)

@@ -32,13 +32,14 @@ import plotly.graph_objects as go
 from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
-from utils.solvent_properties import is_known_solvent, list_solvents
 from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
 from utils import bourne_kpi as kpi
+from core import catalog
 from core import records
 from core import bourne_io
 from core import bourne_plan as plan
 from core import sensitivity_rules as rules
+from core.catalog import is_known_solvent
 from core.options import CenterMode, FeedBasis, Toggle, is_on
 from viz import bourne as viz_bourne
 from reports import snapshots
@@ -51,10 +52,6 @@ from core.records import (
 )
 from pages import _db_common as db
 from pages._vessel_media import build_image_html, build_vessel_viewer_html, media_caption
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
-fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
 
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images" / "general"
 bp_decision_tree_html = build_image_html(
@@ -189,8 +186,8 @@ def _resolve_center_pm(state) -> tuple[float, str]:
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
-fluid_options = sorted(list_solvents() + fluids_df["fluid_name"].dropna().astype(str).tolist())
+reactor_options = catalog.reactor_names()
+fluid_options = catalog.fluid_names()
 
 # ---------------------------------------------------------------------------
 # State — system definition
@@ -678,36 +675,11 @@ def on_bp_t1_assess(state):
     state.bp_t1_sensitive = res["sensitive"]
     _refresh_table_csv_exports(state)
     _reset_downstream(state, 1)
-    prefix = _kpi_prefix(res)
-    ratio = _test1_range_ratio(state)
-    range_ok = ratio >= 100.0
-    existing_t2 = getattr(state, "bp_t2_kpi_df", None)
-    if res["status"] == "sensitive":
-        state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
-        state.bp_t1_verdict = (
-            prefix + " Response moved across the 100× P/m range, so **mixing "
-            "matters**. Proceed to **Test 2** to distinguish micro- vs meso-mixing.")
-    elif res["status"] == "inconclusive":
-        state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
-        state.bp_t1_verdict = (
-            prefix + " Mixed KPI response indicates **potential sensitivity**. "
-            "Proceed to **Test 2** to resolve whether micro- vs meso-mixing is controlling.")
-    elif not range_ok:
-        state.bp_show_t2 = True
-        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2, existing_t2)
-        state.bp_t1_verdict = (
-            prefix + f" **No sensitivity detected over the tested range** — the actual "
-            f"P/m span was only {ratio:.1f}× after RPM clamping, so the intended 100× "
-            "screening range was not achieved and the result is treated as **inconclusive**. "
-            "Repeat the screen with a wider speed range, or continue to the next test to rule "
-            "out a hidden mixing signal.")
-    else:
-        state.bp_show_t2 = False
-        state.bp_t1_verdict = (
-            prefix + " The protocol stops here — standard geometric-similarity "
-            "scale-up is adequate.")
+    state.bp_t1_verdict, state.bp_show_t2 = rules.bourne_test_verdict(
+        1, res, _test1_range_ratio(state))
+    if state.bp_show_t2:
+        state.bp_t2_kpi_df = _mirror_kpis(state.bp_t1_kpi_df, 2,
+                                          getattr(state, "bp_t2_kpi_df", None))
     _build_summary(state)
     notify(state, "S", "Test 1 assessed.")
 
@@ -741,25 +713,10 @@ def on_bp_t2_assess(state):
     state.bp_t2_sensitive = res["sensitive"]
     _refresh_table_csv_exports(state)
     _reset_downstream(state, 2)
-    prefix = _kpi_prefix(res)
-    existing_t3 = getattr(state, "bp_t3_kpi_df", None)
-    if res["status"] == "sensitive":
-        state.bp_show_t3 = True
-        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3, existing_t3)
-        state.bp_t2_verdict = (
-            prefix + " Feed rate matters — the response is **consistent with mesomixing** "
-            "(feed-plume dispersion). Proceed to **Test 3** to distinguish meso- vs macro-mixing.")
-    elif res["status"] == "inconclusive":
-        state.bp_show_t3 = True
-        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3, existing_t3)
-        state.bp_t2_verdict = (
-            prefix + " Mixed KPI response suggests **potential mesomixing sensitivity**; "
-            "continue to **Test 3** to resolve whether the feed-rate effect is controlling.")
-    else:
-        state.bp_show_t3 = False
-        state.bp_t2_verdict = (
-            prefix + " The response is **consistent with micromixing**. Scale-up rule: **hold the "
-            "local energy dissipation ε constant** (match P/V near the feed point).")
+    state.bp_t2_verdict, state.bp_show_t3 = rules.bourne_test_verdict(2, res)
+    if state.bp_show_t3:
+        state.bp_t3_kpi_df = _mirror_kpis(state.bp_t2_kpi_df, 3,
+                                          getattr(state, "bp_t3_kpi_df", None))
     _build_summary(state)
     notify(state, "S", "Test 2 assessed.")
 
@@ -797,21 +754,7 @@ def on_bp_t3_assess(state):
     state.bp_t3_sensitive = res["sensitive"]
     _refresh_table_csv_exports(state)
     state.bp_pdf_ready = False
-    prefix = _kpi_prefix(res)
-    if res["status"] == "sensitive":
-        state.bp_t3_verdict = (
-            prefix + " The response is **consistent with mesomixing**. Scale-up: match P/V, "
-            "**extend the feed time** and **add feed points** to keep the feed plume in a "
-            "high-dissipation zone.")
-    elif res["status"] == "inconclusive":
-        state.bp_t3_verdict = (
-            prefix + " The feed-location response is mixed, so **meso- vs macro-mixing is "
-            "unresolved**. Replicate Test 3 (and record the standard deviation) or widen the "
-            "ε contrast between feed points before choosing a scale-up rule.")
-    else:
-        state.bp_t3_verdict = (
-            prefix + " The response is **consistent with macromixing**. Scale-up: keep **blend/"
-            "circulation times short** (bulk homogeneity governs the outcome).")
+    state.bp_t3_verdict, _ = rules.bourne_test_verdict(3, res)
     _build_summary(state)
     notify(state, "S", "Test 3 assessed.")
 
@@ -835,31 +778,7 @@ def _build_summary(state):
         state.bp_show_summary = False
         return
     state.bp_show_summary = True
-    o = _protocol_outcome(state)
-    lines = ["### Decision-tree conclusion", ""] + _test_lines(o) + [""]
-    dom = o["dominant"]
-    if dom in _MECH_CONCLUSION:
-        lines.append(_MECH_CONCLUSION[dom])
-        if o["tentative"]:
-            lines.append("")
-            lines.append("⚠️ **Tentative:** an upstream test was inconclusive, so this mechanism "
-                         "is the most consistent reading rather than a confirmed result. Replicate "
-                         "the inconclusive test before fixing the scale-up rule.")
-    elif dom == "Inconclusive":
-        if o["s3"] == "inconclusive":
-            lines.append("⚪ **Meso- vs macro-mixing unresolved** — the feed-location response was "
-                         "mixed. Replicate Test 3 or increase the ε contrast between feed points.")
-        else:
-            lines.append("⚪ **No confirmed mixing sensitivity** — Test 1 was inconclusive and the "
-                         "feed rate had no effect. Repeat Test 1 with replicates (record the standard "
-                         "deviation) and the full 100× P/m span before concluding.")
-    else:  # Incomplete
-        if o["next_test"] == 3:
-            lines.append("Tests 1 and 2 point to a mixing sensitivity — run **Test 3** (feed "
-                         "location) to distinguish **meso-** from **macro-mixing**.")
-        else:
-            lines.append("Continue with **Test 2** (feed rate) — and Test 3 if needed.")
-    state.bp_summary = "\n".join(lines)
+    state.bp_summary = rules.bourne_summary_md(_protocol_outcome(state))
 
 
 # ---------------------------------------------------------------------------

@@ -290,3 +290,45 @@ after any "Server reloaded" line** and the warnings stop; no data or calculation
 The reloader watches every directory on `sys.path`, and `sys.path[0]` is the repo root, so saving *any* `.py`
 under `mixing_lab_v2/` — including the git-ignored `scripts/dish_height_comparison*.py` and the `tests/` — triggers a
 restart. Run with `use_reloader=False` while editing side scripts if this is a nuisance.
+
+---
+
+## 14. P0 modularization (2026-10-06): behaviour changes
+
+This is the back-end-seams refactor from [README_react_migration_plan.md](README_react_migration_plan.md). Every calculation result, golden page output and PDF snapshot is unchanged. Only the items below behave differently.
+
+**14a. Admin login (security fix).**
+
+- The built-in default credentials are gone.
+- Admin editing on the Vessel and Reaction databases only works when **both** `MIXING_LAB_ADMIN_USER` and `MIXING_LAB_ADMIN_PW` are set in the environment.
+- Without them, the Admin panel says *"Admin editing is disabled on this server — set … to enable it."*
+- **For local editing, start the app with the two variables set.**
+
+**14b. Reaction Database "Add reaction" now needs admin.** The add form previously wrote to `reactions.csv` even while the table was locked. The write policy now lives in the repository (`core/auth.PROTECTED_TABLES`), so every reaction write is gated.
+
+**14c. Stricter add-form validation** (`core/schemas.py` record models).
+
+- **Particles:**
+  - density and D10/D50/D90 must be > 0;
+  - the shape factor must be > 0;
+  - the size order rule is unchanged.
+- **Custom fluids:**
+  - ρ, μ, D, Cp and k must be > 0;
+  - σ and the Hansen parameters must be ≥ 0.
+- **Error wording.** Messages for non-numeric input now name the field, for example "Particle Density [kg/m³]: Input should be a valid number…", instead of the old generic "must be numeric".
+
+**14d. Fluid dropdowns are de-duplicated.**
+
+- Vessel Assessment and Bourne Protocol used to concatenate library solvents and custom fluids, so a custom fluid named like a solvent appeared twice. They now use `catalog.fluid_names()`: sorted and unique, the same list Heat Transfer already used.
+- Vessel Comparison keeps its "library first, then custom" order (`catalog.fluid_names_grouped()`).
+
+**14e. Option lists have one source.**
+
+- Reactor, reaction, fluid and particle dropdowns on the analysis pages now come from `core/catalog.py`, which reads the mtime-cached repositories, instead of each page's own `pd.read_csv`.
+- The Taipy pages still build these lists once at import, so they still need a restart to show new database rows.
+- The API's `options()` service reads them live on every call.
+
+**14f. Unused code removed.**
+
+- `pages/_db_common.py` no longer defines the CSV helpers. They live in `core/tables.py`, and `_db_common` re-exports them.
+- The per-page copies of the Bourne verdict text, the fluid blend calculation and the VC scale-up/heat-summary loops were replaced by calls into `core/`.

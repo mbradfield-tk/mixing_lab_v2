@@ -8,14 +8,19 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator,
+)
 
 from core.options import (
     BourneStatus, CenterMode, Competing, CorrSource, DhAction, FeedBasis, FeedLocation, Kinetics,
     Mechanism, Phase,
 )
+from core.tables import friendly
 
 Num = float | None
+Row = dict[str, float | int | str | None]
+Series = list[Num]
 ReactionOrder = Literal["0", "1", "2", "pseudo-1", "pseudo-2"]
 Kind = Literal["critical", "warning", "caution", "ok", "unknown"]
 
@@ -403,6 +408,100 @@ class ComparisonRequest(Contract):
     scale_basis_reactor: str = ""
 
 
+class ScaleUpRequest(_NeedsParameters):
+    comparison: ComparisonRequest
+    basis_reactor: str = Field(min_length=1)
+    parameter: str = Field(description="PointResult field matched on every vessel, e.g. 'P_V_W_L'")
+    basis_N_rpm: float = Field(gt=0)
+    basis_V_L: float = Field(gt=0)
+    solve_for: Literal["N_rpm", "V_L"] = "N_rpm"
+    fixed: dict[str, float] = Field(
+        default_factory=dict, description="Per target vessel: the fixed V_L (solve_for=N_rpm) or "
+        "N_rpm (solve_for=V_L); default = middle of the vessel range")
+
+    @field_validator("parameter")
+    @classmethod
+    def _known(cls, v: str) -> str:
+        return cls._check([v])[0]
+
+
+class ScaleUpRow(Contract):
+    reactor: str
+    role: Literal["basis", "target"]
+    N_rpm: Num
+    V_L: Num
+    value: Num
+    status: str
+    hydro: Row = Field(description="Hydrodynamics at the point (PointResult field names)")
+
+
+class ScaleUpResult(Contract):
+    parameter: str
+    target: Num
+    rows: list[ScaleUpRow]
+
+
+# ---------------------------------------------------------------------------
+# Fluids
+# ---------------------------------------------------------------------------
+class SolventStateRequest(Contract):
+    name: str = Field(min_length=1, description="Library solvent")
+    T_C: float = 25.0
+    P_atm: float = Field(1.0, gt=0)
+
+
+class BlendComponent(Contract):
+    name: str = Field(min_length=1, description="Library solvent or custom fluid")
+    amount: float = Field(ge=0)
+
+
+class BlendRequest(Contract):
+    components: list[BlendComponent] = Field(min_length=1)
+    basis: Literal["volume", "mass"] = "volume"
+    T_C: float = 25.0
+    dispersion_speed_1_s: float = Field(5.0, ge=0)
+    dispersion_D_imp_m: float = Field(0.05, ge=0)
+    dispersion_H_m: float = Field(1.0, ge=0)
+    interfacial_tension_N_m: float = Field(0.01, ge=0)
+
+
+class BlendPair(Contract):
+    label: str
+    a: str
+    b: str
+    classification: Literal["miscible", "immiscible", "unknown", "reactive"]
+    assessment: str
+    Ra_MPa05: Num
+    source: str
+
+
+class BlendResult(Contract):
+    status: Literal["single_phase", "unknown", "immiscible", "reactive"]
+    components: list[Row]
+    blend: Row
+    pairs: list[BlendPair]
+    phases: list[Row] | None = Field(description="Settled phases, densest first; None if a pair reacts")
+    phases_unknown_split: bool
+    dispersion: list[Row]
+
+
+# ---------------------------------------------------------------------------
+# Option lists
+# ---------------------------------------------------------------------------
+class OptionItem(Contract):
+    code: str
+    label: str
+
+
+class OptionsResult(Contract):
+    reactors: list[str]
+    reactions_measured: list[str]
+    reaction_classes: list[str]
+    fluids: list[str]
+    particles: list[str]
+    enums: dict[str, list[OptionItem]] = Field(description="Coded choices from core.options")
+
+
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
@@ -416,7 +515,7 @@ class KpiResponse(Contract):
     replicates: int | None = Field(None, ge=1)
 
 
-class BourneReportRequest(Contract):
+class BournePlanRequest(Contract):
     reactor: str = Field(min_length=1)
     fluid: str = "Water"
     T_C: float = 25.0
@@ -427,6 +526,8 @@ class BourneReportRequest(Contract):
     centre: CenterMode = CenterMode.DEFAULT
     centre_pm_W_kg: float = Field(0.2, gt=0, description="Used when centre = custom_pm")
     centre_rpm: float | None = Field(None, gt=0, description="Used when centre = custom_rpm")
+    fed_batch_volumes_L: list[float] = Field(
+        default_factory=list, description="Fill volumes at which Test 1 speeds are re-set")
     feed_volume_mL: float = Field(100.0, gt=0)
     feed_basis: FeedBasis = FeedBasis.RATE
     feed_rate_mL_min: float = Field(5.0, gt=0)
@@ -434,9 +535,53 @@ class BourneReportRequest(Contract):
     surface_ratio: float = Field(0.1, gt=0, description="ε_loc/ε_avg at the surface feed")
     mid_ratio: float = Field(1.0, gt=0)
     impeller_ratio: float = Field(3.0, gt=0)
+
+
+class SpeedSetpoint(Contract):
+    step: str
+    V_L: float
+    low_rpm: float
+    centre_rpm: float
+    high_rpm: float
+    clamped: list[str] = Field(description="Conditions clamped to the vessel speed range")
+
+
+class BournePlanResult(Contract):
+    centre_pm_W_kg: float
+    centre_info: str = Field(description="Markdown caption of the centre-point choice")
+    centerpoint: Row
+    test1: list[Row] = Field(description="Low / centre / high P/m conditions after RPM clamping")
+    test1_pm_span: float = Field(description="Achieved high/low P/m ratio (100 intended)")
+    speed_plan: dict | None = Field(description="Iso-P/m speed lines over the fill range")
+    setpoints: list[SpeedSetpoint]
+    test2: list[Row]
+    test3: list[Row]
+
+
+class BourneAssessRequest(BournePlanRequest):
     test1: list[KpiResponse] = Field(min_length=1)
     test2: list[KpiResponse] | None = None
     test3: list[KpiResponse] | None = None
+
+
+class BourneTestOut(Contract):
+    test: Literal[1, 2, 3]
+    status: Literal["sensitive", "not_sensitive", "inconclusive"]
+    verdict: str = Field(description="Markdown")
+    run_next_test: bool
+    kpis: list[Row]
+
+
+class BourneAssessResult(Contract):
+    tests: list[BourneTestOut]
+    dominant: str = Field(description="Mixing-insensitive | Micromixing | Mesomixing | "
+                          "Macromixing | Inconclusive | Incomplete")
+    tentative: bool
+    next_test: int = Field(description="0 = none")
+    summary: str = Field(description="Decision-tree conclusion (Markdown)")
+
+
+class BourneReportRequest(BourneAssessRequest):
     project: ProjectInfo = Field(default_factory=ProjectInfo)
 
 
@@ -476,3 +621,186 @@ class HeatCoolRequest(HeatTransferRequest):
 
 class ReactionProfileRequest(HeatTransferRequest):
     reaction: ReactionSpec
+
+
+SweepKey = Literal["n_rpm", "v_l", "d_imp", "d_tank", "rho", "mu", "cp", "k_fluid", "v_jacket",
+                   "d_hyd_jacket", "wall_k", "wall_thickness_mm", "lining_k",
+                   "lining_thickness_mm", "fouling", "mu_wall"]
+
+
+class Coefficients(Contract):
+    Re: Num
+    Pr: Num
+    Nu: Num
+    h_i_W_m2K: Num = Field(description="Process-side film coefficient")
+    h_o_W_m2K: Num = Field(description="Jacket-side film coefficient")
+    U_W_m2K: Num
+    A_ht_m2: Num
+    UA_W_K: Num
+    agitator_power_W: Num
+
+
+class Resistance(Contract):
+    name: str
+    R_m2K_W: Num
+    share_pct: Num
+
+
+class HeatTransferResolved(Contract):
+    """Inputs the service filled in from the vessel record and the page defaults."""
+    N_rpm: float
+    V_L: float
+    D_tank_m: float
+    D_imp_m: float
+    A_ht_m2: float
+    wall_material: str
+    lining_material: str
+    htm: str
+    nusselt_correlation: str
+
+
+class HeatCoolResult(Contract):
+    resolved: HeatTransferResolved
+    coefficients: Coefficients
+    q_max_W: Num
+    dT_dt_C_per_min: Num
+    time_analytical_s: Num = Field(description="None when the target is never reached")
+    time_constant_jacket_s: Num
+    time_variable_jacket_s: Num
+    constant_jacket: dict[str, Series] = Field(description="t_s, T_C, q_W")
+    variable_jacket: dict[str, Series] = Field(description="t_s, T_C, q_W, T_jacket_out_C")
+    correlations: list[Row]
+    media: list[Row]
+    summary: list[Row]
+    resistances: list[Resistance]
+    ua_vs_speed: dict[str, Series] = Field(description="N_rpm, UA_W_K (area fixed)")
+    ua_vs_volume: dict[str, Series] = Field(description="V_L, UA_W_K (U fixed)")
+
+
+class ReactionProfileResult(Contract):
+    resolved: HeatTransferResolved
+    coefficients: Coefficients
+    profile: dict[str, Series] = Field(
+        description="t_s, T_C, conversion, q_rxn_W (+ = release), q_jacket_W (+ = into batch)")
+    T_peak_C: Num
+    t_peak_s: Num
+    T_adiabatic_C: Num
+    t_complete_s: Num = Field(description="Time to 99% conversion; None when not reached")
+    q_rxn_max_W: Num
+    final_conversion: Num
+    summary: list[Row]
+
+
+class UaSurfaceRequest(HeatTransferRequest):
+    x_parameter: SweepKey = "n_rpm"
+    y_parameter: SweepKey = "v_l"
+    x_range: tuple[float, float] | None = Field(None, description="Default: vessel range or ±50%")
+    y_range: tuple[float, float] | None = None
+    n_points: int = Field(30, ge=2, le=100)
+
+    @model_validator(mode="after")
+    def _distinct(self):
+        if self.x_parameter == self.y_parameter:
+            raise ValueError("Choose two different parameters for the sweep.")
+        for rng in (self.x_range, self.y_range):
+            if rng is not None and not rng[1] > rng[0]:
+                raise ValueError("Each sweep maximum must be greater than its minimum.")
+        return self
+
+
+class UaSurfaceResult(Contract):
+    x_parameter: str
+    y_parameter: str
+    x: Series
+    y: Series
+    U_W_m2K: list[Series] = Field(description="Rows along y, columns along x")
+    UA_W_K: list[Series]
+    U_limits: tuple[Num, Num]
+    UA_limits: tuple[Num, Num]
+
+
+# ---------------------------------------------------------------------------
+# Database records (field names = CSV columns)
+# ---------------------------------------------------------------------------
+class Record(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
+
+
+class ParticleRecord(Record):
+    particle_name: str = Field(min_length=1)
+    rho_p_kg_m3: float = Field(gt=0)
+    d10_um: float = Field(gt=0)
+    d50_um: float = Field(gt=0)
+    d90_um: float = Field(gt=0)
+    shape_description: str = ""
+    shape_factor: float = Field(1.0, gt=0)
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def _sizes_ordered(self):
+        if not (self.d10_um <= self.d50_um <= self.d90_um):
+            raise ValueError("Particle sizes must satisfy d10 ≤ d50 ≤ d90.")
+        return self
+
+
+class ReactionRecord(Record):
+    reaction_name: str = Field(min_length=1)
+    type: str = ""
+    order: Literal["1", "2", "pseudo-1", "pseudo-2", "n/a"] = "1"
+    k_value: float = 0.0
+    k_units: str = ""
+    C0_mol_L: float = 0.0
+    t_rxn_s: float = Field(0.0, description="0 = derive from k (and C0 for 2nd order)")
+    T_C: float = 25.0
+    solvent: str = ""
+    delta_H_kJ_mol: float = 0.0
+    reaction_class: Literal["yes", "no"] = Field("no", alias="class")
+    notes: str = ""
+    reaction_scheme: str = ""
+
+    @model_validator(mode="after")
+    def _derive_t_rxn(self):
+        k, c0 = self.k_value, self.C0_mol_L
+        if self.t_rxn_s == 0 and k > 0:
+            if self.order in ("1", "pseudo-1"):
+                self.t_rxn_s = 1.0 / k
+            elif self.order in ("2", "pseudo-2") and c0 > 0:
+                self.t_rxn_s = 1.0 / (k * c0)
+        if k <= 0 and self.t_rxn_s <= 0:
+            raise ValueError("Enter a rate constant k (> 0) or a reaction time (> 0).")
+        return self
+
+
+class FluidRecord(Record):
+    fluid_name: str = Field(min_length=1)
+    rho_kg_m3: float = Field(gt=0)
+    mu_Pa_s: float = Field(gt=0)
+    D_mol_m2_s: float = Field(gt=0)
+    surface_tension_N_m: float = Field(ge=0)
+    notes: str = ""
+    Cp_J_per_kgK: float = Field(4182.0, gt=0)
+    k_W_per_mK: float = Field(0.607, gt=0)
+    hsp_d: float = Field(0.0, ge=0)
+    hsp_p: float = Field(0.0, ge=0)
+    hsp_h: float = Field(0.0, ge=0)
+
+
+class ReactorRecord(Record):
+    """Core geometry of a vessel; any other reactors.csv column is accepted as-is."""
+    model_config = ConfigDict(extra="allow", populate_by_name=True, str_strip_whitespace=True)
+    reactor_name: str = Field(min_length=1)
+    D_tank_m: float | None = Field(None, gt=0)
+    D_imp_m: float | None = Field(None, gt=0)
+    Np: float | None = Field(None, gt=0)
+    N_rpm_min: float | None = Field(None, ge=0)
+    N_rpm_max: float | None = Field(None, gt=0)
+    V_L_min: float | None = Field(None, ge=0)
+    V_L_max: float | None = Field(None, gt=0)
+
+
+def validation_message(exc: ValidationError) -> str:
+    """One readable line for the first validation error (field label + reason)."""
+    err = exc.errors()[0]
+    msg = str(err.get("msg", "invalid value")).removeprefix("Value error, ")
+    loc = [str(p) for p in err.get("loc", ())]
+    return f"{friendly(loc[0])}: {msg}" if loc else msg

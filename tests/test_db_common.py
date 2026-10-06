@@ -100,12 +100,20 @@ def test_csv_bytes_is_utf8_without_index(frame):
 
 # --- Admin gate -------------------------------------------------------------
 def test_admin_credentials_ok(monkeypatch):
-    monkeypatch.setattr(db, "_ADMIN_USER", "ops")
-    monkeypatch.setattr(db, "_ADMIN_PW", "s3cret")
+    monkeypatch.setenv("MIXING_LAB_ADMIN_USER", "ops")
+    monkeypatch.setenv("MIXING_LAB_ADMIN_PW", "s3cret")
     assert db.admin_credentials_ok(" ops ", "s3cret")
     assert not db.admin_credentials_ok("ops", "S3CRET")
     assert not db.admin_credentials_ok("", "")
     assert not db.admin_credentials_ok(None, None)
+
+
+def test_admin_login_fails_closed_without_env(monkeypatch):
+    monkeypatch.delenv("MIXING_LAB_ADMIN_USER", raising=False)
+    monkeypatch.delenv("MIXING_LAB_ADMIN_PW", raising=False)
+    assert not db.admin_configured()
+    assert not db.admin_credentials_ok("admin", "admin_tak_2026")
+    assert not db.admin_credentials_ok("", "")
 
 
 # --- Reactor geometry accessors --------------------------------------------

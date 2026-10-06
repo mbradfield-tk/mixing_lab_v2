@@ -22,14 +22,21 @@ from heat_transfer_core import (
     LINING_THICKNESS_DEFAULT,
     NUSSELT_CORRELATIONS,
     WALL_CONDUCTIVITY,
-    _heat_transfer_coeffs,
+    adiabatic_rise,
     compute_batch,
     compute_reaction_profile,
     estimate_jacket_area,
     find_best_material_key,
+    heat_cool_setup_error,
     liquid_height_from_volume,
     load_csvs,
+    resistance_items,
     safe_float,
+    surface_color_limits as _surface_color_limits,
+    sweep_range_defaults,
+    u_ua_surface,
+    ua_vs_rpm,
+    ua_vs_volume,
 )
 from utils.menu_icons import inject_icons
 from utils.report_builder import (
@@ -39,6 +46,12 @@ from utils.report_builder import (
     report_header_label,
 )
 from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
+from core.records import (
+    fluid_row as _fluid_row,
+    range_midpoint as _avg_range,
+    reaction_row as _reaction_row,
+    reactor_row as _reactor_row,
+)
 from pages import _db_common as db
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -67,18 +80,6 @@ UNIT_OPERATION_OPTIONS = ["- select -", "Reaction", "Quench", "Crystallization",
                           "Drying", "Other"]
 
 
-def _reactor_row(reactor_name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
-    row = df.loc[df["reactor_name"] == reactor_name]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
-def _fluid_row(fluid_name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
-    row = df.loc[df["fluid_name"] == fluid_name]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
 def _fluid_properties(fluid_name: str, T_C: float) -> dict:
     """Props for a custom fluid (fixed) or a built-in solvent (evaluated at T_C)."""
     row = _fluid_row(fluid_name)
@@ -95,21 +96,6 @@ def _fluid_properties(fluid_name: str, T_C: float) -> dict:
         return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
                 "cp": p["Cp_J_per_kgK"], "k": p["k_W_per_mK"]}
     return {"rho": 1000.0, "mu": 0.001, "cp": 4182.0, "k": 0.607}
-
-
-def _reaction_row(reaction_name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
-    row = df.loc[df["reaction_name"] == reaction_name]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
-def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
-    """Midpoint of a reactor's min/max range, falling back to either bound."""
-    lo = safe_float(row.get(min_key), 0.0)
-    hi = safe_float(row.get(max_key), 0.0)
-    if lo > 0 and hi > 0:
-        return (lo + hi) / 2.0
-    return hi or lo or fallback
 
 
 def _round_sig(value: float, digits: int = 4) -> float:
@@ -140,34 +126,12 @@ SWEEP_PARAMETER_KEYS = {
 SWEEP_PARAMETER_OPTIONS = list(SWEEP_PARAMETER_KEYS)
 SWEEP_COLOR_THEME_OPTIONS = ["Turbo", "Viridis", "Cool/Warm", "X-ray"]
 SWEEP_COLOR_RANGE_OPTIONS = ["Automatic", "Custom"]
-_SWEEP_ZERO_VALUE_MAX = {
-    "d_imp": 1.0, "d_tank": 2.0, "rho": 2000.0, "mu": 0.1,
-    "cp": 10000.0, "k_fluid": 2.0, "v_jacket": 2.0,
-    "d_hyd_jacket": 0.1, "wall_k": 100.0, "wall_thickness_mm": 10.0,
-    "lining_k": 2.0, "lining_thickness_mm": 3.0, "fouling": 0.001,
-    "mu_wall": 0.01,
-}
 
 
 def _sweep_range_defaults(reactor_name: str, parameter: str, current_value: float) -> tuple[float, float]:
     """Use reactor operating bounds where available, otherwise bracket the current value."""
-    row = _reactor_row(reactor_name)
-    key = SWEEP_PARAMETER_KEYS[parameter]
-    if key == "n_rpm":
-        lower = safe_float(row.get("N_rpm_min"), 0.0)
-        upper = safe_float(row.get("N_rpm_max"), 0.0)
-        if upper > lower >= 0:
-            return lower, upper
-    elif key == "v_l":
-        lower = safe_float(row.get("V_L_min"), 0.0)
-        upper = safe_float(row.get("V_L_max"), 0.0)
-        if upper > lower >= 0:
-            return lower, upper
-
-    current = safe_float(current_value, 0.0)
-    if current > 0:
-        return current * 0.5, current * 1.5
-    return 0.0, _SWEEP_ZERO_VALUE_MAX.get(key, 1.0)
+    return sweep_range_defaults(_reactor_row(reactor_name), SWEEP_PARAMETER_KEYS[parameter],
+                                current_value)
 
 
 def _sweep_colorscale(theme: str) -> list[list[float | str]]:
@@ -176,16 +140,6 @@ def _sweep_colorscale(theme: str) -> list[list[float | str]]:
         return [[1.0 - position, color] for position, color in reversed(scale)]
     name = {"Turbo": "turbo", "Viridis": "viridis", "X-ray": "greys"}.get(theme, "turbo")
     return get_colorscale(name)
-
-
-def _surface_color_limits(values: np.ndarray) -> tuple[float, float]:
-    lower = float(np.nanmin(values))
-    upper = float(np.nanmax(values))
-    if np.isclose(lower, upper):
-        padding = max(abs(lower) * 0.01, 1e-6)
-        lower -= padding
-        upper += padding
-    return lower, upper
 
 
 selected_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
@@ -274,7 +228,7 @@ rxn_dH = safe_float(_x.get("delta_H_kJ_mol"), -50.0)
 def _adiabatic_readout(rho: float, cp: float, c0: float, dH_kJ: float,
                        t_start: float) -> tuple[float, float]:
     """Adiabatic rise (signed K) and temperature; volume cancels out."""
-    rise = (-dH_kJ * 1000.0 * c0 * 1000.0) / (rho * cp) if (rho > 0 and cp > 0) else 0.0
+    rise = adiabatic_rise(rho, cp, c0, dH_kJ)
     return rise, t_start + rise
 
 
@@ -579,52 +533,14 @@ def on_compute(state):
     if state.ht_mode == HT_MODE_RXN:
         _compute_reaction(state)
         return
-    if state.t_target < state.t_start and state.t_jacket >= state.t_start:
-        state.status_message = "Invalid cooling setup: jacket temperature must be below start temperature."
-        notify(state, "E", state.status_message)
-        return
-    if state.t_target > state.t_start and state.t_jacket <= state.t_start:
-        state.status_message = "Invalid heating setup: jacket temperature must be above start temperature."
-        notify(state, "E", state.status_message)
-        return
-    if state.t_target < state.t_start and state.t_target < state.t_jacket:
-        state.status_message = "Cooling target is below jacket temperature and is unreachable."
-        notify(state, "E", state.status_message)
-        return
-    if state.t_target > state.t_start and state.t_target > state.t_jacket:
-        state.status_message = "Heating target is above jacket temperature and is unreachable."
+    error = heat_cool_setup_error(state.t_start, state.t_target, state.t_jacket)
+    if error:
+        state.status_message = error
         notify(state, "E", state.status_message)
         return
 
-    data = {
-        "rho": state.rho,
-        "mu": state.mu,
-        "cp": state.cp,
-        "k_fluid": state.k_fluid,
-        "d_tank": state.d_tank,
-        "d_imp": state.d_imp,
-        "n_rpm": state.n_rpm,
-        "np_in": state.np_in,
-        "v_l": state.v_l,
-        "t_start": state.t_start,
-        "t_target": state.t_target,
-        "t_jacket": state.t_jacket,
-        "mu_wall": state.mu_wall,
-        "nusselt_correlation": state.nusselt_correlation,
-        "htm_name": state.selected_htm,
-        "v_jacket": state.v_jacket,
-        "d_hyd_jacket": state.d_hyd_jacket,
-        "m_dot_jacket": state.m_dot_jacket,
-        "cp_jacket": state.cp_jacket,
-        "q_rxn": state.q_rxn,
-        "include_agitator": state.include_agitator in (True, "On"),
-        "wall_k": state.wall_k,
-        "wall_thickness_mm": state.wall_thickness_mm,
-        "lining_k": state.lining_k,
-        "lining_thickness_mm": state.lining_thickness_mm,
-        "fouling": state.fouling,
-        "a_ht": state.a_ht,
-    }
+    data = {**_shared_ht_data(state), "t_start": state.t_start, "t_target": state.t_target,
+            "t_jacket": state.t_jacket, "q_rxn": state.q_rxn}
     result = compute_batch(data, htm_db)
 
     state.kpi_df = pd.DataFrame(
@@ -696,18 +612,8 @@ def np_is_finite(value: float) -> bool:
 
 def _resistance_items(state, result) -> list[tuple[str, float]]:
     """Series thermal resistances (name, R value) feeding both the chart and the PDF."""
-    items: list[tuple[str, float]] = []
-    if result.h_i > 0:
-        items.append(("Inside film (process)", 1.0 / result.h_i))
-    if state.wall_k > 0 and state.wall_thickness_mm > 0:
-        items.append(("Wall", (state.wall_thickness_mm / 1000.0) / state.wall_k))
-    if state.lining_k > 0 and state.lining_thickness_mm > 0:
-        items.append(("Lining", (state.lining_thickness_mm / 1000.0) / state.lining_k))
-    if state.fouling > 0:
-        items.append(("Fouling", state.fouling))
-    if result.h_o > 0:
-        items.append(("Outside film (jacket)", 1.0 / result.h_o))
-    return items
+    return resistance_items(result.h_i, result.h_o, state.wall_k, state.wall_thickness_mm,
+                            state.lining_k, state.lining_thickness_mm, state.fouling)
 
 
 def _build_resistance_breakdown(state, result) -> None:
@@ -759,8 +665,7 @@ def _build_ua_sweeps(state) -> None:
     if not (rmax > rmin > 0):
         rmin, rmax = max(1.0, 0.1 * cur_rpm), 2.0 * cur_rpm
     rpm_range = np.linspace(rmin, rmax, 40)
-    ua_rpm = [_heat_transfer_coeffs({**base, "n_rpm": rpm}, htm_db)["u"] * state.a_ht
-              for rpm in rpm_range]
+    ua_rpm = ua_vs_rpm(base, htm_db, state.a_ht, rpm_range)
     fig1 = go.Figure(go.Scatter(x=rpm_range, y=ua_rpm, mode="lines",
                                 line={"color": "#E1251B", "width": 2}, name="UA"))
     fig1.add_vline(x=state.n_rpm, line_dash="dot", line_color="#5C6670",
@@ -770,7 +675,6 @@ def _build_ua_sweeps(state) -> None:
     state.ua_rpm_fig = fig1
 
     # (2) UA vs volume at the current stir speed (U independent of volume).
-    u_fixed = _heat_transfer_coeffs(base, htm_db)["u"]
     cur_vol = max(state.v_l, 1e-6)
     vmin = safe_float(row.get("V_L_min"), 0.0)
     vmax = safe_float(row.get("V_L_max"), 0.0)
@@ -778,8 +682,7 @@ def _build_ua_sweeps(state) -> None:
         vmin, vmax = 0.1 * cur_vol, 2.0 * cur_vol
     vmin = max(vmin, 1e-6)
     vol_range = np.linspace(vmin, vmax, 40)
-    ua_vol = [u_fixed * estimate_jacket_area(state.d_tank, liquid_height_from_volume(vol, state.d_tank, h_max_val, bottom, dish_height), bottom, dish_height)
-              for vol in vol_range]
+    ua_vol = ua_vs_volume(base, htm_db, h_max_val, bottom, dish_height, vol_range)
     fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
                                 line={"color": "#1f77b4", "width": 2}, name="UA"))
     fig2.add_vline(x=state.v_l, line_dash="dot", line_color="#5C6670",
@@ -812,25 +715,12 @@ def _compute_parameter_sweep(state) -> None:
     y_key = SWEEP_PARAMETER_KEYS[y_parameter]
     x_values = np.linspace(x_min, x_max, 30)
     y_values = np.linspace(y_min, y_max, 30)
-    u_values = np.empty((len(y_values), len(x_values)))
-    ua_values = np.empty_like(u_values)
-    base = _shared_ht_data(state)
     reactor = _reactor_row(state.selected_reactor)
-    h_max = safe_float(reactor.get("H_max_m"), safe_float(reactor.get("H_m"), 0.2))
-    bottom = str(reactor.get("bottom_dish", ""))
-    dish_height = db.bottom_dish_height(reactor)
-
-    for iy, y_value in enumerate(y_values):
-        for ix, x_value in enumerate(x_values):
-            point = {**base, x_key: float(x_value), y_key: float(y_value)}
-            u_value = _heat_transfer_coeffs(point, htm_db)["u"]
-            area = state.a_ht
-            if "v_l" in (x_key, y_key) or "d_tank" in (x_key, y_key):
-                liquid_height = liquid_height_from_volume(
-                    point["v_l"], point["d_tank"], h_max, bottom, dish_height)
-                area = estimate_jacket_area(point["d_tank"], liquid_height, bottom, dish_height)
-            u_values[iy, ix] = u_value
-            ua_values[iy, ix] = u_value * area
+    u_values, ua_values = u_ua_surface(
+        _shared_ht_data(state), htm_db, x_key, x_values, y_key, y_values, state.a_ht,
+        h_max=safe_float(reactor.get("H_max_m"), safe_float(reactor.get("H_m"), 0.2)),
+        bottom_dish=str(reactor.get("bottom_dish", "")),
+        dish_height=db.bottom_dish_height(reactor))
 
     u_auto_limits = _surface_color_limits(u_values)
     ua_auto_limits = _surface_color_limits(ua_values)
@@ -940,20 +830,8 @@ def _export_batch_pdf(state):
         notify(state, "W", "Compute the heat/cool vessel results before exporting a PDF.")
         return
     try:
-        data = {
-            "rho": state.rho, "mu": state.mu, "cp": state.cp, "k_fluid": state.k_fluid,
-            "d_tank": state.d_tank, "d_imp": state.d_imp, "n_rpm": state.n_rpm,
-            "np_in": state.np_in, "v_l": state.v_l,
-            "t_start": state.t_start, "t_target": state.t_target, "t_jacket": state.t_jacket,
-            "mu_wall": state.mu_wall, "nusselt_correlation": state.nusselt_correlation,
-            "htm_name": state.selected_htm, "v_jacket": state.v_jacket,
-            "d_hyd_jacket": state.d_hyd_jacket, "m_dot_jacket": state.m_dot_jacket,
-            "cp_jacket": state.cp_jacket, "q_rxn": state.q_rxn,
-            "include_agitator": state.include_agitator in (True, "On"), "wall_k": state.wall_k,
-            "wall_thickness_mm": state.wall_thickness_mm, "lining_k": state.lining_k,
-            "lining_thickness_mm": state.lining_thickness_mm, "fouling": state.fouling,
-            "a_ht": state.a_ht,
-        }
+        data = {**_shared_ht_data(state), "t_start": state.t_start,
+                "t_target": state.t_target, "t_jacket": state.t_jacket, "q_rxn": state.q_rxn}
         result = compute_batch(data, htm_db)
 
         items = _resistance_items(state, result)

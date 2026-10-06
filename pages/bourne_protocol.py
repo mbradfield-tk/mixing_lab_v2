@@ -25,8 +25,6 @@ experiments.
 """
 from __future__ import annotations
 
-import csv
-import io
 from pathlib import Path
 
 import numpy as np
@@ -35,26 +33,21 @@ import plotly.graph_objects as go
 from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import (
-    average_shear_rate,
-    blend_time_turbulent,
-    impeller_power,
-    kla_surface,
-    kolmogorov_length,
-    liquid_height_from_volume,
-    micromixing_time_engulfment,
-    power_per_volume,
-    reynolds_number,
-    tip_speed,
-)
-from utils.solvent_properties import (
-    get_properties,
-    is_known_solvent,
-    list_solvents,
-    resolve_solvent_name,
-)
+from utils.calculations import impeller_power, power_per_volume
+from utils.solvent_properties import is_known_solvent, list_solvents
 from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
 from utils import bourne_kpi as kpi
+from core import records
+from core import bourne_io
+from core import bourne_plan as plan
+from core import sensitivity_rules as rules
+from core.records import (
+    VesselGeometry,
+    range_midpoint as _avg_range,
+    reactor_id as _reactor_id,
+    reactor_row as _reactor_row,
+    sf as _sf,
+)
 from pages import _db_common as db
 from vessel_media import build_image_html, build_vessel_viewer_html, media_caption
 
@@ -82,76 +75,21 @@ _SENS_THRESHOLD = kpi.SENS_THRESHOLD
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _sf(val, default=0.0) -> float:
-    try:
-        f = float(val)
-        return default if np.isnan(f) else f
-    except (TypeError, ValueError):
-        return default
-
-
-def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
-    """Midpoint of a reactor's min/max range (fill volume, agitation speed).
-
-    Falls back to whichever bound is available, then to ``fallback``."""
-    lo = _sf(row.get(min_key), 0.0)
-    hi = _sf(row.get(max_key), 0.0)
-    if lo > 0 and hi > 0:
-        return (lo + hi) / 2.0
-    if hi > 0:
-        return hi
-    if lo > 0:
-        return lo
-    return fallback
-
-
-def _reactor_row(name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
-    row = df[df["reactor_name"].astype(str) == str(name)]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
 def _blend_geometry(state) -> tuple[float, float]:
     """Return tank diameter and current liquid height in metres."""
-    row = _reactor_row(state.bp_reactor)
-    tank_diameter = _sf(row.get("D_tank_m"))
-    max_height = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m")))
-    dish = str(row.get("bottom_dish", "") or "")
-    dish_height = db.bottom_dish_height(row)
-    liquid_height = liquid_height_from_volume(
-        state.bp_v_l, tank_diameter, max_height, dish, dish_height,
-    )
-    return tank_diameter, liquid_height
-
-
-def _reactor_id(name: str) -> str:
-    row = _reactor_row(name)
-    return "" if row.empty else str(row.get("reactor_id", "") or "")
+    geo = VesselGeometry.from_row(_reactor_row(state.bp_reactor))
+    return geo.D_tank, geo.liquid_height(state.bp_v_l)
 
 
 def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> tuple[float, float]:
     """Return (rho, mu) for a solvent (at T, P) or a custom fluid."""
-    if is_known_solvent(name):
-        p = get_properties(resolve_solvent_name(name) or name, T_C, P_atm)
-        return p["rho_kg_m3"], p["mu_Pa_s"]
-    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
-    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
-    if not row.empty:
-        r = row.iloc[0]
-        return _sf(r.get("rho_kg_m3"), 1000.0), _sf(r.get("mu_Pa_s"), 0.001)
-    return 1000.0, 0.001
+    p = records.fluid_props(name, T_C, P_atm)
+    return p["rho"], p["mu"]
 
 
 def _fluid_diffusivity(name: str, T_C: float, P_atm: float = 1.0) -> float:
     """Return molecular diffusivity for the selected fluid in m²/s."""
-    if is_known_solvent(name):
-        p = get_properties(resolve_solvent_name(name) or name, T_C, P_atm)
-        return _sf(p.get("D_mol_m2_s"), 2.3e-9)
-    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
-    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
-    if not row.empty:
-        return _sf(row.iloc[0].get("D_mol_m2_s"), 2.3e-9)
-    return 2.3e-9
+    return records.fluid_props(name, T_C, P_atm)["D_mol"]
 
 
 # KPI assessment rules live in utils/bourne_kpi.py (shared with the Reaction
@@ -166,11 +104,16 @@ def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
     return kpi.assess_with_threshold(low, center, high, _SENS_THRESHOLD)
 
 
-def _n_for_pm(pm_wkg: float, V_m3: float, Np: float, D: float) -> float:
-    """Impeller speed (rev/s) that delivers a given specific power P/m (W/kg)."""
-    if Np <= 0 or D <= 0 or V_m3 <= 0 or pm_wkg <= 0:
-        return 0.0
-    return (pm_wkg * V_m3 / (Np * D**5)) ** (1.0 / 3.0)
+_n_for_pm = plan.n_for_pm
+
+
+def _system(state) -> plan.BourneSystem:
+    """Bourne planning inputs (vessel, fluid, working volume) from the page state."""
+    tank_d, h_liq = _blend_geometry(state)
+    return plan.BourneSystem(
+        D_imp=state.bp_d_imp, Np=state.bp_np, rho=state.bp_rho, mu=state.bp_mu,
+        D_mol=_fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P), V_L=state.bp_v_l,
+        n_min=state.bp_n_min, n_max=state.bp_n_max, D_tank=tank_d, H_liquid=h_liq)
 
 
 def _reactor_summary_df(row: pd.Series) -> pd.DataFrame:
@@ -235,58 +178,13 @@ def _test1_range_ratio(state) -> float:
     df = getattr(state, "bp_t1_hydro_df", pd.DataFrame())
     if df.empty:
         return 0.0
-    values = []
-    for _, row in df.iterrows():
-        val = _sf(row.get("P/m (W/kg)"))
-        if val > 0:
-            values.append(val)
-    if len(values) < 2:
-        return 0.0
-    lo = min(values)
-    hi = max(values)
-    if lo <= 0 or hi <= 0:
-        return 0.0
-    return hi / lo
+    return plan.pm_range_ratio([_sf(row.get("P/m (W/kg)")) for _, row in df.iterrows()])
 
 
 def _resolve_center_pm(state) -> tuple[float, str]:
-    """Resolve the Test 1 centre-point P/m (W/kg) and an info caption.
-
-    Modes: default 0.2 W/kg (Sarafinas 2018), a custom P/m, or a custom RPM
-    (converted to P/m via the power draw).
-    """
-    D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
-    V_m3 = state.bp_v_l / 1000.0
-    n_min, n_max = state.bp_n_min, state.bp_n_max
-    mode = state.bp_t1_ctr_mode
-
-    if mode == "Custom RPM":
-        rpm = max(_sf(state.bp_t1_rpm_center), 1e-9)
-        n_rps = rpm / 60.0
-        P = impeller_power(Np, rho, n_rps, D)
-        pm = (power_per_volume(P, V_m3) / rho) if (V_m3 > 0 and rho > 0) else 0.0
-        info = (f"Custom centre: **N = {rpm:.1f} RPM** → **P/m = {pm:.4g} W/kg** "
-                f"({power_per_volume(P, V_m3) / 1000:.4g} W/L).")
-        if n_max > 0 and (rpm > n_max or rpm < n_min):
-            info += f" ⚠ Outside reactor range ({n_min:.0f}–{n_max:.0f} RPM)."
-        return pm, info
-
-    if mode == "Custom P/m":
-        pm = max(_sf(state.bp_t1_pm_center), 0.0)
-        n_rpm = _n_for_pm(pm, V_m3, Np, D) * 60.0
-        return pm, f"Custom centre: **P/m = {pm:.4g} W/kg** at **N = {n_rpm:.0f} RPM**."
-
-    # Default 0.2 W/kg
-    pm = 0.2
-    n_rpm = _n_for_pm(pm, V_m3, Np, D) * 60.0
-    info = f"Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = {n_rpm:.0f} RPM**."
-    if n_max > 0:
-        if n_rpm < n_min or n_rpm > n_max:
-            info += (f" ⚠ Requires {n_rpm:.0f} RPM — outside reactor range "
-                     f"({n_min:.0f}–{n_max:.0f} RPM).")
-        else:
-            info += f" Within reactor range ({n_min:.0f}–{n_max:.0f} RPM)."
-    return pm, info
+    """Resolve the Test 1 centre-point P/m (W/kg) and an info caption."""
+    return plan.resolve_center_pm(_system(state), state.bp_t1_ctr_mode,
+                                  _sf(state.bp_t1_pm_center), _sf(state.bp_t1_rpm_center))
 
 
 # ---------------------------------------------------------------------------
@@ -571,43 +469,13 @@ def on_bp_plan_sys_change(state):
 # ---------------------------------------------------------------------------
 # Test 1
 # ---------------------------------------------------------------------------
-_T1_CONDITIONS = (("Low (0.1× P/m)", 0.1), ("Centre (1× P/m)", 1.0), ("High (10× P/m)", 10.0))
+_T1_CONDITIONS = plan.T1_CONDITIONS
 
 
 def _t1_condition_rows(state) -> list[dict]:
     """Raw (unformatted) Test 1 conditions after RPM clamping — the single source
     for the on-page table, the P/m range check and the PDF snapshot."""
-    D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
-    T, H = _blend_geometry(state)
-    D_mol = _fluid_diffusivity(state.bp_fluid, state.bp_T, state.bp_P)
-    nu = mu / rho if rho > 0 else 0.0
-    V_m3 = state.bp_v_l / 1000.0
-    pm_c = state.bp_t1_pm_eff
-    rows = []
-    for label, factor in _T1_CONDITIONS:
-        n_rps = _n_for_pm(pm_c * factor, V_m3, Np, D)
-        n_rpm = n_rps * 60.0
-        note = ""
-        if state.bp_n_max > 0 and n_rpm > state.bp_n_max:
-            n_rpm, note = state.bp_n_max, " (clamped to N_max)"
-        if state.bp_n_min > 0 and n_rpm < state.bp_n_min:
-            n_rpm, note = state.bp_n_min, " (clamped to N_min)"
-        n_rps = n_rpm / 60.0
-        P = impeller_power(Np, rho, n_rps, D)
-        eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
-        eps_kg = eps / rho if rho > 0 else 0.0
-        rows.append({
-            "Condition": label, "note": note, "Volume (L)": state.bp_v_l,
-            "N (RPM)": n_rpm, "P/V (W/L)": eps / 1000.0, "P/m (W/kg)": eps_kg,
-            "Blend time (s)": blend_time_turbulent(Np, n_rps, D, T, H),
-            "Avg shear rate (1/s)": average_shear_rate(P, mu, V_m3),
-            "Tip speed (m/s)": tip_speed(n_rps, D),
-            "Re": reynolds_number(n_rps, D, rho, mu),
-            "kLa_surface (1/s)": kla_surface(eps_kg, nu, D_mol, T, V_m3),
-            "t_E micro (s)": micromixing_time_engulfment(eps_kg, nu),
-            "η (µm)": kolmogorov_length(nu, eps_kg) * 1e6,
-        })
-    return rows
+    return plan.test1_conditions(_system(state), state.bp_t1_pm_eff)
 
 
 def _build_t1(state):
@@ -695,27 +563,18 @@ def _build_t1_plot(state):
 
 def _build_t1_adj(state):
     """Compute the fed-batch discrete-speed setpoints that hold P/m constant."""
-    D, Np = state.bp_d_imp, state.bp_np
-    pm_c = state.bp_t1_pm_eff
-    n_min, n_max = state.bp_n_min, state.bp_n_max
-    targets = [("Low (RPM)", pm_c * 0.1), ("Centre (RPM)", pm_c), ("High (RPM)", pm_c * 10.0)]
     steps = [("Initial", state.bp_v_l)]
     for i, (_, r) in enumerate(state.bp_t1_adj_vols_df.iterrows()):
         v = _sf(r.get("Volume (L)"))
         if v > 0:
             steps.append((f"Adj. {i + 1}", v))
-    rows, clamped = [], False
-    for label, vol in steps:
-        v_m3 = vol / 1000.0
-        row = {"Step": label, "Volume (L)": f"{vol:.3g}"}
-        for col, pm in targets:
-            n_rpm = _n_for_pm(pm, v_m3, Np, D) * 60.0
-            flag = ""
-            if n_max > 0 and n_rpm > n_max:
-                n_rpm, flag, clamped = n_max, " ⚠", True
-            elif n_min > 0 and 0 < n_rpm < n_min:
-                n_rpm, flag, clamped = n_min, " ⚠", True
-            row[col] = f"{n_rpm:.1f}{flag}"
+    setpoints, clamped = plan.speed_setpoints(_system(state), state.bp_t1_pm_eff, steps)
+    rows = []
+    for sp in setpoints:
+        row = {"Step": sp["Step"], "Volume (L)": f"{sp['Volume (L)']:.3g}"}
+        for col in ("Low (RPM)", "Centre (RPM)", "High (RPM)"):
+            n_rpm, was_clamped = sp[col]
+            row[col] = f"{n_rpm:.1f}{' ⚠' if was_clamped else ''}"
         rows.append(row)
     state.bp_t1_adj_result_df = pd.DataFrame(rows)
     cap = ("Speeds hold each condition's P/m constant as the working volume grows — "
@@ -903,26 +762,12 @@ def on_bp_t1_assess(state):
 # Test 2
 # ---------------------------------------------------------------------------
 def _build_t2(state):
-    vol = state.bp_t2_feed_vol
-    if state.bp_t2_mode == "Feed rate":
-        rate_c = max(state.bp_t2_rate, 1e-9)
-        t_c = vol / rate_c
-    else:
-        t_c = max(state.bp_t2_time, 1e-9)
-        rate_c = vol / t_c
-    rows = []
-    for label, tf, note in (
-        ("Slow (1/3× rate)", t_c * 3.0, "Long feed → approaches well-mixed limit"),
-        ("Centre", t_c, "Reference feed rate"),
-        ("Fast (3× rate)", t_c / 3.0, "Short feed → tests inertial-convective break-up"),
-    ):
-        rows.append({
-            "Condition": label,
-            "Feed time (min)": f"{tf:.3g}",
-            "Flow rate (mL/min)": f"{vol / tf if tf > 0 else 0:.3g}",
-            "Note": note,
-        })
-    state.bp_t2_cond_df = pd.DataFrame(rows)
+    rows = plan.test2_conditions(_sf(state.bp_t2_feed_vol), state.bp_t2_mode == "Feed rate",
+                                 _sf(state.bp_t2_rate), _sf(state.bp_t2_time))
+    state.bp_t2_cond_df = pd.DataFrame([
+        {"Condition": r["Condition"], "Feed time (min)": f"{r['Feed time (min)']:.3g}",
+         "Flow rate (mL/min)": f"{r['Flow rate (mL/min)']:.3g}", "Note": r["Note"]}
+        for r in rows])
     _refresh_table_csv_exports(state)
 
 
@@ -968,28 +813,17 @@ def on_bp_t2_assess(state):
 # Test 3
 # ---------------------------------------------------------------------------
 def _build_t3(state):
-    D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
-    nu = mu / rho if rho > 0 else 0.0
-    V_m3 = state.bp_v_l / 1000.0
-    n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
-    P = impeller_power(Np, rho, n_rps, D)
-    eps_avg = (power_per_volume(P, V_m3) / rho) if (V_m3 > 0 and rho > 0) else 0.0
-    rows = []
-    ratios = (
+    ratios = [
         ("Surface", _sf(state.bp_t3_surface_ratio, 0.1)),
         ("Sub-surface (mid)", _sf(state.bp_t3_mid_ratio, 1.0)),
         ("Impeller zone", _sf(state.bp_t3_impeller_ratio, 3.0)),
-    )
-    for loc, ratio in ratios:
-        ratio = max(ratio, 1e-9)
-        eps_loc = ratio * eps_avg
-        rows.append({
-            "Feed location": loc,
-            "ε_loc/ε_avg": f"{ratio:.1f}",
-            "ε_loc (W/kg)": f"{eps_loc:.4g}",
-            "t_E micro (s)": f"{micromixing_time_engulfment(eps_loc, nu):.3g}",
-        })
-    state.bp_t3_cond_df = pd.DataFrame(rows)
+    ]
+    rows = plan.test3_conditions(_system(state), state.bp_t1_pm_eff, ratios)
+    state.bp_t3_cond_df = pd.DataFrame([
+        {"Feed location": r["Feed location"], "ε_loc/ε_avg": f"{r['ε_loc/ε_avg']:.1f}",
+         "ε_loc (W/kg)": f"{r['ε_loc (W/kg)']:.4g}",
+         "t_E micro (s)": f"{r['t_E micro (s)']:.3g}"}
+        for r in rows])
     _refresh_table_csv_exports(state)
 
 
@@ -1032,79 +866,13 @@ def on_bp_t3_assess(state):
 # ---------------------------------------------------------------------------
 def _protocol_outcome(state) -> dict:
     """Single source of truth for the decision tree, used by the on-page
-    summary, the PDF and the Sensitivity-Protocol CSV.
-
-    A Test 1 "not sensitive" result over an inadequate P/m span (< 100× after
-    RPM clamping) is treated as inconclusive. A mechanism is only *confirmed*
-    when Test 1 itself was sensitive and the intermediate tests were not mixed.
-    """
+    summary, the PDF and the Sensitivity-Protocol CSV (rules in core)."""
     s1, s2, s3 = (_status_of(state, n) for n in (1, 2, 3))
-    ratio = _test1_range_ratio(state)
-    range_ok = ratio >= 100.0
-    s1_eff = "inconclusive" if (s1 == "not_sensitive" and not range_ok) else s1
-    confirmed = s1_eff == "sensitive"
-
-    if not s1:
-        dominant, next_test = "Incomplete", 1
-    elif s1_eff == "not_sensitive":
-        dominant, next_test = "Mixing-insensitive", 0
-    elif not s2:
-        dominant, next_test = "Incomplete", 2
-    elif s2 == "not_sensitive":
-        dominant, next_test = ("Micromixing" if confirmed else "Inconclusive"), 0
-    elif not s3:
-        dominant, next_test = "Incomplete", 3
-    elif s3 == "sensitive":
-        dominant, next_test = "Mesomixing", 0
-    elif s3 == "not_sensitive":
-        dominant, next_test = "Macromixing", 0
-    else:
-        dominant, next_test = "Inconclusive", 0
-
-    tentative = (dominant in ("Micromixing", "Mesomixing", "Macromixing")
-                 and (not confirmed or s2 == "inconclusive"))
-    return {"s1": s1, "s1_eff": s1_eff, "s2": s2, "s3": s3, "ratio": ratio,
-            "range_ok": range_ok, "confirmed": confirmed, "dominant": dominant,
-            "tentative": tentative, "next_test": next_test}
+    return rules.bourne_outcome(s1, s2, s3, _test1_range_ratio(state))
 
 
-def _test_lines(o: dict) -> list[str]:
-    """Human-readable per-test bullets reflecting the actual statuses."""
-    lines = []
-    if o["s1"] == "sensitive":
-        lines.append("- **Test 1:** sensitive to impeller speed → mixing matters.")
-    elif o["s1"] == "inconclusive":
-        lines.append("- **Test 1:** mixed KPI response to impeller speed (inconclusive).")
-    elif o["s1"] == "not_sensitive" and not o["range_ok"]:
-        lines.append(f"- **Test 1:** no response, but only a {o['ratio']:.1f}× P/m span was "
-                     "achieved (100× intended) — treated as inconclusive.")
-    elif o["s1"] == "not_sensitive":
-        lines.append("- **Test 1:** response insensitive to impeller speed.")
-    if o["s2"]:
-        lines.append({"sensitive": "- **Test 2:** sensitive to feed rate.",
-                      "not_sensitive": "- **Test 2:** insensitive to feed rate.",
-                      }.get(o["s2"], "- **Test 2:** mixed response to feed rate (inconclusive)."))
-    if o["s3"]:
-        lines.append({"sensitive": "- **Test 3:** sensitive to feed location.",
-                      "not_sensitive": "- **Test 3:** insensitive to feed location.",
-                      }.get(o["s3"], "- **Test 3:** mixed response to feed location (inconclusive)."))
-    return lines
-
-
-_MECH_CONCLUSION = {
-    "Mixing-insensitive": (
-        "**🟢 Dominant regime: mixing is NOT rate-limiting.** Scale up on geometric "
-        "similarity; no special mixing constraints."),
-    "Micromixing": (
-        "**🔬 Dominant regime: MICROMIXING.** Scale-up rule: **hold local ε constant** "
-        "(match P/V near the feed) — the reaction competes with engulfment-scale mixing."),
-    "Mesomixing": (
-        "**Dominant regime: MESOMIXING.** Scale-up rule: **match P/V, extend feed "
-        "time, and add feed points** to control feed-plume dispersion."),
-    "Macromixing": (
-        "**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation "
-        "times short** — bulk homogeneity governs the outcome."),
-}
+_test_lines = rules.bourne_test_lines
+_MECH_CONCLUSION = rules.MECH_CONCLUSION
 
 
 def _build_summary(state):
@@ -1174,23 +942,7 @@ def _t1_conditions_snap(state) -> list:
 
 
 def _centerpoint_metrics(state) -> dict:
-    D, Np, rho, mu = state.bp_d_imp, state.bp_np, state.bp_rho, state.bp_mu
-    T, H = _blend_geometry(state)
-    nu = mu / rho if rho > 0 else 0.0
-    V_m3 = state.bp_v_l / 1000.0
-    n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
-    P = impeller_power(Np, rho, n_rps, D)
-    eps = power_per_volume(P, V_m3) if V_m3 > 0 else 0.0
-    eps_kg = eps / rho if rho > 0 else 0.0
-    return {
-        "N (RPM)": n_rps * 60.0,
-        "P/m (W/kg)": eps_kg,
-        "Re": reynolds_number(n_rps, D, rho, mu),
-        "Tip speed (m/s)": tip_speed(n_rps, D),
-        "Blend time (s)": blend_time_turbulent(Np, n_rps, D, T, H),
-        "Micromix t_E (s)": micromixing_time_engulfment(eps_kg, nu),
-        "Kolmogorov eta (um)": kolmogorov_length(nu, eps_kg) * 1e6,
-    }
+    return plan.centerpoint_metrics(_system(state), state.bp_t1_pm_eff)
 
 
 def _feed_time_centre(state) -> float:
@@ -1308,26 +1060,8 @@ def on_bp_pdf_download(state):
     download(state, content=state.bp_pdf_bytes, name=state.bp_pdf_name)
 
 
-_SENS_FINDING = {
-    1: {"sensitive": "Mixing-sensitive (impeller speed)",
-        "not_sensitive": "Mixing-insensitive",
-        "inconclusive": "Inconclusive (mixed KPI response to impeller speed)"},
-    2: {"sensitive": "Sensitive to feed rate (mesomixing)",
-        "not_sensitive": "Insensitive to feed rate (micromixing-controlled)",
-        "inconclusive": "Inconclusive (mixed KPI response to feed rate)"},
-    3: {"sensitive": "Sensitive to feed location (mesomixing)",
-        "not_sensitive": "Insensitive to feed location (macromixing-controlled)",
-        "inconclusive": "Inconclusive (mixed KPI response to feed location)"},
-}
-
-
-def _sens_test_finding(status: str, test: int, range_ok: bool = True) -> str:
-    """Per-test finding label for the Sensitivity Protocol CSV export."""
-    if not status:
-        return ""
-    if test == 1 and status == "not_sensitive" and not range_ok:
-        return "Inconclusive (no response, but P/m span < 100x)"
-    return _SENS_FINDING[test].get(status, "")
+_SENS_FINDING = bourne_io.TEST_FINDINGS
+_sens_test_finding = bourne_io.test_finding
 
 
 def on_bp_export_sens_csv(state):
@@ -1336,52 +1070,21 @@ def on_bp_export_sens_csv(state):
         notify(state, "W", "Assess at least Test 1 before exporting.")
         return
     try:
-        o = _protocol_outcome(state)
-        mechs = ("Micromixing", "Mesomixing", "Macromixing")
-        mechanism = o["dominant"] if (o["dominant"] in mechs and not o["tentative"]) else ""
-        tentative = o["dominant"] if (o["dominant"] in mechs and o["tentative"]) else ""
-        overall = {"sensitive": "yes", "not_sensitive": "no"}.get(o["s1_eff"], "inconclusive")
         unit_op = state.bp_unit_operation if state.bp_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
-
-        def _kpis(res):
-            return (res or {}).get("sensitive_names", "") if res else ""
-
-        rows = [
-            ("record_type", "bourne_results"),
-            ("protocol_version", "2"),
-            ("project_name", str(state.bp_project_name)),
-            ("step_number", str(state.bp_step_text)),
-            ("unit_operation", unit_op),
-            ("process_version", str(state.bp_process_version)),
-            ("reactor", str(state.bp_reactor)),
-            ("fluid", str(state.bp_fluid)),
-            ("working_volume_L", f"{_sf(state.bp_v_l):g}"),
-            ("test1_pm_range_ratio", f"{o['ratio']:.1f}"),
-        ]
-        for n in (1, 2, 3):
-            s = o[f"s{n}"]
-            rows += [
-                (f"test{n}_assessed", "yes" if s else "no"),
-                (f"test{n}_status", s),
-                (f"test{n}_finding", _sens_test_finding(s, n, o["range_ok"])),
-                (f"test{n}_sensitive_kpis", _kpis(getattr(state, f"bp_t{n}_result", None))),
-            ]
-        rows += [
-            ("overall_sensitive", overall),
-            ("dominant_mechanism", mechanism),
-            ("dominant_mechanism_tentative", tentative),
-        ]
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["field", "value"])
-        writer.writerows(rows)
-        state.bp_sens_csv_bytes = buf.getvalue().encode("utf-8")
         meta = {
             "project_name": state.bp_project_name,
             "step_number": state.bp_step_text,
             "unit_operation": unit_op,
             "process_version": state.bp_process_version,
         }
+        kpis = {n: ((getattr(state, f"bp_t{n}_result", None) or {}).get("sensitive_names", ""))
+                for n in (1, 2, 3)}
+        rows = bourne_io.export_rows(
+            _protocol_outcome(state),
+            {**meta, "reactor": state.bp_reactor, "fluid": state.bp_fluid,
+             "working_volume_L": _sf(state.bp_v_l)},
+            kpis)
+        state.bp_sens_csv_bytes = bourne_io.write_csv(rows)
         state.bp_sens_csv_name = report_filename(
             report_header_label(meta) or state.bp_reactor).replace(".pdf", ".csv")
         state.bp_sens_csv_ready = True

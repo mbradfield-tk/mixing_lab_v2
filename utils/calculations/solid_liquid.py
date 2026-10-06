@@ -5,7 +5,8 @@ UNIT CONVENTION
 Particle diameter d_p in m, densities in kg/m^3, mu in Pa.s, nu in m^2/s,
 impeller diameter D_imp in m; just-suspended speed N_js returned in rev/s.
 NOTE: the Zwietering solids loading X is the percent mass ratio (g solid /
-100 g liquid) as in the original correlation; gmb_njs uses volume fraction X_v.
+100 g liquid) as in the original correlation; gmb_njs uses the volume
+percentage X_v (volume of particles / volume of slurry, %).
 
 REFERENCES (per function)
 -------------------------
@@ -84,7 +85,11 @@ def zwietering_njs(S: float, nu: float, d_p: float, delta_rho: float,
 def gmb_njs(z: float, Np: float, D_imp: float, d_p: float,
             delta_rho: float, rho_L: float, X_v: float,
             C_D_ratio: float, g: float = 9.81) -> float:
-    """Grenville, Mak & Brown (2015) just-suspended speed."""
+    """Grenville, Mak & Brown (2015) just-suspended speed N_js (rev/s).
+
+    ``X_v`` is the solids volume fraction expressed in **percent** (volume of
+    particles / volume of slurry × 100), as defined in the paper.
+    """
     if D_imp <= 0 or rho_L <= 0 or X_v <= 0 or d_p <= 0 or Np <= 0:
         return 0.0
     return (z * Np**(-1.0/3.0) * D_imp**(-2.0/3.0)

@@ -19,31 +19,28 @@ from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import (
-    characteristic_reaction_time,
-    compute_damkohler_numbers,
-    estimate_U_detailed,
-    estimate_jacket_area,
-    heat_balance_assessment,
-    heat_generation_rate,
-    heat_removal_capacity,
-    liquid_height_from_volume,
-    mesomixing_time,
-    particle_suspension_criterion,
-    settling_velocity,
-    solid_liquid_kla,
-    solid_liquid_mass_transfer,
-    reaction_rate_mol_per_s,
-    zwietering_njs,
-)
+from utils.calculations import heat_balance_assessment, particle_suspension_criterion
 from utils.solvent_properties import (
-    get_properties,
     is_known_solvent,
     list_solvents,
     resolve_solvent_name,
 )
-from utils.rom_registry import available_modes, compute_reactor_hydro_with_mode
+from utils.rom_registry import available_modes
 from utils.report_builder import build_vessel_assessment_pdf, report_filename
+from core import operating_point as op
+from core import sensitivity_rules as rules
+from core.kinetics import effective_t_rxn as _auto_t_rxn
+from core.envelope import operating_window, solve_target, surface_grid, sweep
+from core.records import (
+    VesselGeometry,
+    fluid_props as _fluid_props,
+    particle_row as _particle_row,
+    range_midpoint as _avg_range,
+    reaction_row as _reaction_row,
+    reactor_id as _reactor_id,
+    reactor_row as _reactor_row,
+    sf as _sf,
+)
 from pages import _db_common as db
 from vessel_media import build_vessel_viewer_html, media_caption
 
@@ -56,12 +53,8 @@ fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
 RECORDED_CSV = DATA_DIR / "recorded_results.csv"
 
 # Correlation-source display labels <-> registry keys.
-_CORR_LABEL_TO_KEY = {
-    "Empirical (literature)": "Literature",
-    "Experimental": "Experimental",
-    "Reduced-order (CFD)": "ROM",
-}
-_CORR_KEY_TO_LABEL = {v: k for k, v in _CORR_LABEL_TO_KEY.items()}
+_CORR_LABEL_TO_KEY = op.CORR_SOURCES
+_CORR_KEY_TO_LABEL = op.CORR_LABELS
 
 # 3D vessel viewer render height (px). The Taipy `part` pane is sized a little
 # taller so the image is fully visible without scrolling.
@@ -71,76 +64,12 @@ VIEWER_H = 380
 # ---------------------------------------------------------------------------
 # Data helpers
 # ---------------------------------------------------------------------------
-def _sf(val, default=0.0) -> float:
-    """Safe float conversion (NaN / blank -> default)."""
-    try:
-        f = float(val)
-        return default if np.isnan(f) else f
-    except (TypeError, ValueError):
-        return default
-
-
-def _avg_range(row: pd.Series, min_key: str, max_key: str, fallback: float) -> float:
-    """Midpoint of a reactor's min/max range (e.g. fill volume, agitation speed).
-
-    Falls back to whichever bound is available, then to ``fallback`` when neither
-    is defined."""
-    lo = _sf(row.get(min_key), 0.0)
-    hi = _sf(row.get(max_key), 0.0)
-    if lo > 0 and hi > 0:
-        return (lo + hi) / 2.0
-    if hi > 0:
-        return hi
-    if lo > 0:
-        return lo
-    return fallback
-
-
-def _reactor_row(name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "reactors.csv", ["reactor_name"])
-    row = df[df["reactor_name"].astype(str) == str(name)]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
-def _reaction_row(name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "reactions.csv", ["reaction_name"])
-    row = df[df["reaction_name"].astype(str) == str(name)]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
-def _particle_row(name: str) -> pd.Series:
-    df = db.fresh_csv(DATA_DIR / "particles.csv", ["particle_name"])
-    row = df[df["particle_name"].astype(str) == str(name)]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-
-def _reactor_id(name: str) -> str:
-    """Return the ``reactor_id`` for a reactor name (for image/3D lookup)."""
-    row = _reactor_row(name)
-    return "" if row.empty else str(row.get("reactor_id", "") or "")
-
-
-def _fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> dict:
-    """Return {rho, mu, D_mol, sigma} for a solvent (at T, P) or custom fluid."""
-    if is_known_solvent(name):
-        canonical = resolve_solvent_name(name) or name
-        p = get_properties(canonical, T_C, P_atm)
-        return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
-                "D_mol": p["D_mol_m2_s"], "sigma": p["surface_tension_N_m"]}
-    fluids = db.fresh_csv(DATA_DIR / "fluids.csv", ["fluid_name"])
-    row = fluids[fluids["fluid_name"].astype(str) == str(name)]
-    if not row.empty:
-        r = row.iloc[0]
-        return {"rho": _sf(r.get("rho_kg_m3"), 1000.0),
-                "mu": _sf(r.get("mu_Pa_s"), 0.001),
-                "D_mol": _sf(r.get("D_mol_m2_s"), 2.3e-9),
-                "sigma": _sf(r.get("surface_tension_N_m"), 0.072)}
-    return {"rho": 1000.0, "mu": 0.001, "D_mol": 2.3e-9, "sigma": 0.072}
-
-
-def _auto_t_rxn(order: str, k: float, C0: float, t_rxn: float) -> float:
-    """Return characteristic reaction time, auto-computing from k if needed."""
-    return characteristic_reaction_time(order, k, C0, t_rxn)[0]
+def _geometry(state) -> VesselGeometry:
+    """Selected vessel's geometry with the page's advanced overrides applied."""
+    return VesselGeometry.from_row(
+        _reactor_row(state.va_reactor), H_max_fallback=state.va_d_tank,
+    ).with_overrides(D_tank=state.va_d_tank, D_imp=state.va_d_imp,
+                     Np=state.va_np, Nq=state.va_nq)
 
 
 def _law_html(order: str) -> str:
@@ -228,7 +157,7 @@ _r0 = _reactor_row(va_reactor)
 va_d_tank = _sf(_r0.get("D_tank_m"), 0.1)
 va_d_imp = _sf(_r0.get("D_imp_m"), 0.05)
 va_n_rpm = _avg_range(_r0, "N_rpm_min", "N_rpm_max", 300.0)
-va_np = _sf(_r0.get("Np"), 5.0)
+va_np = _sf(_r0.get("Np"), 1.27)
 va_nq = _sf(_r0.get("Nq"), 0.79)
 va_v_l = _avg_range(_r0, "V_L_min", "V_L_max", _sf(_r0.get("V_L"), 1.0))
 
@@ -261,6 +190,8 @@ va_d50 = _sf(_p0.get("d50_um"), 50.0)
 va_phi = _sf(_p0.get("shape_factor"), 1.0)
 va_x_wt = 5.0
 va_szw = 5.5
+va_gmb_z = 3.0
+va_cd = 0.33
 
 # Gas (optional)
 va_gas_mode = "Off"
@@ -400,8 +331,8 @@ def on_va_reactor_change(state):
     state.va_d_tank = _sf(row.get("D_tank_m"), state.va_d_tank)
     state.va_d_imp = _sf(row.get("D_imp_m"), state.va_d_imp)
     state.va_n_rpm = _avg_range(row, "N_rpm_min", "N_rpm_max", state.va_n_rpm)
-    state.va_np = _sf(row.get("Np"), state.va_np)
-    state.va_nq = _sf(row.get("Nq"), state.va_nq)
+    state.va_np = _sf(row.get("Np"), 1.27)
+    state.va_nq = _sf(row.get("Nq"), 0.79)
     state.va_v_l = _avg_range(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), state.va_v_l))
     rid = _reactor_id(state.va_reactor)
     state.va_viewer_html = build_vessel_viewer_html(rid, VIEWER_H)
@@ -590,88 +521,29 @@ def on_va_save_results(state):
 # ---------------------------------------------------------------------------
 def _correlation_applicability(state, hydro: dict) -> str:
     """Summarize applicability checks for the selected hydro correlations."""
-    row = _reactor_row(state.va_reactor)
-    checks = []
-    warnings = []
-
-    reynolds = _sf(hydro.get("Re"), 0.0)
-    if reynolds <= 0:
-        warnings.append("Reynolds regime unavailable")
-    elif reynolds < 10:
-        warnings.append(f"laminar regime (Re = {reynolds:.3g}); turbulent correlations are not applicable")
-    elif reynolds < 1e4:
-        warnings.append(f"transitional regime (Re = {reynolds:.3g}); correlation uncertainty is elevated")
-    else:
-        checks.append(f"turbulent regime (Re = {reynolds:,.0f})")
-
-    tank_d = _sf(state.va_d_tank)
-    imp_d = _sf(state.va_d_imp)
-    d_ratio = imp_d / tank_d if tank_d > 0 else 0.0
-    if 0.2 <= d_ratio <= 0.7:
-        checks.append(f"impeller/tank diameter ratio = {d_ratio:.3f}")
-    else:
-        warnings.append(f"impeller/tank diameter ratio = {d_ratio:.3f} is outside the typical 0.2–0.7 range")
-
-    h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), tank_d))
-    dish = str(row.get("bottom_dish", "") or "")
-    dish_height = db.bottom_dish_height(row)
-    h_liq = liquid_height_from_volume(
-        _sf(state.va_v_l), tank_d, h_max, dish, dish_height)
-    submergence = h_liq / imp_d if imp_d > 0 else 0.0
-    if submergence >= 1.0:
-        checks.append(f"liquid height/impeller diameter = {submergence:.2f}")
-    else:
-        warnings.append(f"liquid height/impeller diameter = {submergence:.2f}; impeller submergence is limited")
-
-    baffles = str(row.get("baffles", "") or "").strip()
-    if baffles:
-        checks.append(f"baffling recorded ({baffles})")
-    else:
-        warnings.append("baffling is not recorded; confirm the vessel configuration")
-
-    clearance = _sf(row.get("imp1_clearance_m"), 0.0)
-    clearance_ratio = clearance / tank_d if tank_d > 0 else 0.0
-    if clearance > 0:
-        checks.append(f"impeller clearance/tank diameter = {clearance_ratio:.3f}")
-    else:
-        warnings.append("impeller clearance is not recorded")
-
-    impeller_count = _sf(row.get("impeller_count"), 1.0)
-    if impeller_count > 1:
-        warnings.append(f"multiple impellers ({impeller_count:.0f}); single-impeller correlations need review")
-    else:
-        checks.append("single impeller")
-
-    warnings.append("Newtonian-fluid assumption applies; non-Newtonian rheology requires a dedicated correlation")
-    checks.append("gas loading included" if state.va_gas_mode == "On" else "no gas loading")
-    if state.va_sl_mode == "On":
-        checks.append("solids loading enabled; verify particle-concentration range")
-    else:
-        checks.append("no solids loading")
-
-    lines = ["**Correlation applicability:** " + "; ".join(checks) + "."]
-    if warnings:
-        lines.append("**Review required:** " + "; ".join(warnings) + ".")
-    return "\n\n".join(lines)
+    return rules.correlation_applicability(
+        hydro, _geometry(state), _reactor_row(state.va_reactor), _sf(state.va_v_l),
+        gas_on=state.va_gas_mode == "On", solids_on=state.va_sl_mode == "On")
 
 
-def _hydro_at(state, n_rpm: float, v_l: float) -> dict:
-    """Run the hydro engine at a given RPM and fill volume using the selected
-    correlation source and gas settings."""
-    row = _reactor_row(state.va_reactor)
-    h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
-    dish = str(row.get("bottom_dish", "") or "")
-    dish_height = db.bottom_dish_height(row)
-    h_liq = liquid_height_from_volume(
-        v_l, state.va_d_tank, h_max, dish, dish_height)
+def _inputs(state, t_rxn: float, *, heat: bool = True) -> op.PointInputs:
+    """Operating-point inputs from the page state (heat=False skips the heat balance)."""
     v_s, coal = _gas_params(state)
-    mode_key = _CORR_LABEL_TO_KEY.get(state.va_corr_mode, "Literature")
-    hydro, _sources = compute_reactor_hydro_with_mode(
-        mode_key, state.va_reactor,
-        N=n_rpm / 60.0, D_imp=state.va_d_imp, D_tank=state.va_d_tank, H=h_liq,
-        rho=state.va_rho, mu=state.va_mu, Np=state.va_np, Nq=state.va_nq,
-        v_s=v_s, coalescing=coal, D_mol=state.va_dmol)
-    return hydro
+    solids = (op.Solids(rho_p=_sf(state.va_rho_p), d50_um=_sf(state.va_d50),
+                        phi=_sf(state.va_phi, 1.0), x_wt=_sf(state.va_x_wt),
+                        S_zw=_sf(state.va_szw, 5.5), gmb_z=_sf(state.va_gmb_z, 3.0),
+                        cd=_sf(state.va_cd, 0.33))
+              if state.va_sl_mode == "On" else None)
+    feed = (op.Feed(str(state.va_feed_location), _sf(state.va_feed_diam) / 1000.0)
+            if state.va_fed_mode == "On" else None)
+    return op.PointInputs(
+        reactor=state.va_reactor, geometry=_geometry(state),
+        fluid=op.Fluid(state.va_fluid, _sf(state.va_rho), _sf(state.va_mu), _sf(state.va_dmol)),
+        reaction=op.Reaction(str(state.va_order), _sf(state.va_k), _sf(state.va_c0),
+                             t_rxn, _sf(state.va_dH)),
+        corr_mode=_CORR_LABEL_TO_KEY.get(state.va_corr_mode, "Literature"),
+        gas=op.Gas(v_s, coal), solids=solids, feed=feed,
+        heat=op.Heat(_sf(state.va_T), _sf(state.va_T_cool)) if heat else None)
 
 
 def on_va_compute(state):
@@ -681,109 +553,45 @@ def on_va_compute(state):
         notify(state, "E", state.va_status)
         return
 
-    hydro = _hydro_at(state, state.va_n_rpm, state.va_v_l)
+    hydro = op.evaluate_point(_inputs(state, t_rxn), state.va_n_rpm / 60.0, state.va_v_l)
     state.va_corr_applicability = _correlation_applicability(state, hydro)
 
-    # Solid-liquid suspension (optional)
-    kla_sl = 0.0
+    kla_sl = hydro.get("kLa_SL (1/s)", 0.0)
     if state.va_sl_mode == "On":
-        d_p = state.va_d50 * 1e-6
-        nu = state.va_mu / state.va_rho if state.va_rho > 0 else 0.0
-        delta_rho = abs(state.va_rho_p - state.va_rho)
-        n_js_rps = zwietering_njs(state.va_szw, nu, d_p, delta_rho,
-                                  state.va_rho, state.va_x_wt, state.va_d_imp)
-        n_js_rpm = n_js_rps * 60.0
-        n_rps = state.va_n_rpm / 60.0
-        assess = particle_suspension_criterion(n_rps, n_js_rps)
-        v_t = settling_velocity(d_p, state.va_rho_p, state.va_rho, state.va_mu,
-                                state.va_phi)
-        k_sl = solid_liquid_mass_transfer(
-            d_p, v_t, state.va_rho, state.va_mu, state.va_dmol)
-        # Convert wt-% solids to an approximate suspended volume fraction for
-        # the specific-area estimate used by the kLa_SL correlation.
-        x_mass = max(_sf(state.va_x_wt), 0.0) / 100.0
-        phi_s = (x_mass * state.va_rho / state.va_rho_p
-                 if state.va_rho_p > 0 else 0.0)
-        kla_sl = solid_liquid_kla(k_sl, d_p, phi_s)
+        n_js_rpm = hydro.get("N_js (RPM)", 0.0)
+        assess = particle_suspension_criterion(state.va_n_rpm / 60.0, n_js_rpm / 60.0)
         state.va_sl_df = pd.DataFrame([
             {"Parameter": "Just-suspended speed N_js", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "Operating speed N", "Value": f"{state.va_n_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "N / N_js", "Value": f"{(state.va_n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
             {"Parameter": "Suspension state", "Value": assess, "Units": "–"},
-            {"Parameter": "Settling velocity v_t", "Value": f"{v_t:.3g}", "Units": "m/s"},
-            {"Parameter": "Solid-liquid k_SL", "Value": f"{k_sl:.3g}", "Units": "m/s"},
+            {"Parameter": "Settling velocity v_t", "Value": f"{hydro.get('v_t (m/s)', 0.0):.3g}", "Units": "m/s"},
+            {"Parameter": "Solid-liquid k_SL", "Value": f"{hydro.get('k_SL (m/s)', 0.0):.3g}", "Units": "m/s"},
             {"Parameter": "Solid-liquid kLa_SL", "Value": f"{kla_sl:.3g}", "Units": "1/s"},
         ])
     else:
         state.va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
-    # Gas-liquid mass transfer only counts when a gas phase is active.
-    if state.va_gas_mode == "On":
-        kla_da = hydro["kLa (1/s)"]
-        klasurf_da = hydro["kLa_surface (1/s)"]
-    else:
-        kla_da = klasurf_da = 0.0
+    dam = {k: hydro[k] for k in ("Da_macro", "Da_micro", "Da_GL", "Da_SL", "Assessment")}
 
-    dam = compute_damkohler_numbers(
-        hydro["Blend time 95% (s)"], hydro["Micromix time t_E (s)"], t_rxn,
-        kLa=kla_da, kLa_surface=klasurf_da, kLa_SL=kla_sl)
-
-    # Preliminary capacity-to-kinetic-demand screen. A full mass-transfer
-    # demand still needs solubility, driving-force, and phase-composition data.
-    mt_rows = []
-    demand_rate = 1.0 / t_rxn if t_rxn > 0 else 0.0
     transfer_paths = []
     if state.va_gas_mode == "On":
         transfer_paths.append(("Gas-liquid", hydro["kLa (1/s)"]))
     if state.va_sl_mode == "On":
         transfer_paths.append(("Solid-liquid", kla_sl))
-    for path, kla_value in transfer_paths:
-        ratio = kla_value / demand_rate if demand_rate > 0 else 0.0
-        if kla_value <= 0:
-            screening = "Unknown — kLa unavailable"
-        elif ratio < 1.0:
-            screening = "Potentially transfer-limited"
-        elif ratio < 10.0:
-            screening = "Capacity comparable to demand"
-        else:
-            screening = "Capacity exceeds kinetic demand"
-        mt_rows.append({
-            "Transfer path": path,
-            "kLa (1/s)": f"{kla_value:.3g}",
-            "Demand 1/t_rxn (1/s)": f"{demand_rate:.3g}",
-            "Capacity / demand": f"{ratio:.3g}",
-            "Screening": screening,
-        })
-    state.va_mt_df = pd.DataFrame(mt_rows, columns=va_mt_df.columns)
+    state.va_mt_df = pd.DataFrame(rules.mass_transfer_screen(transfer_paths, t_rxn),
+                                  columns=va_mt_df.columns)
 
     # Hydrodynamics KPI table
     state.va_hydro_df = pd.DataFrame(
         [{"Parameter": name, "Value": f"{hydro[key]:,.4g}", "Units": unit}
          for key, name, unit in _HYDRO_ROWS])
 
-    def _regime(da: float) -> str:
-        if da <= 0:
-            return "—"
-        if da < 0.1:
-            return "🟢 Mixing-insensitive"
-        if da < 1.0:
-            return "🟡 Transitional"
-        return "🔴 Mixing-limited"
+    _regime = rules.regime_label
 
-    # Mesomixing (only for fed-batch): feed-plume dispersion vs reaction. The
-    # local energy dissipation depends on where the feed enters the vessel.
-    da_meso = 0.0
-    if state.va_fed_mode == "On":
-        d_feed = _sf(state.va_feed_diam, 0.0) / 1000.0  # mm -> m
-        loc = str(state.va_feed_location)
-        if loc.startswith("Near impeller"):
-            eps_feed = hydro.get("ε_max (W/kg)", hydro.get("P/V (W/kg)", 0.0))
-        elif loc.startswith("Surface"):
-            eps_feed = 0.2 * hydro.get("P/V (W/kg)", 0.0)
-        else:  # Bulk / mid-liquid
-            eps_feed = hydro.get("P/V (W/kg)", 0.0)
-        t_meso = mesomixing_time(eps_feed, d_feed)
-        da_meso = (t_meso / t_rxn) if (t_rxn > 0 and np.isfinite(t_meso)) else 0.0
+    da_meso = hydro.get("Da_meso", 0.0)
+    gl_type = ("Gas–liquid mass transfer" if state.va_gas_mode == "On"
+               else "Gas–liquid mass transfer (surface aeration)")
 
     dam_rows = [
         {"Type": "Macromixing (bulk blending)", "Damköhler": "Da_macro", "Value": f"{dam['Da_macro']:.3g}", "Regime": _regime(dam["Da_macro"])},
@@ -791,36 +599,19 @@ def on_va_compute(state):
     if state.va_fed_mode == "On":
         dam_rows.append({"Type": "Mesomixing (feed dispersion)", "Damköhler": "Da_meso", "Value": f"{da_meso:.3g}", "Regime": _regime(da_meso)})
     dam_rows.append({"Type": "Micromixing (engulfment)", "Damköhler": "Da_micro", "Value": f"{dam['Da_micro']:.3g}", "Regime": _regime(dam["Da_micro"])})
-    if state.va_gas_mode == "On":
-        dam_rows.append({"Type": "Gas–liquid mass transfer", "Damköhler": "Da_GL", "Value": f"{dam['Da_GL']:.3g}", "Regime": _regime(dam["Da_GL"])})
+    dam_rows.append({"Type": gl_type, "Damköhler": "Da_GL", "Value": f"{dam['Da_GL']:.3g}", "Regime": _regime(dam["Da_GL"])})
     if state.va_sl_mode == "On":
         dam_rows.append({"Type": "Solid–liquid mass transfer", "Damköhler": "Da_SL", "Value": f"{dam['Da_SL']:.3g}", "Regime": _regime(dam["Da_SL"])})
     state.va_dam_df = pd.DataFrame(dam_rows)
     state.va_assess = f"**Assessment:** {dam['Assessment']}"
 
     # Heat balance (optional — only when a heat of reaction is set)
-    if abs(state.va_dH) > 0:
-        r_mol_s = reaction_rate_mol_per_s(state.va_order, state.va_k, state.va_c0, state.va_v_l)
-        q_gen = heat_generation_rate(state.va_dH, r_mol_s)
-        row = _reactor_row(state.va_reactor)
-        h_max = _sf(row.get("H_max_m"), _sf(row.get("L_tan_tan_m"), state.va_d_tank))
-        dish = str(row.get("bottom_dish", "") or "")
-        dish_height = db.bottom_dish_height(row)
-        h_liq = liquid_height_from_volume(
-            state.va_v_l, state.va_d_tank, h_max, dish, dish_height)
-        area = estimate_jacket_area(state.va_d_tank, h_liq, dish, dish_height)
-        u_val, _warn = estimate_U_detailed(
-            N_rps=state.va_n_rpm / 60.0, D_imp=state.va_d_imp, D_tank=state.va_d_tank,
-            rho=state.va_rho, mu=state.va_mu,
-            material=str(row.get("shell_material", "") or ""),
-            lining_material=str(row.get("lining_material", "") or ""),
-            wall_thickness_mm=_sf(row.get("wall_thickness_mm"), 0.0),
-            fluid_name=state.va_fluid)
-        q_cool = heat_removal_capacity(u_val, area, abs(state.va_T - state.va_T_cool))
+    if "Q_gen (W)" in hydro:
+        q_gen, q_cool = hydro["Q_gen (W)"], hydro["Q_cool (W)"]
         state.va_heat_df = pd.DataFrame([
             {"Parameter": "Heat generation Q_gen", "Value": f"{q_gen:,.1f}", "Units": "W"},
-            {"Parameter": "Overall U", "Value": f"{u_val:,.1f}", "Units": "W/m²·K"},
-            {"Parameter": "Jacket area A", "Value": f"{area:,.4g}", "Units": "m²"},
+            {"Parameter": "Overall U", "Value": f"{hydro['U (W/m²·K)']:,.1f}", "Units": "W/m²·K"},
+            {"Parameter": "Jacket area A", "Value": f"{hydro['A_ht (m²)']:,.4g}", "Units": "m²"},
             {"Parameter": "Cooling capacity Q_cool", "Value": f"{q_cool:,.1f}", "Units": "W"},
             {"Parameter": "Balance", "Value": heat_balance_assessment(q_gen, q_cool), "Units": "–"},
         ])
@@ -848,38 +639,9 @@ def on_va_compute(state):
     notify(state, "S", "Assessment computed.")
 
 
-def _solve_eval(state, x: float, solve_n: bool, t_rxn: float, param: str) -> float:
-    n_rpm, v_l = (x, state.va_v_l) if solve_n else (state.va_n_rpm, x)
-    if param.startswith("Da_"):
-        return float(_point_values(state, n_rpm, v_l, t_rxn, [param])[param])
-    return float(_hydro_at(state, n_rpm, v_l)[param])
-
-
-def _find_roots(f, lo: float, hi: float, n_pts: int = 60, iters: int = 40):
-    """Scan [lo, hi] for sign changes of f and refine each by bisection."""
-    xs = np.linspace(lo, hi, n_pts)
-    ys = np.array([f(x) for x in xs])
-    roots = []
-    for i in range(n_pts - 1):
-        a, b, fa, fb = xs[i], xs[i + 1], ys[i], ys[i + 1]
-        if not (np.isfinite(fa) and np.isfinite(fb)):
-            continue
-        if fa == 0:
-            roots.append(a)
-            continue
-        if fa * fb > 0:
-            continue
-        for _ in range(iters):
-            m = 0.5 * (a + b)
-            fm = f(m)
-            if not np.isfinite(fm):
-                break
-            if fa * fm <= 0:
-                b = m
-            else:
-                a, fa = m, fm
-        roots.append(0.5 * (a + b))
-    return roots, xs, ys
+def _evaluator(inp: op.PointInputs):
+    """(N_rpm, V_L) -> full point dict for the core.envelope sweep/solve helpers."""
+    return lambda n_rpm, v_l: op.evaluate_point(inp, n_rpm / 60.0, v_l)
 
 
 def on_va_solve(state):
@@ -907,32 +669,35 @@ def on_va_solve(state):
         name, unit, fixed = "V", "L", f"N = {state.va_n_rpm:.0f} RPM"
 
     try:
-        roots, xs, ys = _find_roots(
-            lambda x: _solve_eval(state, x, solve_n, t_rxn, param) - target, lo, hi)
+        evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
+        if solve_n:
+            value_at = lambda x: float(evaluate(x, state.va_v_l)[param])  # noqa: E731
+        else:
+            value_at = lambda x: float(evaluate(state.va_n_rpm, x)[param])  # noqa: E731
+        res = solve_target(value_at, target, lo, hi, (rng_lo, rng_hi))
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Solve failed: {exc}")
         return
 
-    rows = []
-    for i, x in enumerate(roots, start=1):
-        achieved = _solve_eval(state, x, solve_n, t_rxn, param)
-        rows.append({"#": i, "Solved variable": f"{name} ({unit})",
-                     "Value": f"{x:,.4g}", "Achieved": f"{param} = {achieved:.4g}",
-                     "Within vessel range": "Yes" if rng_lo <= x <= rng_hi else "No"})
+    roots = res["roots"]
+    rows = [{"#": i, "Solved variable": f"{name} ({unit})",
+             "Value": f"{x:,.4g}", "Achieved": f"{param} = {achieved:.4g}",
+             "Within vessel range": "Yes" if ok else "No"}
+            for i, (x, achieved, ok) in enumerate(
+                zip(roots, res["achieved"], res["in_window"]), start=1)]
     state.va_solve_df = pd.DataFrame(rows, columns=va_solve_df.columns)
 
-    in_range = [x for x in roots if rng_lo <= x <= rng_hi]
-    state.va_solve_found = bool(in_range)
-    state.va_solve_value = float(in_range[0]) if in_range else 0.0
+    best = res["first_in_window"]
+    state.va_solve_found = best is not None
+    state.va_solve_value = float(best) if best is not None else 0.0
     window = f"{name} = {rng_lo:.4g}–{rng_hi:.4g} {unit}"
     if not roots:
-        finite = ys[np.isfinite(ys)] + target
-        span = (f"{finite.min():.4g}–{finite.max():.4g}" if finite.size else "n/a")
+        span = f"{res['span'][0]:.4g}–{res['span'][1]:.4g}" if res["span"] else "n/a"
         state.va_solve_status = (
             f"**No solution:** {param} = {target:g} is not reachable for {name} = "
             f"{lo:.4g}–{hi:.4g} {unit} at {fixed} (achievable range {span}).")
         notify(state, "W", "Target not reachable.")
-    elif not in_range:
+    elif best is None:
         state.va_solve_status = (
             f"**Solution outside vessel range:** {param} = {target:g} needs {name} = "
             f"{roots[0]:.4g} {unit} at {fixed}; vessel window is {window}.")
@@ -940,9 +705,9 @@ def on_va_solve(state):
     else:
         extra = " (multiple solutions — see table)" if len(roots) > 1 else ""
         state.va_solve_status = (
-            f"**Solution:** {name} = {in_range[0]:.4g} {unit} gives {param} = "
+            f"**Solution:** {name} = {best:.4g} {unit} gives {param} = "
             f"{target:g} at {fixed} ({state.va_corr_mode}){extra}.")
-        notify(state, "S", f"Solved: {name} = {in_range[0]:.4g} {unit}.")
+        notify(state, "S", f"Solved: {name} = {best:.4g} {unit}.")
 
 
 def on_va_solve_apply(state):
@@ -964,31 +729,8 @@ def _env_params(state) -> list[str]:
 
 
 def _env_ranges(state) -> tuple[np.ndarray, float, float]:
-    """(RPM sweep array, V_min, V_max) for the selected vessel, with fallbacks
-    around the current operating point when the DB range is missing."""
-    row = _reactor_row(state.va_reactor)
-    n_lo = _sf(row.get("N_rpm_min"), max(state.va_n_rpm * 0.1, 10.0))
-    n_hi = _sf(row.get("N_rpm_max"), state.va_n_rpm)
-    if n_hi <= n_lo:
-        n_lo, n_hi = state.va_n_rpm * 0.2, state.va_n_rpm * 1.2
-    v_min = _sf(row.get("V_L_min"), 0.0)
-    v_max = _sf(row.get("V_L_max"), 0.0)
-    if v_max <= v_min or v_min <= 0:
-        v_min = max(state.va_v_l * 0.5, 1e-6)
-        v_max = max(state.va_v_l, v_min * 1.5)
-    return np.linspace(n_lo, n_hi, 40), v_min, v_max
-
-
-def _point_values(state, n_rpm: float, v_l: float, t_rxn: float, params: list[str]) -> dict:
-    """Evaluate the selected envelope parameters at one (N, V) point."""
-    h = _hydro_at(state, n_rpm, v_l)
-    # Match the results table: gas-liquid transfer only counts when a gas phase is active.
-    gas_on = state.va_gas_mode == "On"
-    d = compute_damkohler_numbers(
-        h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-        kLa=h["kLa (1/s)"] if gas_on else 0.0,
-        kLa_surface=h["kLa_surface (1/s)"] if gas_on else 0.0)
-    return {p: (d[p] if p.startswith("Da_") else h[p]) for p in params}
+    """(RPM sweep array, V_min, V_max) for the selected vessel."""
+    return operating_window(_reactor_row(state.va_reactor), state.va_n_rpm, state.va_v_l)
 
 
 def _build_envelope(state, t_rxn: float):
@@ -998,18 +740,10 @@ def _build_envelope(state, t_rxn: float):
     parameters."""
     params = _env_params(state)
     n_arr, v_min, v_max = _env_ranges(state)
-
-    def _sweep(v_l: float) -> dict:
-        out = {p: [] for p in params}
-        for n_rpm in n_arr:
-            vals = _point_values(state, n_rpm, v_l, t_rxn, params)
-            for p in params:
-                out[p].append(vals[p])
-        return {p: np.array(v) for p, v in out.items()}
-
-    hi_v = _sweep(v_max)
-    lo_v = _sweep(v_min)
-    current = _point_values(state, state.va_n_rpm, state.va_v_l, t_rxn, params)
+    evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
+    curves = sweep(evaluate, n_arr, (v_max, v_min), params)
+    hi_v, lo_v = curves[v_max], curves[v_min]
+    current = evaluate(state.va_n_rpm, state.va_v_l)
 
     n = len(params)
     cols = min(3, n)
@@ -1079,15 +813,9 @@ def _build_surface(state, t_rxn: float):
     n_full, v_min, v_max = _env_ranges(state)
     n_arr = np.linspace(n_full[0], n_full[-1], _SURF_N_PTS)
     v_arr = np.linspace(v_min, v_max, _SURF_V_PTS)
-
-    # Plotly Surface expects z[j, i] with rows along y (volume), columns along x (RPM).
-    z = {p: np.empty((len(v_arr), len(n_arr))) for p in params}
-    for j, v_l in enumerate(v_arr):
-        for i, n_rpm in enumerate(n_arr):
-            vals = _point_values(state, n_rpm, v_l, t_rxn, params)
-            for p in params:
-                z[p][j, i] = vals[p]
-    current = _point_values(state, state.va_n_rpm, state.va_v_l, t_rxn, params)
+    evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
+    z = surface_grid(evaluate, n_arr, v_arr, params)
+    current = evaluate(state.va_n_rpm, state.va_v_l)
 
     n = len(params)
     cols = min(3, n)
@@ -1236,6 +964,14 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|{va_phi}|number|label=Shape factor φ|on_change=on_va_input_change|>
 
 <|{va_x_wt}|number|label=Solids loading (wt-%)|on_change=on_va_input_change|>
+|>
+
+<|layout|columns=1 1 1|
+<|{va_szw}|number|label=Zwietering S|on_change=on_va_input_change|>
+
+<|{va_gmb_z}|number|label=GMB z|on_change=on_va_input_change|>
+
+<|{va_cd}|number|label=C/D|on_change=on_va_input_change|>
 |>
 |>
 

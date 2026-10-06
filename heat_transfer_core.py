@@ -756,3 +756,120 @@ def compute_reaction_profile(data: dict[str, Any], htm_db: dict[str, dict[str, A
         t_complete, t_peak_c, t_peak_s, t_adiabatic, q_rxn_max, final_x,
         _summary(t_peak_c, t_peak_s, t_complete, q_rxn_max, final_x),
     )
+
+
+def adiabatic_rise(rho: float, cp: float, c0_mol_L: float, dH_kJ: float) -> float:
+    """Signed adiabatic temperature rise (K); exothermic (dH < 0) is positive. Volume cancels."""
+    if rho <= 0 or cp <= 0:
+        return 0.0
+    return (-dH_kJ * 1000.0 * c0_mol_L * 1000.0) / (rho * cp)
+
+
+def heat_cool_setup_error(t_start: float, t_target: float, t_jacket: float) -> str | None:
+    """Reason a heat/cool run cannot reach its target, or None when the setup is valid."""
+    if t_target < t_start and t_jacket >= t_start:
+        return "Invalid cooling setup: jacket temperature must be below start temperature."
+    if t_target > t_start and t_jacket <= t_start:
+        return "Invalid heating setup: jacket temperature must be above start temperature."
+    if t_target < t_start and t_target < t_jacket:
+        return "Cooling target is below jacket temperature and is unreachable."
+    if t_target > t_start and t_target > t_jacket:
+        return "Heating target is above jacket temperature and is unreachable."
+    return None
+
+
+# Upper sweep bound per input when neither a DB range nor a current value exists.
+SWEEP_ZERO_VALUE_MAX = {
+    "d_imp": 1.0, "d_tank": 2.0, "rho": 2000.0, "mu": 0.1,
+    "cp": 10000.0, "k_fluid": 2.0, "v_jacket": 2.0,
+    "d_hyd_jacket": 0.1, "wall_k": 100.0, "wall_thickness_mm": 10.0,
+    "lining_k": 2.0, "lining_thickness_mm": 3.0, "fouling": 0.001,
+    "mu_wall": 0.01,
+}
+
+
+def sweep_range_defaults(row: pd.Series, key: str, current_value: float) -> tuple[float, float]:
+    """Reactor operating bounds for speed/volume, else ±50% around the current value."""
+    bounds = {"n_rpm": ("N_rpm_min", "N_rpm_max"), "v_l": ("V_L_min", "V_L_max")}.get(key)
+    if bounds:
+        lower = safe_float(row.get(bounds[0]), 0.0)
+        upper = safe_float(row.get(bounds[1]), 0.0)
+        if upper > lower >= 0:
+            return lower, upper
+    current = safe_float(current_value, 0.0)
+    if current > 0:
+        return current * 0.5, current * 1.5
+    return 0.0, SWEEP_ZERO_VALUE_MAX.get(key, 1.0)
+
+
+def resistance_items(h_i: float, h_o: float, wall_k: float, wall_thickness_mm: float,
+                     lining_k: float, lining_thickness_mm: float,
+                     fouling: float) -> list[tuple[str, float]]:
+    """Series thermal resistances (name, R in m²·K/W) between batch and jacket."""
+    items: list[tuple[str, float]] = []
+    if h_i > 0:
+        items.append(("Inside film (process)", 1.0 / h_i))
+    if wall_k > 0 and wall_thickness_mm > 0:
+        items.append(("Wall", (wall_thickness_mm / 1000.0) / wall_k))
+    if lining_k > 0 and lining_thickness_mm > 0:
+        items.append(("Lining", (lining_thickness_mm / 1000.0) / lining_k))
+    if fouling > 0:
+        items.append(("Fouling", fouling))
+    if h_o > 0:
+        items.append(("Outside film (jacket)", 1.0 / h_o))
+    return items
+
+
+def jacket_area_at(v_l: float, d_tank: float, h_max: float, bottom_dish: str,
+                   dish_height: float) -> float:
+    """Wetted jacket area (m²) at a fill volume (L)."""
+    h_liq = liquid_height_from_volume(v_l, d_tank, h_max, bottom_dish, dish_height)
+    return estimate_jacket_area(d_tank, h_liq, bottom_dish, dish_height)
+
+
+def ua_vs_rpm(base: dict[str, Any], htm_db: dict[str, dict[str, Any]], a_ht: float,
+              rpm_values) -> list[float]:
+    """UA (W/K) across stir speeds with the heat-transfer area held fixed."""
+    return [_heat_transfer_coeffs({**base, "n_rpm": rpm}, htm_db)["u"] * a_ht
+            for rpm in rpm_values]
+
+
+def ua_vs_volume(base: dict[str, Any], htm_db: dict[str, dict[str, Any]], h_max: float,
+                 bottom_dish: str, dish_height: float, vol_values) -> list[float]:
+    """UA (W/K) across fill volumes at fixed stir speed (U is volume-independent)."""
+    u_fixed = _heat_transfer_coeffs(base, htm_db)["u"]
+    d_tank = safe_float(base["d_tank"])
+    return [u_fixed * jacket_area_at(vol, d_tank, h_max, bottom_dish, dish_height)
+            for vol in vol_values]
+
+
+def u_ua_surface(base: dict[str, Any], htm_db: dict[str, dict[str, Any]],
+                 x_key: str, x_values, y_key: str, y_values, a_ht: float,
+                 h_max: float, bottom_dish: str, dish_height: float) -> tuple[np.ndarray, np.ndarray]:
+    """U and UA grids over two swept inputs; rows follow ``y_values``, columns ``x_values``.
+
+    The jacket area is recomputed only when volume or tank diameter is swept.
+    """
+    u_values = np.empty((len(y_values), len(x_values)))
+    ua_values = np.empty_like(u_values)
+    area_varies = "v_l" in (x_key, y_key) or "d_tank" in (x_key, y_key)
+    for iy, y_value in enumerate(y_values):
+        for ix, x_value in enumerate(x_values):
+            point = {**base, x_key: float(x_value), y_key: float(y_value)}
+            u_value = _heat_transfer_coeffs(point, htm_db)["u"]
+            area = (jacket_area_at(point["v_l"], point["d_tank"], h_max, bottom_dish, dish_height)
+                    if area_varies else a_ht)
+            u_values[iy, ix] = u_value
+            ua_values[iy, ix] = u_value * area
+    return u_values, ua_values
+
+
+def surface_color_limits(values: np.ndarray) -> tuple[float, float]:
+    """(min, max) of a surface, padded when flat so a colour scale stays valid."""
+    lower = float(np.nanmin(values))
+    upper = float(np.nanmax(values))
+    if np.isclose(lower, upper):
+        padding = max(abs(lower) * 0.01, 1e-6)
+        lower -= padding
+        upper += padding
+    return lower, upper

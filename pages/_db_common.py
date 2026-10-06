@@ -21,17 +21,12 @@ from __future__ import annotations
 import hmac
 import os
 import re
-import tempfile
-import threading
 from pathlib import Path
 
 import pandas as pd
 
-# One lock guards all CSV I/O so concurrent sessions can't interleave writes;
-# writes go to a temp file + os.replace so a crash never corrupts the database.
-_io_lock = threading.Lock()
-# fresh_csv cache: str(path) -> (mtime, DataFrame)
-_fresh_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+from core.csv_store import append_csv, fresh_csv, save_csv  # noqa: F401  (re-exported)
+from core.records import bottom_dish_height  # noqa: F401  (re-exported)
 
 # Admin gate for the editable database pages. Override the built-in defaults via
 # MIXING_LAB_ADMIN_USER / MIXING_LAB_ADMIN_PW on deployed servers; the defaults
@@ -54,33 +49,6 @@ def load_csv(path: Path, columns: list[str]) -> pd.DataFrame:
     if path.exists():
         return pd.read_csv(path).reset_index(drop=True)
     return pd.DataFrame(columns=columns)
-
-
-def _atomic_write(df: pd.DataFrame, path: Path) -> None:
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.stem}_", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-            df.to_csv(fh, index=False)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-    _fresh_cache.pop(str(path), None)
-
-
-def save_csv(df: pd.DataFrame, path: Path) -> None:
-    """Persist ``df`` to ``path`` atomically (lock-guarded temp file + replace)."""
-    with _io_lock:
-        _atomic_write(df, path)
-
-
-def append_csv(new_df: pd.DataFrame, path: Path) -> int:
-    """Append rows to a CSV atomically; returns the resulting row count."""
-    with _io_lock:
-        out = (pd.concat([pd.read_csv(path), new_df], ignore_index=True)
-               if path.exists() else new_df)
-        _atomic_write(out, path)
-        return len(out)
 
 
 def fix_mojibake(value):
@@ -126,38 +94,6 @@ def read_upload_csv(path: str, **read_kwargs) -> pd.DataFrame:
     return clean_uploaded_frame(df)
 
 
-def fresh_csv(path: Path, columns: list[str] | None = None) -> pd.DataFrame:
-    """Latest contents of ``path``, re-read only when its mtime changes.
-
-    Analysis pages resolve reactor/reaction/particle/fluid rows through this so
-    edits made in the database pages are picked up without a server restart.
-    The returned frame is shared across sessions — treat it as read-only.
-    ``columns`` are guaranteed present (added empty when missing) so lookups
-    never raise ``KeyError`` on a malformed or missing file.
-    """
-    key = str(path)
-    with _io_lock:
-        try:
-            mtime = path.stat().st_mtime
-        except OSError:
-            return pd.DataFrame(columns=columns or [])
-        cached = _fresh_cache.get(key)
-        if cached is not None and cached[0] == mtime:
-            for c in columns or []:
-                if c not in cached[1].columns:
-                    cached[1][c] = pd.NA
-            return cached[1]
-        try:
-            df = pd.read_csv(path).reset_index(drop=True)
-        except Exception:  # unreadable/half-synced file — keep serving the last good copy
-            return cached[1] if cached is not None else pd.DataFrame(columns=columns or [])
-        for c in columns or []:
-            if c not in df.columns:
-                df[c] = pd.NA
-        _fresh_cache[key] = (mtime, df)
-        return df
-
-
 def reaction_names(df: pd.DataFrame, class_value: str | None = None) -> list[str]:
     """Return sorted reaction names, optionally filtered by class flag.
 
@@ -182,28 +118,6 @@ def csv_bytes(df: pd.DataFrame) -> bytes:
 def reset(df: pd.DataFrame) -> pd.DataFrame:
     """Return ``df`` with a fresh contiguous index."""
     return df.reset_index(drop=True)
-
-
-def _num(val, default: float = 0.0) -> float:
-    try:
-        f = float(val)
-    except (TypeError, ValueError):
-        return default
-    return default if f != f else f  # NaN check
-
-
-def bottom_dish_height(row: pd.Series) -> float:
-    """Measured bottom-dish height (m) for a reactor row, 0.0 when unknown.
-
-    The CSV column is ``H_bot_dish_m``; the legacy ``H_bottom_dish_m`` spelling is
-    still accepted, then ``H_max_m - L_tan_tan_m`` is used as a derived fallback.
-    """
-    for key in ("H_bot_dish_m", "H_bottom_dish_m"):
-        h = _num(row.get(key))
-        if h > 0:
-            return h
-    h_max, l_tt = _num(row.get("H_max_m")), _num(row.get("L_tan_tan_m"))
-    return h_max - l_tt if h_max > 0 and l_tt > 0 and h_max > l_tt else 0.0
 
 
 def _coerce(df: pd.DataFrame, col: str, value):

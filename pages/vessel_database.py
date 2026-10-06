@@ -13,6 +13,7 @@ import pandas as pd
 from taipy.gui import Markdown, notify
 
 from pages import _db_common as db
+from core import vessel_import as vimport
 from utils.menu_icons import inject_icons
 from vessel_media import build_vessel_viewer_html, media_caption
 from vessel_schematic import brim_volume, build_vessel_schematic
@@ -28,202 +29,15 @@ def _reverse_map(columns: list[str]) -> dict[str, str]:
     return {db.friendly(c): c for c in columns}
 
 
-def _assign_missing_reactor_ids(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Assign sequential RX IDs to rows whose reactor ID is missing."""
-    result = df.copy()
-    if "reactor_id" not in result.columns:
-        result.insert(0, "reactor_id", "")
-
-    reactor_ids = result["reactor_id"].astype("string").str.strip()
-    rx_numbers = pd.to_numeric(
-        reactor_ids.str.extract(r"^RX-(\d+)$", expand=False), errors="coerce"
-    )
-    next_number = int(rx_numbers.max()) + 1 if rx_numbers.notna().any() else 1
-    missing = reactor_ids.isna() | reactor_ids.eq("")
-
-    for index in result.index[missing]:
-        result.at[index, "reactor_id"] = f"RX-{next_number:03d}"
-        next_number += 1
-
-    return result, int(missing.sum())
-
-
-def _search_name_for(row: pd.Series) -> str:
-    """Build the searchable vessel label from its identifying fields."""
-    def clean(value) -> str:
-        return "" if pd.isna(value) else str(value).strip()
-
-    owner = clean(row.get("owner"))
-    reactor_name = clean(row.get("reactor_name"))
-    impeller_type = clean(row.get("impeller_type"))
-    impeller_count = clean(row.get("impeller_count"))
-    try:
-        numeric_count = float(impeller_count)
-        if numeric_count.is_integer():
-            impeller_count = str(int(numeric_count))
-    except ValueError:
-        pass
-
-    vessel = " ".join(part for part in (owner, reactor_name) if part)
-    impeller = ", ".join(part for part in (impeller_type, impeller_count) if part)
-    return f"{vessel} ({impeller})" if vessel and impeller else vessel or impeller
-
-
-def _refresh_search_names(df: pd.DataFrame) -> pd.DataFrame:
-    """Create or refresh the derived search name for every vessel."""
-    result = df.copy()
-    result["search_name"] = result.apply(_search_name_for, axis=1)
-    return result
-
-
-def _fill_missing_search_names(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill only the blank/missing search names, leaving existing ones intact."""
-    result = df.copy()
-    if "search_name" not in result.columns:
-        result["search_name"] = ""
-    names = result["search_name"].astype("string").str.strip()
-    missing = names.isna() | names.eq("")
-    for index in result.index[missing]:
-        result.at[index, "search_name"] = _search_name_for(result.loc[index])
-    return result
-
-
-# Derived/auto-managed columns are never offered as per-cell import changes; they
-# are recomputed automatically after the merge instead.
-_IMPORT_AUTO_COLS = {"reactor_id", "search_name"}
-
-
-def _is_blank(value) -> bool:
-    return pd.isna(value) or str(value).strip() == ""
-
-
-def _values_differ(old, new) -> bool:
-    """True when ``new`` carries a real change over ``old`` (blanks never wipe)."""
-    if _is_blank(new):
-        return False  # don't propose overwriting existing data with a blank cell
-    if _is_blank(old):
-        return True
-    try:
-        return float(old) != float(new)
-    except (TypeError, ValueError):
-        return str(old).strip() != str(new).strip()
-
-
-def _disp_value(value) -> str:
-    """Format a cell value for the review dialog (markdown)."""
-    return "*(empty)*" if _is_blank(value) else f"`{str(value).strip()}`"
+_assign_missing_reactor_ids = vimport.assign_missing_reactor_ids
+_search_name_for = vimport.search_name_for
+_refresh_search_names = vimport.refresh_search_names
+_fill_missing_search_names = vimport.fill_missing_search_names
+_apply_import_change = vimport.apply_import_change
 
 
 def _build_import_changes(existing: pd.DataFrame, new_df: pd.DataFrame) -> list[dict]:
-    """Diff an uploaded frame against the current database.
-
-    Returns an ordered list of change descriptors (``add`` for new vessels,
-    ``update`` for a single differing cell of an existing vessel), each carrying
-    a pre-built markdown description for the approval dialog. Rows are matched to
-    an existing vessel by ``reactor_id`` first (the stable key), falling back to
-    ``reactor_name`` (both case-insensitive).
-    """
-    changes: list[dict] = []
-    if "reactor_name" not in new_df.columns:
-        return changes
-
-    id_index: dict[str, int] = {}
-    if "reactor_id" in existing.columns:
-        for idx, rid in existing["reactor_id"].items():
-            if not _is_blank(rid):
-                id_index[str(rid).strip().lower()] = idx
-    name_index: dict[str, int] = {}
-    for idx, name in existing["reactor_name"].items():
-        if not _is_blank(name):
-            name_index[str(name).strip().lower()] = idx
-
-    # reactor_id / search_name are auto-managed; reactor_name IS diffable so a
-    # rename (e.g. an id-matched vessel with a different name) can be reviewed.
-    shared_cols = [
-        c for c in new_df.columns
-        if c in existing.columns and c not in _IMPORT_AUTO_COLS
-    ]
-
-    for _, new_row in new_df.iterrows():
-        raw_name = new_row.get("reactor_name")
-        raw_id = new_row.get("reactor_id")
-        display_name = "" if _is_blank(raw_name) else str(raw_name).strip()
-
-        old_idx = None
-        match_by = None
-        if not _is_blank(raw_id) and str(raw_id).strip().lower() in id_index:
-            key = str(raw_id).strip().lower()
-            old_idx = id_index[key]
-            match_by = ("reactor_id", key)
-        elif display_name and display_name.lower() in name_index:
-            key = display_name.lower()
-            old_idx = name_index[key]
-            match_by = ("reactor_name", key)
-
-        if old_idx is None and not display_name:
-            continue  # nothing identifies this row
-
-        if old_idx is not None:
-            label_name = str(existing.at[old_idx, "reactor_name"]).strip() or display_name
-            for col in shared_cols:
-                old_val = existing.at[old_idx, col]
-                new_val = new_row[col]
-                if _values_differ(old_val, new_val):
-                    label = db.friendly(col)
-                    changes.append({
-                        "kind": "update",
-                        "reactor_name": label_name,
-                        "match_by": match_by,
-                        "col": col,
-                        "new": new_val,
-                        "desc": (
-                            f"**Update vessel:** {label_name}\n\n"
-                            f"**Field:** {label}\n\n"
-                            f"**Current:** {_disp_value(old_val)}\n\n"
-                            f"**New:** {_disp_value(new_val)}"
-                        ),
-                    })
-        else:
-            row = {c: new_row.get(c, "") for c in existing.columns}
-            row["reactor_name"] = display_name
-            summary_keys = ["owner", "scale", "impeller_type", "V_L_max"]
-            summary = [
-                f"**{db.friendly(k)}:** {str(row.get(k, '')).strip()}"
-                for k in summary_keys if not _is_blank(row.get(k))
-            ]
-            desc = f"**Add new vessel:** {display_name}"
-            if summary:
-                desc += "\n\n" + "  \n".join(summary)
-            changes.append({
-                "kind": "add",
-                "reactor_name": display_name,
-                "row": row,
-                "desc": desc,
-            })
-
-    return changes
-
-
-def _apply_import_change(df: pd.DataFrame, change: dict) -> pd.DataFrame:
-    """Apply a single approved change to the working frame."""
-    result = df.copy()
-    if change["kind"] == "add":
-        row = {c: change["row"].get(c, "") for c in result.columns}
-        result = pd.concat([result, pd.DataFrame([row])], ignore_index=True)
-    else:
-        field, key = change["match_by"]
-        mask = result[field].astype(str).str.strip().str.lower() == key
-        if mask.any():
-            idx = result.index[mask][0]
-            col = change["col"]
-            value = change["new"]
-            if pd.api.types.is_numeric_dtype(result[col].dtype):
-                try:
-                    value = float(value)
-                except (TypeError, ValueError):
-                    result[col] = result[col].astype(object)  # column now holds text
-            result.at[idx, col] = value
-    return result.reset_index(drop=True)
+    return vimport.build_import_changes(existing, new_df, label=db.friendly)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,123 @@
+"""Operating-window ranges and 1-D root finding for sweeps, Solve-for and scale-up."""
+from __future__ import annotations
+
+from typing import Callable
+
+import numpy as np
+import pandas as pd
+
+from core.records import sf
+
+
+def operating_window(row: pd.Series, n_rpm: float, v_l: float,
+                     n_pts: int = 40) -> tuple[np.ndarray, float, float]:
+    """(RPM sweep array, V_min, V_max) for a reactor row, falling back to a band
+    around the current operating point when the database range is missing."""
+    n_lo = sf(row.get("N_rpm_min"), max(n_rpm * 0.1, 10.0))
+    n_hi = sf(row.get("N_rpm_max"), n_rpm)
+    if n_hi <= n_lo:
+        n_lo, n_hi = n_rpm * 0.2, n_rpm * 1.2
+    v_min = sf(row.get("V_L_min"), 0.0)
+    v_max = sf(row.get("V_L_max"), 0.0)
+    if v_max <= v_min or v_min <= 0:
+        v_min = max(v_l * 0.5, 1e-6)
+        v_max = max(v_l, v_min * 1.5)
+    return np.linspace(n_lo, n_hi, n_pts), v_min, v_max
+
+
+def solve_root(f: Callable[[float], float], lo: float, hi: float, x_tol: float,
+               f_tol: float = 0.0, maxit: int = 200) -> float | None:
+    """Bracketed bisection; None when [lo, hi] has no sign change or f is non-finite.
+
+    ``x_tol`` bounds the interval width (solved-variable units); ``f_tol`` bounds
+    the residual (target units) so small-magnitude targets aren't falsely converged.
+    """
+    flo, fhi = f(lo), f(hi)
+    if not (np.isfinite(flo) and np.isfinite(fhi)):
+        return None
+    if flo == 0:
+        return lo
+    if fhi == 0:
+        return hi
+    if flo * fhi > 0:
+        return None
+    for _ in range(maxit):
+        mid = 0.5 * (lo + hi)
+        fmid = f(mid)
+        if not np.isfinite(fmid):
+            return None
+        if abs(fmid) <= f_tol or (hi - lo) < x_tol:
+            return mid
+        if flo * fmid < 0:
+            hi, fhi = mid, fmid
+        else:
+            lo, flo = mid, fmid
+    return 0.5 * (lo + hi)
+
+
+def find_roots(f: Callable[[float], float], lo: float, hi: float, n_pts: int = 60,
+               iters: int = 40) -> tuple[list[float], np.ndarray, np.ndarray]:
+    """All roots of f on [lo, hi]: scan for sign changes, refine each by bisection.
+
+    Returns (roots, scan x, scan f(x)) so callers can report the reachable range.
+    """
+    xs = np.linspace(lo, hi, n_pts)
+    ys = np.array([f(x) for x in xs])
+    roots = []
+    for i in range(n_pts - 1):
+        a, b, fa, fb = xs[i], xs[i + 1], ys[i], ys[i + 1]
+        if not (np.isfinite(fa) and np.isfinite(fb)) or fb == 0:
+            continue
+        if fa == 0:
+            roots.append(float(a))
+            continue
+        if fa * fb > 0:
+            continue
+        root = solve_root(f, a, b, x_tol=(b - a) / 2.0**iters)
+        if root is not None:
+            roots.append(float(root))
+    if n_pts and np.isfinite(ys[-1]) and ys[-1] == 0:
+        roots.append(float(xs[-1]))
+    return roots, xs, ys
+
+
+# (N_rpm, V_L) -> result dict, e.g. a closure over core.operating_point.evaluate_point.
+PointEvaluator = Callable[[float, float], dict]
+
+
+def sweep(evaluate: PointEvaluator, n_values, v_values, params: list[str]) -> dict:
+    """{V: {param: array over n_values}} — one RPM sweep per fill volume."""
+    out = {}
+    for v_l in v_values:
+        rows = [evaluate(n_rpm, v_l) for n_rpm in n_values]
+        out[v_l] = {p: np.array([r[p] for r in rows]) for p in params}
+    return out
+
+
+def surface_grid(evaluate: PointEvaluator, n_values, v_values, params: list[str]) -> dict:
+    """{param: z[j, i]} with rows along ``v_values`` and columns along ``n_values``."""
+    z = {p: np.empty((len(v_values), len(n_values))) for p in params}
+    for j, v_l in enumerate(v_values):
+        for i, n_rpm in enumerate(n_values):
+            r = evaluate(n_rpm, v_l)
+            for p in params:
+                z[p][j, i] = r[p]
+    return z
+
+
+def solve_target(value_at: Callable[[float], float], target: float, lo: float, hi: float,
+                 window: tuple[float, float]) -> dict:
+    """Find every x in [lo, hi] where value_at(x) == target.
+
+    Returns {roots, achieved, in_window (bool per root), first_in_window (or None),
+    span (min, max) of value_at over the scan, or None when nothing finite}.
+    """
+    roots, _xs, ys = find_roots(lambda x: value_at(x) - target, lo, hi)
+    achieved = [value_at(x) for x in roots]
+    in_window = [window[0] <= x <= window[1] for x in roots]
+    finite = ys[np.isfinite(ys)] + target
+    return {
+        "roots": roots, "achieved": achieved, "in_window": in_window,
+        "first_in_window": next((x for x, ok in zip(roots, in_window) if ok), None),
+        "span": (float(finite.min()), float(finite.max())) if finite.size else None,
+    }

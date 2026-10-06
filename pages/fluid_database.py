@@ -32,6 +32,7 @@ from utils.calculations.liquid_liquid import (
     phase_separation_check,
 )
 from pages import _db_common as db
+from core.miscibility import settled_phases
 from utils.solvent_properties import (
     SOLVENT_DB,
     boiling_point_at_pressure,
@@ -370,54 +371,9 @@ _PHASE_COLORS = ["#4E79A7", "#F28E2B", "#76B7B2", "#59A14F",
 
 
 def _build_phase_fig(comp_props: list[dict], pair_misc: dict) -> go.Figure:
-    """Vessel diagram of settled liquid phases stacked by density.
-
-    Components are partitioned into the FEWEST phases such that every pair
-    within a phase is assessed miscible (exhaustive search with pruning —
-    order-independent, unlike a greedy pass where a bridging solvent picked
-    early can block the correct grouping).  Phases then settle by density
-    (densest at the bottom); layer height is proportional to volume fraction.
-    """
-    def _misc(a: str, b: str):
-        m = pair_misc.get((a, b)) or pair_misc.get((b, a))
-        return m["miscible"] if m else None
-
-    best: list[list[dict]] = [[cp] for cp in comp_props]
-
-    def _assign(i: int, groups: list[list[dict]]) -> None:
-        nonlocal best
-        if len(groups) >= len(best):
-            return  # cannot beat the best partition found so far
-        if i == len(comp_props):
-            best = [g[:] for g in groups]
-            return
-        cp = comp_props[i]
-        for g in groups:
-            if all(_misc(cp["name"], other["name"]) is True for other in g):
-                g.append(cp)
-                _assign(i + 1, groups)
-                g.pop()
-        groups.append([cp])
-        _assign(i + 1, groups)
-        groups.pop()
-
-    _assign(0, [])
-    groups = best
-
-    phase_of = {cp["name"]: i for i, g in enumerate(groups) for cp in g}
-    phases = []
-    for members in groups:
-        vol = sum(cp["vol_frac"] for cp in members)
-        mass = sum(cp["mass_frac"] for cp in members)
-        rho = mass / sum(cp["mass_frac"] / cp["rho_kg_m3"] for cp in members)
-        phases.append({"label": " + ".join(cp["name"] for cp in members),
-                       "vol": vol, "rho": rho})
-    phases.sort(key=lambda p: p["rho"], reverse=True)  # densest settles to the bottom
-
-    # Was any cross-phase pair only "unknown" (no data) rather than immiscible?
-    unknown_split = any(
-        m["miscible"] is None and phase_of[n1] != phase_of[n2]
-        for (n1, n2), m in pair_misc.items())
+    """Vessel diagram of settled liquid phases stacked by density (layer height
+    proportional to volume fraction); partition from core.miscibility."""
+    phases, unknown_split = settled_phases(comp_props, pair_misc)
 
     x0, x1 = 0.22, 0.78
     liquid_top = 0.82  # liquid fills 82% of vessel height (headspace above)

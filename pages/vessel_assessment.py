@@ -332,6 +332,21 @@ va_surf_ready = False
 va_surf_stale = False   # True when results/params changed after the surfaces were built
 va_surf_btn_class = "compute-btn"
 
+# Solve-for: find N (or V) giving a target parameter value, other variable held
+# at the Section 1 input.
+_SOLVE_N = "Agitation speed N (RPM)"
+_SOLVE_V = "Working volume V (L)"
+va_solve_var_options = [_SOLVE_N, _SOLVE_V]
+va_solve_var = _SOLVE_N
+va_solve_param_options = va_env_params_options
+va_solve_param = "P/V (W/L)"
+va_solve_target = 0.5
+va_solve_status = ""
+va_solve_df = pd.DataFrame(columns=["#", "Solved variable", "Value", "Achieved",
+                                    "Within vessel range"])
+va_solve_value = 0.0
+va_solve_found = False
+
 # Hydrodynamics results-table rows: (hydro-dict key, display name, unit).
 _HYDRO_ROWS = [
     ("Re", "Reynolds number", "–"),
@@ -833,6 +848,116 @@ def on_va_compute(state):
     notify(state, "S", "Assessment computed.")
 
 
+def _solve_eval(state, x: float, solve_n: bool, t_rxn: float, param: str) -> float:
+    n_rpm, v_l = (x, state.va_v_l) if solve_n else (state.va_n_rpm, x)
+    if param.startswith("Da_"):
+        return float(_point_values(state, n_rpm, v_l, t_rxn, [param])[param])
+    return float(_hydro_at(state, n_rpm, v_l)[param])
+
+
+def _find_roots(f, lo: float, hi: float, n_pts: int = 60, iters: int = 40):
+    """Scan [lo, hi] for sign changes of f and refine each by bisection."""
+    xs = np.linspace(lo, hi, n_pts)
+    ys = np.array([f(x) for x in xs])
+    roots = []
+    for i in range(n_pts - 1):
+        a, b, fa, fb = xs[i], xs[i + 1], ys[i], ys[i + 1]
+        if not (np.isfinite(fa) and np.isfinite(fb)):
+            continue
+        if fa == 0:
+            roots.append(a)
+            continue
+        if fa * fb > 0:
+            continue
+        for _ in range(iters):
+            m = 0.5 * (a + b)
+            fm = f(m)
+            if not np.isfinite(fm):
+                break
+            if fa * fm <= 0:
+                b = m
+            else:
+                a, fa = m, fm
+        roots.append(0.5 * (a + b))
+    return roots, xs, ys
+
+
+def on_va_solve(state):
+    """Solve for the N (or V) that gives the target value of the chosen parameter."""
+    param = state.va_solve_param
+    target = _sf(state.va_solve_target, float("nan"))
+    if param not in va_solve_param_options or not np.isfinite(target):
+        notify(state, "E", "Choose a parameter and a numeric target value.")
+        return
+    t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
+    if param.startswith("Da_") and t_rxn <= 0:
+        notify(state, "E", "Damköhler targets need a reaction time or rate constant (> 0).")
+        return
+
+    solve_n = state.va_solve_var == _SOLVE_N
+    n_arr, v_min, v_max = _env_ranges(state)
+    if solve_n:
+        rng_lo, rng_hi = float(n_arr[0]), float(n_arr[-1])
+        # Also scan beyond the rated speed range so out-of-range answers are reported.
+        lo, hi = max(rng_lo * 0.25, 1.0), rng_hi * 2.0
+        name, unit, fixed = "N", "RPM", f"V = {state.va_v_l:.3g} L"
+    else:
+        rng_lo, rng_hi = v_min, v_max
+        lo, hi = v_min, v_max
+        name, unit, fixed = "V", "L", f"N = {state.va_n_rpm:.0f} RPM"
+
+    try:
+        roots, xs, ys = _find_roots(
+            lambda x: _solve_eval(state, x, solve_n, t_rxn, param) - target, lo, hi)
+    except Exception as exc:  # noqa: BLE001
+        notify(state, "E", f"Solve failed: {exc}")
+        return
+
+    rows = []
+    for i, x in enumerate(roots, start=1):
+        achieved = _solve_eval(state, x, solve_n, t_rxn, param)
+        rows.append({"#": i, "Solved variable": f"{name} ({unit})",
+                     "Value": f"{x:,.4g}", "Achieved": f"{param} = {achieved:.4g}",
+                     "Within vessel range": "Yes" if rng_lo <= x <= rng_hi else "No"})
+    state.va_solve_df = pd.DataFrame(rows, columns=va_solve_df.columns)
+
+    in_range = [x for x in roots if rng_lo <= x <= rng_hi]
+    state.va_solve_found = bool(in_range)
+    state.va_solve_value = float(in_range[0]) if in_range else 0.0
+    window = f"{name} = {rng_lo:.4g}–{rng_hi:.4g} {unit}"
+    if not roots:
+        finite = ys[np.isfinite(ys)] + target
+        span = (f"{finite.min():.4g}–{finite.max():.4g}" if finite.size else "n/a")
+        state.va_solve_status = (
+            f"**No solution:** {param} = {target:g} is not reachable for {name} = "
+            f"{lo:.4g}–{hi:.4g} {unit} at {fixed} (achievable range {span}).")
+        notify(state, "W", "Target not reachable.")
+    elif not in_range:
+        state.va_solve_status = (
+            f"**Solution outside vessel range:** {param} = {target:g} needs {name} = "
+            f"{roots[0]:.4g} {unit} at {fixed}; vessel window is {window}.")
+        notify(state, "W", "Solution lies outside the vessel operating range.")
+    else:
+        extra = " (multiple solutions — see table)" if len(roots) > 1 else ""
+        state.va_solve_status = (
+            f"**Solution:** {name} = {in_range[0]:.4g} {unit} gives {param} = "
+            f"{target:g} at {fixed} ({state.va_corr_mode}){extra}.")
+        notify(state, "S", f"Solved: {name} = {in_range[0]:.4g} {unit}.")
+
+
+def on_va_solve_apply(state):
+    """Copy the in-range solution into the Section 1 operating inputs."""
+    if not state.va_solve_found:
+        return
+    if state.va_solve_var == _SOLVE_N:
+        state.va_n_rpm = round(state.va_solve_value, 1)
+    else:
+        state.va_v_l = round(state.va_solve_value, 4)
+    state.va_solve_found = False
+    _mark_stale(state)
+    notify(state, "I", "Solution applied to the operating inputs.")
+
+
 def _env_params(state) -> list[str]:
     params = [p for p in (state.va_env_params or []) if p in va_env_params_options]
     return params or ["Da_macro"]
@@ -1270,6 +1395,35 @@ bulk export and comparison.
 <|part|render={va_pdf_ready}|
 <|Download PDF|file_download|content={va_pdf_bytes}|name={va_pdf_name}|label=Download PDF|>
 |>
+|>
+|>
+
+<|part|class_name=va-card|
+## Solve for
+Find the agitation speed (or working volume) that gives a target value of a
+hydrodynamic or mass-transfer parameter in the selected vessel. The other
+variable is held at its Section 1 input; fluid, phase, reaction and
+correlation settings above are used. Speed is scanned from 0.25× the minimum to
+2× the maximum rated speed; volume is scanned across the vessel fill range.
+
+<|layout|columns=1 1 1|
+<|{va_solve_var}|selector|lov={va_solve_var_options}|dropdown|label=Solve for|>
+
+<|{va_solve_param}|selector|lov={va_solve_param_options}|dropdown|label=Target parameter|>
+
+<|{va_solve_target}|number|label=Target value|>
+|>
+
+<|Solve|button|on_action=on_va_solve|class_name=compute-btn|>
+
+<|{va_solve_status}|text|mode=markdown|>
+
+<|part|render={len(va_solve_df) > 0}|
+<|{va_solve_df}|table|width=100%|show_all|rebuild|>
+|>
+
+<|part|render={va_solve_found}|
+<|Apply solution to operating inputs|button|on_action=on_va_solve_apply|>
 |>
 |>
 """)

@@ -105,6 +105,25 @@ def surface_grid(evaluate: PointEvaluator, n_values, v_values, params: list[str]
     return z
 
 
+def envelope_data(evaluate: PointEvaluator, row: pd.Series, n_rpm: float, v_l: float,
+                  params: list[str]) -> dict:
+    """RPM sweeps at the vessel's V_max ("hi") and V_min ("lo") plus the operating point."""
+    n_arr, v_min, v_max = operating_window(row, n_rpm, v_l)
+    curves = sweep(evaluate, n_arr, (v_max, v_min), params)
+    return {"n_rpm": n_arr, "v_min": v_min, "v_max": v_max, "hi": curves[v_max],
+            "lo": curves[v_min], "op": evaluate(n_rpm, v_l)}
+
+
+def surface_data(evaluate: PointEvaluator, row: pd.Series, n_rpm: float, v_l: float,
+                 params: list[str], n_pts: int, v_pts: int) -> dict:
+    """N x V response grids over the vessel window plus the operating point."""
+    n_full, v_min, v_max = operating_window(row, n_rpm, v_l)
+    n_arr = np.linspace(n_full[0], n_full[-1], n_pts)
+    v_arr = np.linspace(v_min, v_max, v_pts)
+    return {"n_rpm": n_arr, "v_l": v_arr, "v_min": v_min, "v_max": v_max,
+            "z": surface_grid(evaluate, n_arr, v_arr, params), "op": evaluate(n_rpm, v_l)}
+
+
 def solve_target(value_at: Callable[[float], float], target: float, lo: float, hi: float,
                  window: tuple[float, float]) -> dict:
     """Find every x in [lo, hi] where value_at(x) == target.

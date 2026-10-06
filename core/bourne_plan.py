@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from core.options import CenterMode
 from utils.calculations import (
     average_shear_rate,
@@ -211,3 +213,64 @@ def test3_conditions(sys: BourneSystem, pm_center: float,
         rows.append({"Feed location": loc, "ε_loc/ε_avg": ratio, "ε_loc (W/kg)": eps_loc,
                      "t_E micro (s)": micromixing_time_engulfment(eps_loc, sys.nu)})
     return rows
+
+
+T1_PLAN_LINES = (("0.1× P/m", 0.1), ("1× P/m (centre)", 1.0), ("10× P/m", 10.0))
+
+
+def t1_speed_plan(sys: BourneSystem, pm_center: float, v_min: float, v_max: float,
+                  adj_volumes=(), n_pts: int = 50) -> dict | None:
+    """Iso-P/m impeller-speed lines (0.1x / 1x / 10x centre) across the fill range,
+    the centre point at V_L and the fed-batch set-points; None without a fill range."""
+    if not (v_max > v_min > 0):
+        return None
+    vols = np.linspace(v_min, v_max, n_pts)
+
+    def rpm_at(pm, v_l):
+        return n_for_pm(pm, v_l / 1000.0, sys.Np, sys.D_imp) * 60.0
+
+    adj = [v for v in adj_volumes if v > 0]
+    return {
+        "volumes": vols,
+        "lines": [{"label": label, "pm": pm_center * m,
+                   "rpm": [rpm_at(pm_center * m, v) for v in vols],
+                   "adj_rpm": [rpm_at(pm_center * m, v) for v in adj]}
+                  for label, m in T1_PLAN_LINES],
+        "centre": (sys.V_L, rpm_at(pm_center, sys.V_L)),
+        "adj_volumes": adj, "n_min": sys.n_min, "n_max": sys.n_max,
+    }
+
+
+def t2_report_conditions(sys: BourneSystem, pm_center: float, feed_volume_mL: float,
+                         feed_time_min: float) -> dict:
+    """Test 2 feed-time conditions (centre / 3x slower / 3x faster) for the PDF report."""
+    rows = []
+    for label, tf in (("Slow (1/3x rate)", feed_time_min * 3.0), ("Centre", feed_time_min),
+                      ("Fast (3x rate)", feed_time_min / 3.0)):
+        rows.append({"Condition": label, "Feed time (min)": tf,
+                     "Flow rate (mL/min)": feed_volume_mL / tf if tf > 0 else 0.0})
+    return {"N_RPM": n_for_pm(pm_center, sys.V_m3, sys.Np, sys.D_imp) * 60.0,
+            "feed_vol_mL": feed_volume_mL, "feed_location": "Held constant (centerpoint)",
+            "rows": rows}
+
+
+T3_LOCATIONS = ("Surface", "Sub-surface (mid-tank)", "Impeller zone")
+
+
+def t3_location_ratios(surface: float, mid: float, impeller: float) -> list[tuple[str, float]]:
+    """(feed location, ε_loc/ε_avg) pairs for the Test 3 report conditions."""
+    return list(zip(T3_LOCATIONS, (surface, mid, impeller)))
+
+
+def t3_report_conditions(sys: BourneSystem, pm_center: float,
+                         ratios: list[tuple[str, float]], feed_time_min: float) -> dict:
+    """Test 3 local dissipation per feed location (ε_loc = ratio·ε_avg) for the PDF report."""
+    n_rps = n_for_pm(pm_center, sys.V_m3, sys.Np, sys.D_imp)
+    eps_avg = specific_power(sys, n_rps)
+    rows = []
+    for loc, ratio in ratios:
+        ratio = max(ratio, 1e-9)
+        rows.append({"Feed Location": loc, "eps_loc/eps_avg": ratio,
+                     "eps_loc (W/kg)": ratio * eps_avg})
+    return {"N_RPM": n_rps * 60.0, "feed_time_min": feed_time_min,
+            "eps_avg_W_kg": eps_avg, "rows": rows}

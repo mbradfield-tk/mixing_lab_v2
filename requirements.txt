@@ -27,7 +27,7 @@ plotly==6.9.0
 kaleido==1.3.0                # plotly -> PNG for PDF reports (needs a Chrome/Chromium install)
 fpdf2==2.8.7
 Pillow==12.3.0                # menu-icon thumbnails, equation-image optimisation
-matplotlib==3.11.1            # vessel_schematic.py (2D drawings) and scripts/build_equations.py
+matplotlib==3.11.1            # viz/vessel_schematic.py (2D drawings) and scripts/build_equations.py
 
 # --- Development / tooling (optional) --------------------------------------
 pytest==9.1.1

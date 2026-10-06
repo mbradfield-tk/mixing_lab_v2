@@ -11,7 +11,8 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from core.options import (
-    BourneStatus, Competing, CorrSource, DhAction, FeedLocation, Kinetics, Mechanism, Phase,
+    BourneStatus, CenterMode, Competing, CorrSource, DhAction, FeedBasis, FeedLocation, Kinetics,
+    Mechanism, Phase,
 )
 
 Num = float | None
@@ -29,6 +30,7 @@ class Contract(BaseModel):
 class FluidSpec(Contract):
     name: str = Field("Water", description="Library solvent or Fluid Database name")
     T_C: float = 25.0
+    P_atm: float = Field(1.0, gt=0)
     rho_kg_m3: float | None = Field(None, gt=0, description="Overrides the looked-up density")
     mu_Pa_s: float | None = Field(None, gt=0, description="Overrides the looked-up viscosity")
     D_mol_m2_s: float | None = Field(None, gt=0, description="Overrides the looked-up diffusivity")
@@ -44,6 +46,8 @@ class ReactionSpec(Contract):
 
 
 class GasSpec(Contract):
+    present: bool = Field(False, description="A gas phase is part of the process (headspace or "
+                          "sparged); adds the gas-liquid rows to the assessment tables")
     v_s_m_s: float = Field(0.0, ge=0, description="Superficial gas velocity (0 = surface aeration only)")
     coalescing: bool = True
 
@@ -243,6 +247,29 @@ class SurfaceResult(Contract):
 
 
 # ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+class ProjectInfo(Contract):
+    project_name: str = ""
+    step_number: str = ""
+    unit_operation: str = ""
+    process_version: str = ""
+
+
+class AssessmentReportRequest(_NeedsParameters):
+    point: PointRequest
+    envelope_parameters: list[str] = Field(
+        default_factory=lambda: ["Da_macro", "Da_micro", "P_V_W_L", "blend_time_95_s",
+                                 "tip_speed_m_s", "Re"], min_length=1)
+    reaction_name: str = ""
+
+    @field_validator("envelope_parameters")
+    @classmethod
+    def _known(cls, v: list[str]) -> list[str]:
+        return cls._check(v)
+
+
+# ---------------------------------------------------------------------------
 # Reaction Sensitivity Protocol
 # ---------------------------------------------------------------------------
 class BourneTestRow(Contract):
@@ -344,3 +371,108 @@ class ProtocolResult(Contract):
     damkohler: ScreeningDamkohler | None
     bourne_sensitive: bool | None
     bourne_mechanisms: list[str]
+
+
+class ProtocolReportRequest(Contract):
+    protocol: ProtocolRequest
+    reaction_name: str = ""
+    project: ProjectInfo = Field(default_factory=ProjectInfo)
+
+
+# ---------------------------------------------------------------------------
+# Vessel Comparison
+# ---------------------------------------------------------------------------
+class ComparisonFeed(Contract):
+    location: FeedLocation = FeedLocation.BULK
+    pipe_id_mm: dict[str, float] = Field(
+        default_factory=dict, description="Feed-pipe ID per vessel; missing/0 = Vessel Database "
+        "value, else 3 mm")
+
+
+class ComparisonRequest(Contract):
+    reactors: list[str] = Field(min_length=1, description="Vessel Database reactor_names")
+    fluid: FluidSpec = Field(default_factory=FluidSpec)
+    reaction: ReactionSpec = Field(default_factory=ReactionSpec)
+    reaction_name: str = ""
+    corr_source: CorrSource = CorrSource.LITERATURE
+    gas: GasSpec = Field(default_factory=GasSpec)
+    solids: SolidsSpec | None = None
+    feed: ComparisonFeed | None = None
+    T_coolant_C: float = Field(15.0, description="Jacket coolant (heat balance when dH != 0)")
+    scale_param: str = Field("", description="Scale-up matching parameter named in the report")
+    scale_basis_reactor: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Bourne Protocol
+# ---------------------------------------------------------------------------
+class KpiResponse(Contract):
+    name: str = Field(min_length=1)
+    unit: str = ""
+    low: float = Field(description="Response at the low setting (low speed / slow feed / surface)")
+    centre: float
+    high: float = Field(description="Response at the high setting (high speed / fast feed / impeller)")
+    std_dev: float | None = Field(None, ge=0, description="Replicate standard deviation")
+    replicates: int | None = Field(None, ge=1)
+
+
+class BourneReportRequest(Contract):
+    reactor: str = Field(min_length=1)
+    fluid: str = "Water"
+    T_C: float = 25.0
+    P_atm: float = Field(1.0, gt=0)
+    V_L: float | None = Field(None, gt=0, description="Working volume; default mid fill range")
+    D_imp_m: float | None = Field(None, gt=0)
+    Np: float | None = Field(None, gt=0)
+    centre: CenterMode = CenterMode.DEFAULT
+    centre_pm_W_kg: float = Field(0.2, gt=0, description="Used when centre = custom_pm")
+    centre_rpm: float | None = Field(None, gt=0, description="Used when centre = custom_rpm")
+    feed_volume_mL: float = Field(100.0, gt=0)
+    feed_basis: FeedBasis = FeedBasis.RATE
+    feed_rate_mL_min: float = Field(5.0, gt=0)
+    feed_time_min: float = Field(20.0, gt=0)
+    surface_ratio: float = Field(0.1, gt=0, description="ε_loc/ε_avg at the surface feed")
+    mid_ratio: float = Field(1.0, gt=0)
+    impeller_ratio: float = Field(3.0, gt=0)
+    test1: list[KpiResponse] = Field(min_length=1)
+    test2: list[KpiResponse] | None = None
+    test3: list[KpiResponse] | None = None
+    project: ProjectInfo = Field(default_factory=ProjectInfo)
+
+
+# ---------------------------------------------------------------------------
+# Heat Transfer
+# ---------------------------------------------------------------------------
+class HeatTransferRequest(Contract):
+    reactor: str = Field(min_length=1)
+    fluid: str = "Water"
+    N_rpm: float | None = Field(None, gt=0, description="Default: mid speed range")
+    V_L: float | None = Field(None, gt=0, description="Default: mid fill range")
+    D_tank_m: float | None = Field(None, gt=0)
+    D_imp_m: float | None = Field(None, gt=0)
+    Np: float | None = Field(None, gt=0)
+    A_ht_m2: float | None = Field(None, gt=0, description="Default: wetted jacket area at V_L")
+    T_start_C: float = 25.0
+    T_jacket_C: float = Field(description="Jacket inlet temperature")
+    htm: str | None = Field(None, description="Heat-transfer medium (data/HTM.csv); default first")
+    nusselt_correlation: str | None = None
+    v_jacket_m_s: float = Field(1.0, gt=0)
+    d_hyd_jacket_m: float = Field(0.05, gt=0)
+    m_dot_jacket_kg_s: float = Field(1.0, gt=0)
+    wall_material: str | None = Field(None, description="Default: the vessel's shell material")
+    wall_thickness_mm: float | None = Field(None, gt=0)
+    lining_material: str | None = Field(None, description="'None' for unlined; default: vessel record")
+    fouling_m2K_W: float = Field(0.0002, ge=0)
+    include_agitator: bool = True
+    mu_wall_Pa_s: float = Field(0.0, ge=0, description="0 = no wall-viscosity correction")
+    time_unit: Literal["Seconds", "Minutes", "Hours"] = "Minutes"
+    project: ProjectInfo = Field(default_factory=ProjectInfo)
+
+
+class HeatCoolRequest(HeatTransferRequest):
+    T_target_C: float
+    q_rxn_W: float = Field(0.0, description="Constant heat release inside the batch")
+
+
+class ReactionProfileRequest(HeatTransferRequest):
+    reaction: ReactionSpec

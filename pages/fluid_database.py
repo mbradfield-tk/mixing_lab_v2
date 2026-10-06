@@ -23,7 +23,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
@@ -33,20 +32,16 @@ from utils.calculations.liquid_liquid import (
 )
 from pages import _db_common as db
 from core.miscibility import settled_phases
+from core import solvents as solvent_curves
+from viz import fluids as viz_fluids
 from utils.solvent_properties import (
     SOLVENT_DB,
     boiling_point_at_pressure,
-    density,
-    diffusivity,
     get_properties,
     is_known_solvent,
     list_solvents,
     solvent_info_table,
     solvent_miscibility,
-    specific_heat,
-    surface_tension,
-    thermal_conductivity,
-    viscosity,
 )
 from utils.validation import TEMP_MIN_C, TEMP_MAX_C
 
@@ -130,13 +125,7 @@ blend_dispersion_df = pd.DataFrame(columns=[
 blend_status = "Select two or more components and enter amounts, then compute."
 
 
-def _phase_placeholder_fig(msg: str) -> go.Figure:
-    fig = go.Figure()
-    fig.add_annotation(x=0.5, y=0.5, text=msg, showarrow=False, font={"size": 13})
-    fig.update_xaxes(visible=False, range=[0, 1])
-    fig.update_yaxes(visible=False, range=[0, 1])
-    fig.update_layout(height=430, margin={"t": 30, "b": 10})
-    return fig
+_phase_placeholder_fig = viz_fluids.message
 
 
 blend_phase_fig = _phase_placeholder_fig("Compute a blend to see the predicted phase stratification.")
@@ -232,31 +221,7 @@ def _compute_solvent_props(name: str, P_atm: float, T_C: float):
         range_msg = (f"⚠️ {T_C:.1f} °C is outside the liquid range "
                      f"({sd.mp_C:.0f} – {bp_at_P:.0f} °C) — values are extrapolated.")
 
-    # 6-panel property-vs-temperature curves across the liquid range
-    T_arr = np.linspace(sd.mp_C, bp_at_P, 200)
-    fig = make_subplots(rows=3, cols=2, subplot_titles=[
-        "Density ρ (kg/m³)", "Viscosity μ (Pa·s)",
-        "Surface tension σ (N/m)", "Diffusivity D (m²/s)",
-        "Specific heat Cp (J/kg·K)", "Thermal conductivity k (W/m·K)",
-    ], vertical_spacing=0.12, horizontal_spacing=0.10)
-    series = [
-        (1, 1, [density(T, sd) for T in T_arr]),
-        (1, 2, [viscosity(T, sd) for T in T_arr]),
-        (2, 1, [surface_tension(T, sd) for T in T_arr]),
-        (2, 2, [diffusivity(T, sd) for T in T_arr]),
-        (3, 1, [specific_heat(T, sd) for T in T_arr]),
-        (3, 2, [thermal_conductivity(T, sd) for T in T_arr]),
-    ]
-    idx = int(np.argmin(np.abs(T_arr - T_C)))
-    for r, c, y_arr in series:
-        fig.add_trace(go.Scatter(x=T_arr, y=y_arr, mode="lines",
-                                 line={"width": 2}, showlegend=False), row=r, col=c)
-        fig.add_trace(go.Scatter(x=[T_C], y=[y_arr[idx]], mode="markers",
-                                 marker={"size": 10, "color": "red"}, showlegend=False),
-                      row=r, col=c)
-        fig.update_xaxes(title_text="T (°C)", row=r, col=c)
-    fig.update_layout(height=760, margin={"t": 40, "b": 40},
-                      title=f"{name} — properties vs temperature")
+    fig = viz_fluids.property_curves(name, solvent_curves.property_curves(name, P_atm), T_C)
     return props_df, range_msg, fig
 
 
@@ -366,54 +331,9 @@ def _join_pairs(pairs: list[str], limit: int = 3) -> str:
     return "; ".join(pairs[:limit]) + f"; +{len(pairs) - limit} more"
 
 
-_PHASE_COLORS = ["#4E79A7", "#F28E2B", "#76B7B2", "#59A14F",
-                 "#B07AA1", "#EDC948", "#E15759", "#9C755F"]
-
-
 def _build_phase_fig(comp_props: list[dict], pair_misc: dict) -> go.Figure:
-    """Vessel diagram of settled liquid phases stacked by density (layer height
-    proportional to volume fraction); partition from core.miscibility."""
-    phases, unknown_split = settled_phases(comp_props, pair_misc)
-
-    x0, x1 = 0.22, 0.78
-    liquid_top = 0.82  # liquid fills 82% of vessel height (headspace above)
-    fig = go.Figure()
-    y = 0.0
-    for i, ph in enumerate(phases):  # bottom-up
-        h = ph["vol"] * liquid_top
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=y, y1=y + h,
-                      fillcolor=_PHASE_COLORS[i % len(_PHASE_COLORS)],
-                      opacity=0.75, line={"width": 0}, layer="below")
-        fig.add_annotation(
-            x=(x0 + x1) / 2, y=y + h / 2,
-            text=(f"<b>{ph['label']}</b><br>"
-                  f"{ph['vol'] * 100:.1f} vol% · ρ ≈ {ph['rho']:.0f} kg/m³"),
-            showarrow=False, font={"size": 12, "color": "#2A2E33"},
-            bgcolor="rgba(255,255,255,0.75)")
-        y += h
-    # Vessel outline (open top)
-    fig.add_shape(type="line", x0=x0, x1=x1, y0=0, y1=0,
-                  line={"color": "#808080", "width": 3})
-    fig.add_shape(type="line", x0=x0, x1=x0, y0=0, y1=1.0,
-                  line={"color": "#808080", "width": 3})
-    fig.add_shape(type="line", x0=x1, x1=x1, y0=0, y1=1.0,
-                  line={"color": "#808080", "width": 3})
-    # Liquid surface line
-    fig.add_shape(type="line", x0=x0, x1=x1, y0=liquid_top, y1=liquid_top,
-                  line={"color": "#808080", "width": 1, "dash": "dot"})
-
-    n_ph = len(phases)
-    title = ("Single-phase blend (settled)" if n_ph == 1
-             else f"Predicted stratification — {n_ph} liquid phases (settled)")
-    if unknown_split and n_ph > 1:
-        fig.add_annotation(x=0.5, y=1.06, showarrow=False,
-                           font={"size": 11},
-                           text="❔ Some pairs lack miscibility data — split is indicative only.")
-    fig.update_xaxes(visible=False, range=[0, 1])
-    fig.update_yaxes(visible=False, range=[-0.04, 1.12])
-    fig.update_layout(height=430, margin={"t": 40, "b": 10},
-                      title={"text": title, "x": 0.5, "xanchor": "center"})
-    return fig
+    """Settled liquid phases stacked by density (partition from core.miscibility)."""
+    return viz_fluids.phase_stack(*settled_phases(comp_props, pair_misc))
 
 
 def on_blend_compute(state):

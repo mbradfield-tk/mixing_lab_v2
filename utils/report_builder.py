@@ -7,6 +7,7 @@ Pages 5, 7 and 10 to generate downloadable PDF reports.
 
 import pathlib
 import io
+import os
 import datetime
 import re
 import warnings
@@ -134,8 +135,28 @@ def status_dot(status: str) -> tuple[tuple[int, int, int] | None, str]:
 
 
 
+# Chart renderer: "auto" (kaleido, else matplotlib), "kaleido" or "matplotlib".
+CHART_RENDERER_ENV = "MIXING_LAB_CHART_RENDERER"
+_kaleido_ok: bool | None = None  # None = untried; False after the first failure
+
+
 def fig_to_png_bytes(fig) -> bytes:
-    return fig.to_image(format="png", scale=2)
+    """PNG of a Plotly figure: kaleido (needs Chrome) when available, otherwise the
+    matplotlib renderer in :mod:`viz.static`."""
+    global _kaleido_ok
+    mode = os.environ.get(CHART_RENDERER_ENV, "auto").strip().lower()
+    if mode != "matplotlib" and (_kaleido_ok is not False or mode == "kaleido"):
+        try:
+            png = fig.to_image(format="png", scale=2)
+            _kaleido_ok = True
+            return png
+        except Exception as exc:  # noqa: BLE001 - kaleido/Chrome missing or broken
+            if mode == "kaleido":
+                raise
+            _kaleido_ok = False
+            warnings.warn(f"kaleido chart export unavailable ({exc}); using matplotlib.")
+    from viz.static import render_png
+    return render_png(fig, scale=2)
 
 
 # ── MixingReport FPDF class ─────────────────────────────────────────────

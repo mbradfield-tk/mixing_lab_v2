@@ -12,7 +12,7 @@ from core import scale_up, vessel_import as vi
 from core import sensitivity_rules as rules
 from core.miscibility import settled_phases
 from core.records import VesselGeometry
-from heat_transfer_core import heat_cool_setup_error, sweep_range_defaults
+from core.heat_transfer import heat_cool_setup_error, sweep_range_defaults
 
 
 # --- vessel import ---------------------------------------------------------------

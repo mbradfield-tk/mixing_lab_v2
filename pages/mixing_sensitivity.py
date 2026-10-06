@@ -50,7 +50,8 @@ from core.records import (
     solvent_props as _solvent_props,
 )
 from pages import _db_common as db
-from vessel_media import build_image_html
+from reports import snapshots
+from pages._vessel_media import build_image_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactions_df = pd.read_csv(DATA_DIR / "reactions.csv")
@@ -275,23 +276,9 @@ def _recompute(state):
 
     # invalidate a previously generated PDF (inputs changed)
     state.ms_pdf_ready = False
-
-    bourne_txt = {
-        True: "Mixing sensitivity confirmed", False: "No sensitivity observed",
-        None: "Not performed / undetermined"}[res["b_sensitive"]]
-    state._ms_cache = {
-        "reaction": state.ms_reaction, "t_rxn": res["t_rxn"], "rxn_delta_H": res["dH_eff"],
-        "dT_ad": res["dt_ad"], "phases": [Phase(p).label for p in res["phases"]],
-        "findings": md["findings"],
-        "next_steps": md["next_steps"], "bourne_result": bourne_txt,
-        "bourne_tests": res["bourne_rows"],
-        "bourne_mechanism": res["b_mechs"][0] if res["b_mechs"] else "",
-        "bourne_meta": dict(getattr(state, "ms_bourne_meta", {}) or {}),
-        "competing": state.ms_competing if res["competing_set"] else "Not assessed",
-        "overall_verdict": _strip_md(md["verdict"]), "using_approximate": res["using_approx"],
-        "dh_estimated": res["dh_estimated"], "is_semi_batch": res["is_semi_batch"],
-        "damkohler": dict(res["da"]) if res["da"] else {},
-    }
+    state._ms_cache = snapshots.protocol_snapshot(
+        res, md, reaction=state.ms_reaction, competing_label=state.ms_competing,
+        bourne_meta=getattr(state, "ms_bourne_meta", {}))
 
 
 # ---------------------------------------------------------------------------

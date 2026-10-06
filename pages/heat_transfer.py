@@ -2,7 +2,7 @@
 
 Two modes: (1) heat/cool a vessel to a target temperature via the jacket, and
 (2) model the batch temperature profile produced by an exo/endothermic reaction.
-The numerical engine lives in the standalone :mod:`heat_transfer_core` backend;
+The numerical engine lives in :mod:`core.heat_transfer`;
 this module owns the page state, handlers, and markdown layout.
 """
 from __future__ import annotations
@@ -12,11 +12,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.colors import get_colorscale
-from plotly.subplots import make_subplots
 from taipy.gui import Markdown, download, notify
 
-from heat_transfer_core import (
+from core.heat_transfer import (
     FOULING_DEFAULT,
     LINING_CONDUCTIVITY,
     LINING_THICKNESS_DEFAULT,
@@ -25,33 +23,36 @@ from heat_transfer_core import (
     adiabatic_rise,
     compute_batch,
     compute_reaction_profile,
-    estimate_jacket_area,
     find_best_material_key,
     heat_cool_setup_error,
     liquid_height_from_volume,
     load_csvs,
+    reactor_jacket_area,
+    resistance_breakdown,
     resistance_items,
+    round_sig,
     safe_float,
     surface_color_limits as _surface_color_limits,
     sweep_range_defaults,
+    time_factor,
     u_ua_surface,
-    ua_vs_rpm,
-    ua_vs_volume,
+    ua_sweep_series,
 )
+from viz import heat_transfer as viz_ht
+from reports import snapshots
 from utils.menu_icons import inject_icons
 from utils.report_builder import (
     build_heat_transfer_pdf,
-    fig_to_png_bytes,
     report_filename,
     report_header_label,
 )
-from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
+from utils.solvent_properties import list_solvents
 from core.options import Toggle, is_on
 from core.records import (
-    fluid_row as _fluid_row,
     range_midpoint as _avg_range,
     reaction_row as _reaction_row,
     reactor_row as _reactor_row,
+    thermal_props,
 )
 from pages import _db_common as db
 
@@ -81,29 +82,8 @@ UNIT_OPERATION_OPTIONS = ["- select -", "Reaction", "Quench", "Crystallization",
                           "Drying", "Other"]
 
 
-def _fluid_properties(fluid_name: str, T_C: float) -> dict:
-    """Props for a custom fluid (fixed) or a built-in solvent (evaluated at T_C)."""
-    row = _fluid_row(fluid_name)
-    if not row.empty:
-        return {
-            "rho": safe_float(row.get("rho_kg_m3"), 1000.0),
-            "mu": safe_float(row.get("mu_Pa_s"), 0.001),
-            "cp": safe_float(row.get("Cp_J_per_kgK"), 4182.0),
-            "k": safe_float(row.get("k_W_per_mK"), 0.607),
-        }
-    canonical = resolve_solvent_name(fluid_name)
-    if canonical:
-        p = get_properties(canonical, T_C)
-        return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
-                "cp": p["Cp_J_per_kgK"], "k": p["k_W_per_mK"]}
-    return {"rho": 1000.0, "mu": 0.001, "cp": 4182.0, "k": 0.607}
-
-
-def _round_sig(value: float, digits: int = 4) -> float:
-    """Round to significant figures; Taipy's number control has no display format."""
-    if value == 0 or not np.isfinite(value):
-        return value
-    return round(value, -int(np.floor(np.log10(abs(value)))) + digits - 1)
+_fluid_properties = thermal_props
+_round_sig = round_sig
 
 
 SWEEP_PARAMETER_KEYS = {
@@ -135,12 +115,7 @@ def _sweep_range_defaults(reactor_name: str, parameter: str, current_value: floa
                                 current_value)
 
 
-def _sweep_colorscale(theme: str) -> list[list[float | str]]:
-    if theme == "Cool/Warm":
-        scale = get_colorscale("rdbu")
-        return [[1.0 - position, color] for position, color in reversed(scale)]
-    name = {"Turbo": "turbo", "Viridis": "viridis", "X-ray": "greys"}.get(theme, "turbo")
-    return get_colorscale(name)
+_sweep_colorscale = viz_ht.sweep_colorscale
 
 
 selected_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in reactor_options
@@ -159,8 +134,7 @@ v_l = _avg_range(_r, "V_L_min", "V_L_max", safe_float(_r.get("V_L"), 1.0))
 h_max = safe_float(_r.get("H_max_m"), safe_float(_r.get("H_m"), 0.2))
 h_liquid = liquid_height_from_volume(
     v_l, d_tank, h_max, str(_r.get("bottom_dish", "")), db.bottom_dish_height(_r))
-a_ht = _round_sig(estimate_jacket_area(
-    d_tank, h_liquid, str(_r.get("bottom_dish", "")), db.bottom_dish_height(_r)))
+a_ht = reactor_jacket_area(_r, d_tank, v_l)
 
 _f0 = _fluid_properties(selected_fluid, FLUID_REF_T_C)
 rho = _f0["rho"]
@@ -289,8 +263,7 @@ ht_pdf_ready = False
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
-def _time_factor(unit: str) -> float:
-    return {"Seconds": 1.0, "Minutes": 60.0, "Hours": 3600.0}.get(unit, 60.0)
+_time_factor = time_factor
 
 
 def _build_csv_exports(state):
@@ -366,12 +339,7 @@ def on_sweep_color_range_mode_change(state):
 
 def _refresh_area(state):
     """Recompute the jacket heat-transfer area from the current liquid volume."""
-    row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
-    dish = str(row.get("bottom_dish", ""))
-    dish_height = db.bottom_dish_height(row)
-    h = liquid_height_from_volume(state.v_l, state.d_tank, h_max_val, dish, dish_height)
-    state.a_ht = _round_sig(estimate_jacket_area(state.d_tank, h, dish, dish_height))
+    state.a_ht = reactor_jacket_area(_reactor_row(state.selected_reactor), state.d_tank, state.v_l)
 
 
 def on_v_l_change(state):
@@ -494,25 +462,9 @@ def _compute_reaction(state):
 
     t_factor = _time_factor(state.time_unit)
     t_label = state.time_unit.lower()
-    t = result.t / t_factor
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=t, y=result.T, mode="lines", name="Batch temperature",
-                             line={"color": "#E1251B", "width": 2}), secondary_y=False)
-    fig.add_trace(go.Scatter(x=t, y=result.conversion * 100.0, mode="lines", name="Conversion",
-                             line={"color": "#1f77b4", "width": 2, "dash": "dash"}), secondary_y=True)
-    fig.add_hline(y=state.t_jacket, line_dash="dot", line_color="#5C6670",
-                  annotation_text=f"Coolant {state.t_jacket:.1f} C")
-    if np.isfinite(result.T_adiabatic_c):
-        fig.add_hline(y=result.T_adiabatic_c, line_dash="dot", line_color="#888888",
-                      annotation_text=f"Adiabatic {result.T_adiabatic_c:.1f} C")
-    fig.update_xaxes(title_text=f"Time ({t_label})")
-    fig.update_yaxes(title_text="Temperature (C)", secondary_y=False)
-    fig.update_yaxes(title_text="Conversion (%)", range=[0, 105], secondary_y=True)
-    fig.update_layout(title="Reaction Temperature Profile", height=460,
-                      legend={"orientation": "h", "y": 1.02, "yanchor": "bottom",
-                              "x": 0.5, "xanchor": "center"})
-    state.rxn_fig = fig
+    state.rxn_fig = viz_ht.reaction_profile(result.t / t_factor, result.T,
+                                            result.conversion * 100.0, t_label,
+                                            state.t_jacket, result.T_adiabatic_c)
     state.rxn_summary_df = result.summary
     state.rxn_result_ready = True
     _build_csv_exports(state)
@@ -563,31 +515,10 @@ def on_compute(state):
     t_label = state.time_unit.lower()
     t_const = result.t_const / t_factor
     t_var = result.t_var / t_factor
-
-    temp_fig_local = go.Figure()
-    temp_fig_local.add_trace(go.Scatter(x=t_const, y=result.T_const, mode="lines", name="Batch (const jacket)"))
-    temp_fig_local.add_trace(go.Scatter(x=t_var, y=result.T_var, mode="lines", name="Batch (variable jacket)"))
-    temp_fig_local.add_trace(go.Scatter(x=t_var, y=result.Tj_out, mode="lines", name="Jacket outlet", line={"dash": "dash"}))
-    temp_fig_local.add_hline(y=state.t_target, line_dash="dot", annotation_text=f"Target {state.t_target:.1f} C")
-    temp_fig_local.add_hline(y=state.t_jacket, line_dash="dot", annotation_text=f"Jacket {state.t_jacket:.1f} C")
-    temp_fig_local.update_layout(
-        title="Batch Temperature Profile",
-        xaxis_title=f"Time ({t_label})",
-        yaxis_title="Temperature (C)",
-        height=460,
-    )
-    state.temp_fig = temp_fig_local
-
-    duty_fig_local = go.Figure()
-    duty_fig_local.add_trace(go.Scatter(x=t_const, y=np_abs(result.q_const), mode="lines", name="|Q| const jacket"))
-    duty_fig_local.add_trace(go.Scatter(x=t_var, y=np_abs(result.q_var), mode="lines", name="|Q| variable jacket"))
-    duty_fig_local.update_layout(
-        title="Jacket Heat Duty over Time",
-        xaxis_title=f"Time ({t_label})",
-        yaxis_title="|Q| (W)",
-        height=380,
-    )
-    state.duty_fig = duty_fig_local
+    state.temp_fig = viz_ht.batch_temperature(t_const, result.T_const, t_var, result.T_var,
+                                              result.Tj_out, t_label, state.t_target,
+                                              state.t_jacket)
+    state.duty_fig = viz_ht.jacket_duty(t_const, result.q_const, t_var, result.q_var, t_label)
 
     _build_resistance_breakdown(state, result)
     _build_ua_sweeps(state)
@@ -603,10 +534,6 @@ def on_compute(state):
     notify(state, "S", "Heat-transfer results computed.")
 
 
-def np_abs(arr):
-    return np.abs(arr)
-
-
 def np_is_finite(value: float) -> bool:
     return np.isfinite(value)
 
@@ -619,24 +546,7 @@ def _resistance_items(state, result) -> list[tuple[str, float]]:
 
 def _build_resistance_breakdown(state, result) -> None:
     """Resistance-contribution bar chart + agitator heat share (heat/cool mode)."""
-    items = _resistance_items(state, result)
-
-    r_total = sum(r for _, r in items) or 1.0
-    labels = [n for n, _ in items]
-    pct = [r / r_total * 100.0 for _, r in items]
-
-    fig = go.Figure(go.Bar(
-        x=pct, y=labels, orientation="h", marker_color="#E1251B",
-        text=[f"{p:.1f}%" for p in pct], textposition="auto",
-        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
-    ))
-    fig.update_layout(
-        title="Heat Transfer Resistance Contributions",
-        xaxis_title="Contribution to total resistance (%)",
-        yaxis={"autorange": "reversed"},
-        height=360,
-    )
-    state.res_fig = fig
+    state.res_fig = viz_ht.resistance_bars(resistance_breakdown(_resistance_items(state, result)))
 
     p_ag = result.p_agitator_w
     q_duty = abs(result.q_max_w)
@@ -653,44 +563,10 @@ def _build_resistance_breakdown(state, result) -> None:
 
 def _build_ua_sweeps(state) -> None:
     """UA vs stir speed (area fixed) and UA vs volume (U fixed) around the op-point."""
-    row = _reactor_row(state.selected_reactor)
-    h_max_val = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
-    bottom = str(row.get("bottom_dish", ""))
-    dish_height = db.bottom_dish_height(row)
-    base = _shared_ht_data(state)
-
-    # (1) UA vs stir speed at the current volume (A held constant).
-    cur_rpm = max(state.n_rpm, 1.0)
-    rmin = safe_float(row.get("N_rpm_min"), 0.0)
-    rmax = safe_float(row.get("N_rpm_max"), 0.0)
-    if not (rmax > rmin > 0):
-        rmin, rmax = max(1.0, 0.1 * cur_rpm), 2.0 * cur_rpm
-    rpm_range = np.linspace(rmin, rmax, 40)
-    ua_rpm = ua_vs_rpm(base, htm_db, state.a_ht, rpm_range)
-    fig1 = go.Figure(go.Scatter(x=rpm_range, y=ua_rpm, mode="lines",
-                                line={"color": "#E1251B", "width": 2}, name="UA"))
-    fig1.add_vline(x=state.n_rpm, line_dash="dot", line_color="#5C6670",
-                   annotation_text=f"{state.n_rpm:.0f} rpm")
-    fig1.update_layout(title=f"UA vs Stir Speed (at {state.v_l:.3g} L)",
-                       xaxis_title="Stir speed (rpm)", yaxis_title="UA (W/K)", height=360)
-    state.ua_rpm_fig = fig1
-
-    # (2) UA vs volume at the current stir speed (U independent of volume).
-    cur_vol = max(state.v_l, 1e-6)
-    vmin = safe_float(row.get("V_L_min"), 0.0)
-    vmax = safe_float(row.get("V_L_max"), 0.0)
-    if not (vmax > vmin > 0):
-        vmin, vmax = 0.1 * cur_vol, 2.0 * cur_vol
-    vmin = max(vmin, 1e-6)
-    vol_range = np.linspace(vmin, vmax, 40)
-    ua_vol = ua_vs_volume(base, htm_db, h_max_val, bottom, dish_height, vol_range)
-    fig2 = go.Figure(go.Scatter(x=vol_range, y=ua_vol, mode="lines",
-                                line={"color": "#1f77b4", "width": 2}, name="UA"))
-    fig2.add_vline(x=state.v_l, line_dash="dot", line_color="#5C6670",
-                   annotation_text=f"{state.v_l:.3g} L")
-    fig2.update_layout(title=f"UA vs Volume (at {state.n_rpm:.0f} rpm)",
-                       xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)", height=360)
-    state.ua_vol_fig = fig2
+    s = ua_sweep_series(_shared_ht_data(state), htm_db, _reactor_row(state.selected_reactor),
+                        state.a_ht)
+    state.ua_rpm_fig = viz_ht.ua_vs_speed(s["rpm"], s["ua_rpm"], state.n_rpm, state.v_l)
+    state.ua_vol_fig = viz_ht.ua_vs_volume(s["volume"], s["ua_volume"], state.v_l, state.n_rpm)
 
 
 def _compute_parameter_sweep(state) -> None:
@@ -749,74 +625,15 @@ def _compute_parameter_sweep(state) -> None:
             return
 
     colorscale = _sweep_colorscale(state.sweep_color_theme)
-
-    def _surface_figure(values: np.ndarray, limits: tuple[float, float], title: str,
-                        z_title: str) -> go.Figure:
-        figure = go.Figure(go.Surface(
-            x=x_values,
-            y=y_values,
-            z=values,
-            colorscale=colorscale,
-            cmin=limits[0],
-            cmax=limits[1],
-            colorbar={"title": z_title},
-            hovertemplate=(f"{x_parameter}: %{{x:.4g}}<br>"
-                           f"{y_parameter}: %{{y:.4g}}<br>"
-                           f"{z_title}: %{{z:.4g}}<extra></extra>"),
-        ))
-        figure.update_layout(
-            title=title,
-            scene={
-                "xaxis_title": x_parameter,
-                "yaxis_title": y_parameter,
-                "zaxis_title": z_title,
-            },
-            height=520,
-            margin={"l": 0, "r": 0, "t": 50, "b": 0},
-        )
-        return figure
-
-    state.sweep_u_fig = _surface_figure(
-        u_values, u_color_limits, "Overall Heat-Transfer Coefficient U", "U (W/m2.K)")
-    state.sweep_ua_fig = _surface_figure(
-        ua_values, ua_color_limits, "Overall Heat-Transfer Capacity UA", "UA (W/K)")
+    state.sweep_u_fig = viz_ht.sweep_surface(
+        x_values, y_values, u_values, x_parameter, y_parameter, u_color_limits, colorscale,
+        "Overall Heat-Transfer Coefficient U", "U (W/m2.K)")
+    state.sweep_ua_fig = viz_ht.sweep_surface(
+        x_values, y_values, ua_values, x_parameter, y_parameter, ua_color_limits, colorscale,
+        "Overall Heat-Transfer Capacity UA", "UA (W/K)")
     state.sweep_result_ready = True
     state.status_message = f"Parameter sweep computed for {x_parameter} and {y_parameter}."
     notify(state, "S", "U and UA parameter surfaces computed.")
-
-
-def _nu_records(df: pd.DataFrame) -> list[dict]:
-    """Nusselt-correlation comparison rows, in the keys build_heat_transfer_pdf expects."""
-    if df is None or df.empty:
-        return []
-    return [{
-        "Correlation": r.get("Correlation", ""),
-        "Nu": r.get("Nu", 0),
-        "h_i (W/(m2.K))": r.get("h_i (W/m2.K)", 0),
-        "U (W/(m2.K))": r.get("U (W/m2.K)", 0),
-        "Time (min)": r.get("Time (min)", 0),
-    } for _, r in df.iterrows()]
-
-
-def _htm_records(df: pd.DataFrame) -> list[dict]:
-    """Heat-transfer-medium comparison rows, in the keys build_heat_transfer_pdf expects."""
-    if df is None or df.empty:
-        return []
-    return [{
-        "Medium": r.get("Medium", ""),
-        "h_o (W/(m2.K))": r.get("h_o (W/m2.K)", 0),
-        "U (W/(m2.K))": r.get("U (W/m2.K)", 0),
-        "Time (min)": r.get("Time (min)", 0),
-        "In range?": r.get("In range", ""),
-    } for _, r in df.iterrows()]
-
-
-def _safe_png(fig) -> bytes | None:
-    """PNG bytes for a chart, or None if the image export backend is unavailable."""
-    try:
-        return fig_to_png_bytes(fig)
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def on_ht_export_pdf(state):
@@ -826,6 +643,20 @@ def on_ht_export_pdf(state):
         _export_batch_pdf(state)
 
 
+def _project(state) -> dict:
+    unit_op = state.ht_unit_operation if state.ht_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
+    return snapshots.project_meta(state.ht_project_name, state.ht_step_text, unit_op,
+                                  state.ht_process_version)
+
+
+def _finish_pdf(state, snap: dict) -> None:
+    state.ht_pdf_bytes = build_heat_transfer_pdf(snap)
+    state.ht_pdf_name = report_filename(
+        "HeatTransfer", report_header_label(snap) or state.selected_reactor)
+    state.ht_pdf_ready = True
+    notify(state, "S", "PDF report generated \u2014 click Download.")
+
+
 def _export_batch_pdf(state):
     if not state.result_ready:
         notify(state, "W", "Compute the heat/cool vessel results before exporting a PDF.")
@@ -833,54 +664,11 @@ def _export_batch_pdf(state):
     try:
         data = {**_shared_ht_data(state), "t_start": state.t_start,
                 "t_target": state.t_target, "t_jacket": state.t_jacket, "q_rxn": state.q_rxn}
-        result = compute_batch(data, htm_db)
-
-        items = _resistance_items(state, result)
-        r_total = sum(r for _, r in items) or 1.0
-        resistances = [(name, r, r / r_total * 100.0) for name, r in items]
-        controlling = max(resistances, key=lambda t: t[2])[0] if resistances else ""
-
-        coefficients = {
-            "h_i": result.h_i, "h_o": result.h_o, "U": result.u, "Nu": result.nu,
-            "Re": result.re, "Pr": result.pr, "A_ht": state.a_ht, "P_agitator": result.p_agitator_w,
-        }
-        analytical_min = (result.time_analytical_s / 60.0
-                          if np.isfinite(result.time_analytical_s) else float("inf"))
-        time_estimates = {
-            "Q_max": result.q_max_w, "dT_dt_init": result.dt_dt_c_per_min,
-            "t_analytical_min": analytical_min,
-            "t_sim_const_min": result.time_const_jacket_s / 60.0,
-            "t_sim_var_min": result.time_variable_jacket_s / 60.0,
-        }
-
-        unit_op = state.ht_unit_operation if state.ht_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
-        snap = {
-            "mode": "heat_cool",
-            "reactor": state.selected_reactor, "fluid": state.selected_fluid,
-            "fluid_T_C": state.t_start, "N_rpm": state.n_rpm, "V_L": state.v_l,
-            "htm_name": state.selected_htm, "nu_corr": state.nusselt_correlation,
-            "T_start": state.t_start, "T_target": state.t_target, "T_jacket_in": state.t_jacket,
-            "wall_material": state.wall_material, "wall_mm": state.wall_thickness_mm,
-            "lining_material": state.lining_material, "fouling_R": state.fouling,
-            "coefficients": coefficients, "resistances": resistances,
-            "time_estimates": time_estimates, "controlling_resistance": controlling,
-            "nusselt_comparison": _nu_records(state.corr_df),
-            "htm_comparison": _htm_records(state.htm_compare_df),
-            "fig_T_png": _safe_png(state.temp_fig),
-            "fig_Q_png": _safe_png(state.duty_fig),
-            "fig_resistance_png": _safe_png(state.res_fig),
-            "fig_rpm_U_png": _safe_png(state.ua_rpm_fig),
-            "fig_rpm_time_png": _safe_png(state.ua_vol_fig),
-            "project_name": state.ht_project_name,
-            "step_number": state.ht_step_text,
-            "unit_operation": unit_op,
-            "process_version": state.ht_process_version,
-        }
-        state.ht_pdf_bytes = build_heat_transfer_pdf(snap)
-        state.ht_pdf_name = report_filename(
-            "HeatTransfer", report_header_label(snap) or state.selected_reactor)
-        state.ht_pdf_ready = True
-        notify(state, "S", "PDF report generated \u2014 click Download.")
+        _finish_pdf(state, snapshots.heat_cool_snapshot(
+            data, htm_db, _reactor_row(state.selected_reactor), reactor=state.selected_reactor,
+            fluid=state.selected_fluid, wall_material=state.wall_material,
+            lining_material=state.lining_material, time_unit=state.time_unit,
+            project=_project(state)))
     except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
         notify(state, "E", f"PDF generation failed: {exc}")
 
@@ -890,45 +678,12 @@ def _export_reaction_pdf(state):
         notify(state, "W", "Compute the reaction temperature profile before exporting a PDF.")
         return
     try:
-        data = _shared_ht_data(state)
-        data.update({
-            "t_start": state.t_start,
-            "t_jacket": state.t_jacket,
-            "rxn_order": state.rxn_order,
-            "rxn_k": state.rxn_k,
-            "rxn_c0": state.rxn_c0,
-            "rxn_dH": state.rxn_dH,
-        })
-        result = compute_reaction_profile(data, htm_db)
-        t_complete_min = (result.t_complete_s / 60.0
-                         if np.isfinite(result.t_complete_s) else float("inf"))
-        adiabatic_rise = result.T_adiabatic_c - state.t_start
-
-        rxn_summary_rows = [(str(r.get("Metric", "")), str(r.get("Value", "")))
-                           for _, r in state.rxn_summary_df.iterrows()]
-
-        unit_op = state.ht_unit_operation if state.ht_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
-        snap = {
-            "mode": "reaction",
-            "reactor": state.selected_reactor, "fluid": state.selected_fluid,
-            "fluid_T_C": state.t_start, "N_rpm": state.n_rpm, "V_L": state.v_l,
-            "T_start": state.t_start, "T_jacket_in": state.t_jacket,
-            "rxn_order": state.rxn_order, "rxn_k": state.rxn_k, "rxn_c0": state.rxn_c0,
-            "rxn_dH": state.rxn_dH,
-            "adiabatic_rise": adiabatic_rise, "T_adiabatic": result.T_adiabatic_c,
-            "T_peak": result.T_peak_c, "t_complete_min": t_complete_min,
-            "rxn_summary": rxn_summary_rows,
-            "fig_profile_png": _safe_png(state.rxn_fig),
-            "project_name": state.ht_project_name,
-            "step_number": state.ht_step_text,
-            "unit_operation": unit_op,
-            "process_version": state.ht_process_version,
-        }
-        state.ht_pdf_bytes = build_heat_transfer_pdf(snap)
-        state.ht_pdf_name = report_filename(
-            "HeatTransfer", report_header_label(snap) or state.selected_reactor)
-        state.ht_pdf_ready = True
-        notify(state, "S", "PDF report generated \u2014 click Download.")
+        data = {**_shared_ht_data(state), "t_start": state.t_start, "t_jacket": state.t_jacket,
+                "rxn_order": state.rxn_order, "rxn_k": state.rxn_k, "rxn_c0": state.rxn_c0,
+                "rxn_dH": state.rxn_dH}
+        _finish_pdf(state, snapshots.reaction_snapshot(
+            data, htm_db, reactor=state.selected_reactor, fluid=state.selected_fluid,
+            time_unit=state.time_unit, project=_project(state)))
     except Exception as exc:  # noqa: BLE001 - surface builder errors to the user
         notify(state, "E", f"PDF generation failed: {exc}")
 

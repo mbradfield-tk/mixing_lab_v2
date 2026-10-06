@@ -15,8 +15,8 @@ from taipy.gui import Markdown, notify
 from pages import _db_common as db
 from core import vessel_import as vimport
 from utils.menu_icons import inject_icons
-from vessel_media import build_vessel_viewer_html, media_caption
-from vessel_schematic import brim_volume, build_vessel_schematic
+from pages._vessel_media import build_vessel_viewer_html, media_caption
+from viz.vessel_schematic import brim_volume, build_vessel_schematic
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 REACTOR_CSV = DATA_DIR / "reactors.csv"

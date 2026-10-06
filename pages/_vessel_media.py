@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 IMG_DIR = BASE_DIR / "images" / "reactors"
 IMAGES_ROOT = BASE_DIR / "images"
 MODEL_VIEWER_JS = BASE_DIR / "assets" / "model-viewer-umd.min.js"

@@ -9,10 +9,102 @@ import pandas as pd
 
 from core import operating_point as op
 from core.envelope import solve_root
-from core.records import VesselGeometry, sf
+from core.records import VesselGeometry, reactor_row, sf
 
 CORNER_LABELS = ["min RPM / max V", "max RPM / max V",
                  "min RPM / min V", "max RPM / min V"]
+N_INTERP = 40  # boundary-curve resolution per vessel
+DEFAULT_FEED_PIPE_MM = 3.0
+
+# Parameters plotted / summarised in a comparison (subset present in the result dict).
+BASE_PLOT_PARAMS = [
+    "Power (W)", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Circulation time (s)", "Micromix time t_E (s)", "Kolmogorov η (µm)", "Re",
+    "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
+    "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)", "EDCF (W/kg/s)",
+    "Torque (N·m)", "Froude number", "kLa (1/s)", "kLa_surface (1/s)",
+]
+HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
+PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p",
+                   "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
+
+
+def plot_params(fed: bool, incl_heat: bool, incl_particles: bool) -> list[str]:
+    params = list(BASE_PLOT_PARAMS)
+    if fed:
+        params.insert(params.index("Da_micro") + 1, "Da_meso")
+    if incl_heat:
+        params += HEAT_PARAMS
+    if incl_particles:
+        params += PARTICLE_PARAMS
+    return params
+
+
+def comparison_inputs(name: str, geo: VesselGeometry, d_feed_m: float, ctx: dict) -> op.PointInputs:
+    """Operating-point inputs for one vessel under the shared comparison conditions ``ctx``
+    (fluid rho/mu/D_mol/fluid_name, kinetics order/k/C0/t_rxn/dH, gas v_s/coalescing,
+    particles rho_p/d50/phi/x_wt/szw/gmb_z/cd, fed/feed_loc, T_process/T_coolant,
+    incl_* flags, corr_mode)."""
+    solids = (op.Solids(rho_p=ctx["rho_p"], d50_um=ctx["d50"], phi=ctx["phi"], x_wt=ctx["x_wt"],
+                        S_zw=ctx["szw"], gmb_z=ctx["gmb_z"], cd=ctx["cd"])
+              if ctx["incl_particles"] else None)
+    feed = (op.Feed(ctx["feed_loc"],
+                    d_feed_m if d_feed_m > 0 else DEFAULT_FEED_PIPE_MM / 1000.0)
+            if ctx["fed"] else None)
+    return op.PointInputs(
+        reactor=name, geometry=geo,
+        fluid=op.Fluid(ctx["fluid_name"], ctx["rho"], ctx["mu"], ctx["D_mol"]),
+        reaction=op.Reaction(ctx["order"], ctx["k"], ctx["C0"], ctx["t_rxn"], ctx["dH"]),
+        corr_mode=ctx["corr_mode"], gas=op.Gas(ctx["v_s"], ctx["coalescing"]),
+        solids=solids, feed=feed,
+        heat=op.Heat(ctx["T_process"], ctx["T_coolant"]) if ctx["incl_heat"] else None)
+
+
+def compare_vessels(names: list[str], ctx: dict, n_interp: int = N_INTERP) -> dict:
+    """Four-corner envelopes for every vessel under ``ctx`` (see :func:`comparison_inputs`;
+    also ``plot_params`` and optional ``feed_pipe_mm`` {vessel: mm}).
+
+    Returns {env_df, agg_df, reactor_info, curve_data, present, skipped, inputs};
+    env_df/agg_df are None when no vessel has usable geometry.
+    """
+    env_rows, reactor_info, curve_data, skipped, inputs = [], {}, {}, [], {}
+    for name in names:
+        r = reactor_row(name)
+        geo = VesselGeometry.from_row(r)
+        window = vessel_window(r, geo)
+        if window is None:
+            skipped.append(name)
+            continue
+        scale = str(r.get("scale", "") or "")
+        feed_pipe_mm = ctx.get("feed_pipe_mm", {}).get(name)
+        d_feed_pipe_m = (feed_pipe_mm / 1000.0 if feed_pipe_mm and feed_pipe_mm > 0
+                         else sf(r.get("D_feed_pipe_m")))
+        reactor_info[name] = {
+            "D_imp": geo.D_imp, "D_tank": geo.D_tank, "H_max": geo.H_max,
+            "Np": geo.Np, "Nq": geo.Nq, **window,
+            "bottom_dish": geo.bottom_dish, "scale": scale,
+            "bottom_dish_height": geo.bottom_dish_height,
+            "D_feed_pipe_m": d_feed_pipe_m,
+            "shell_material": geo.shell_material,
+            "lining_material": geo.lining_material,
+            "wall_thickness_mm": geo.wall_thickness_mm,
+        }
+        inp = inputs[name] = comparison_inputs(name, geo, d_feed_pipe_m, ctx)
+        corners, curve_data[name] = corner_envelope(inp, window, ctx["plot_params"], n_interp)
+        env_rows += [{"Reactor": name, "Scale": scale, **c} for c in corners]
+
+    out = {"env_df": None, "agg_df": None, "reactor_info": reactor_info,
+           "curve_data": curve_data, "present": [], "skipped": skipped, "inputs": inputs}
+    if not env_rows:
+        return out
+    env_df = pd.DataFrame(env_rows)
+    env_df["RPM_pct"] = env_df["RPM"] / env_df["RPM_max"] * 100.0
+    present = [p for p in ctx["plot_params"] if p in env_df.columns]
+    agg = env_df.groupby("Reactor", sort=False).agg(
+        {**{p: ["min", "max"] for p in present}, "Scale": "first",
+         "Volume (L)": ["min", "max"]})
+    agg.columns = ["_".join(c).strip("_") for c in agg.columns]
+    return {**out, "env_df": env_df, "agg_df": agg.reset_index(), "present": present}
 
 
 def vessel_window(row: pd.Series, geo: VesselGeometry) -> dict | None:

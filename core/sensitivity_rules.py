@@ -15,6 +15,7 @@ import numpy as np
 
 from core.messages import Action, Finding, Message, kind_of_label
 from core.options import BourneStatus, Competing, DhAction, Kinetics, Mechanism, Phase
+from utils.bourne_kpi import SENS_THRESHOLD, threshold_phrase
 from utils.calculations import characteristic_reaction_time
 
 TEST_PURPOSE = {1: "impeller speed", 2: "feed rate/time", 3: "feed location"}
@@ -756,6 +757,37 @@ def bourne_test_lines(o: dict) -> list[str]:
                       "not_sensitive": "- **Test 3:** insensitive to feed location.",
                       }.get(o["s3"], "- **Test 3:** mixed response to feed location (inconclusive)."))
     return lines
+
+
+BOURNE_TEST_TITLES = {1: "Test 1 - Impeller speed", 2: "Test 2 - Feed rate",
+                      3: "Test 3 - Feed location"}
+
+
+def bourne_conclusions(o: dict, results: dict) -> list[tuple[str, str, str]]:
+    """Report verdict rows (title, Markdown verdict, icon) from a ``bourne_outcome``
+    and the ``assess_kpis`` result of each test (None when not run)."""
+    def verdict(res):
+        n, N = res["n_sensitive"], res["n_total"]
+        thr = threshold_phrase(res) if res.get("results") else f"≥ {SENS_THRESHOLD:.0f}%"
+        if res["status"] == "sensitive":
+            return f"**Sensitive** ({n}/{N} KPIs {thr})"
+        if res["status"] == "inconclusive":
+            return f"**Inconclusive** ({n}/{N} KPIs {thr})"
+        return f"**Not sensitive** (0/{N} KPIs)"
+
+    rows = []
+    for test in (1, 2, 3):
+        res = results.get(test)
+        if not res:
+            continue
+        v = verdict(res)
+        if test == 1 and o["s1"] == "not_sensitive" and not o["range_ok"]:
+            v += f" - only a {o['ratio']:.1f}x P/m span was achieved; treated as inconclusive"
+        rows.append((BOURNE_TEST_TITLES[test], v, ""))
+    if o["tentative"]:
+        rows.append(("Confidence", "**Tentative** - an upstream test was inconclusive; "
+                     "replicate it before fixing the scale-up rule", ""))
+    return rows
 
 
 # ---------------------------------------------------------------------------

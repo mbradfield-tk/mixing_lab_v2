@@ -8,9 +8,9 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from heat_transfer_core import liquid_height_from_volume as core_liquid_height
+from core.heat_transfer import liquid_height_from_volume as core_liquid_height
 from utils.calculations.geometry import dish_geometry, liquid_height_from_volume
-from vessel_schematic import _geometry
+from viz.vessel_schematic import _geometry
 
 
 def _full_height_row(top_dish: str) -> pd.Series:

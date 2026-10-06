@@ -32,7 +32,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
@@ -46,7 +45,6 @@ from core import records
 from core import scale_up
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from core.records import (
-    VesselGeometry,
     particle_row as _particle_row,
     range_midpoint as _avg,
     reactor_id as _reactor_id,
@@ -54,7 +52,9 @@ from core.records import (
     sf as _sf,
 )
 from pages import _db_common as db
-from vessel_media import build_multi_vessel_viewer_html
+from viz import vessel as viz_vessel
+from reports import snapshots
+from pages._vessel_media import build_multi_vessel_viewer_html
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
@@ -64,32 +64,9 @@ fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
 
 RECORDED_CSV = DATA_DIR / "recorded_results.csv"
 
-_N_INTERP = 40  # boundary-curve resolution per reactor
-_PALETTE = ["#E1251B", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
-            "#17becf", "#8c564b", "#e377c2", "#5C6670", "#bcbd22"]
-
 CORNER_LABELS = scale_up.CORNER_LABELS
-
-# Parameters that can be plotted / summarised (subset present in the hydro+Da dict).
-_BASE_PLOT_PARAMS = [
-    "Power (W)", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
-    "Circulation time (s)", "Micromix time t_E (s)", "Kolmogorov η (µm)", "Re",
-    "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
-    "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)", "EDCF (W/kg/s)",
-    "Torque (N·m)", "Froude number", "kLa (1/s)", "kLa_surface (1/s)",
-]
-_HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
-_PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p",
-                    "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
-_LOG_PARAMS = {"Da_macro", "Da_micro", "Da_meso", "Da_GL", "Da_SL"}
-_DISPLAY_NAMES = {
-    "Da_macro": "Macromixing (Da_macro)",
-    "Da_micro": "Micromixing (Da_micro)",
-    "Da_meso": "Mesomixing (Da_meso)",
-    "Da_GL": "Gas–liquid transfer (Da_GL)",
-    "Da_SL": "Solid–liquid transfer (Da_SL)",
-    "Q_gen/Q_cool (%)": "Heat capacity (Q_gen/Q_cool %)",
-}
+_BASE_PLOT_PARAMS = scale_up.BASE_PLOT_PARAMS
+_LOG_PARAMS = viz_vessel.LOG_PARAMS
 
 SCALABLE_PARAMS = [
     "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
@@ -104,10 +81,6 @@ SCALABLE_PARAMS = [
 def _viewers_html(names) -> str:
     items = [(n, _reactor_id(n)) for n in (names or [])]
     return build_multi_vessel_viewer_html(items, height=260)
-
-
-def _display(p: str) -> str:
-    return _DISPLAY_NAMES.get(p, p)
 
 
 def _corr_choices(names) -> tuple[list[str], str]:
@@ -213,7 +186,6 @@ vc_vs = 0.005
 vc_coal = coal_options[0]
 
 # Fed-batch (mesomixing)
-_DEFAULT_FEED_PIPE_MM = 3.0
 vc_fed_mode = Toggle.OFF.label
 vc_feed_location = FeedLocation.BULK.label
 vc_feed_location_options = FeedLocation.labels()
@@ -414,61 +386,6 @@ def _build_csv_exports(state):
 # ---------------------------------------------------------------------------
 # Core compute
 # ---------------------------------------------------------------------------
-def _point_inputs(name: str, geo: VesselGeometry, d_feed_m: float, ctx: dict) -> op.PointInputs:
-    """Operating-point inputs for one vessel under the shared comparison conditions."""
-    solids = (op.Solids(rho_p=ctx["rho_p"], d50_um=ctx["d50"], phi=ctx["phi"], x_wt=ctx["x_wt"],
-                        S_zw=ctx["szw"], gmb_z=ctx["gmb_z"], cd=ctx["cd"])
-              if ctx["incl_particles"] else None)
-    feed = (op.Feed(ctx["feed_loc"],
-                    d_feed_m if d_feed_m > 0 else _DEFAULT_FEED_PIPE_MM / 1000.0)
-            if ctx["fed"] else None)
-    return op.PointInputs(
-        reactor=name, geometry=geo,
-        fluid=op.Fluid(ctx["fluid_name"], ctx["rho"], ctx["mu"], ctx["D_mol"]),
-        reaction=op.Reaction(ctx["order"], ctx["k"], ctx["C0"], ctx["t_rxn"], ctx["dH"]),
-        corr_mode=ctx["corr_mode"], gas=op.Gas(ctx["v_s"], ctx["coalescing"]),
-        solids=solids, feed=feed,
-        heat=op.Heat(ctx["T_process"], ctx["T_coolant"]) if ctx["incl_heat"] else None)
-
-
-def _corner_and_curves(names, ctx):
-    """Return (env_rows, reactor_info, curve_data, skipped) for all reactors.
-
-    Also stores each vessel's ``PointInputs`` in ``ctx["inputs"]`` for the scale-up solver.
-    """
-    env_rows, reactor_info, curve_data, skipped = [], {}, {}, []
-    ctx["inputs"] = {}
-
-    for name in names:
-        r = _reactor_row(name)
-        geo = VesselGeometry.from_row(r)
-        window = scale_up.vessel_window(r, geo)
-        if window is None:
-            skipped.append(name)
-            continue
-        scale = str(r.get("scale", "") or "")
-        feed_pipe_mm = ctx.get("feed_pipe_mm", {}).get(name)
-        d_feed_pipe_m = (feed_pipe_mm / 1000.0 if feed_pipe_mm and feed_pipe_mm > 0
-                         else _sf(r.get("D_feed_pipe_m")))
-
-        reactor_info[name] = {
-            "D_imp": geo.D_imp, "D_tank": geo.D_tank, "H_max": geo.H_max,
-            "Np": geo.Np, "Nq": geo.Nq, **window,
-            "bottom_dish": geo.bottom_dish, "scale": scale,
-            "bottom_dish_height": geo.bottom_dish_height,
-            "D_feed_pipe_m": d_feed_pipe_m,
-            "shell_material": geo.shell_material,
-            "lining_material": geo.lining_material,
-            "wall_thickness_mm": geo.wall_thickness_mm,
-        }
-        inp = ctx["inputs"][name] = _point_inputs(name, geo, d_feed_pipe_m, ctx)
-        corners, curve_data[name] = scale_up.corner_envelope(
-            inp, window, ctx["plot_params"], _N_INTERP)
-        env_rows += [{"Reactor": name, "Scale": scale, **c} for c in corners]
-
-    return env_rows, reactor_info, curve_data, skipped
-
-
 def on_vc_compute(state):
     names = list(state.vc_reactors or [])
     if not names:
@@ -487,14 +404,7 @@ def on_vc_compute(state):
     gas_on = is_on(state.vc_gas_mode)
     fed_on = is_on(state.vc_fed_mode)
     x_wt = _sf(state.vc_x_wt)
-
-    plot_params = list(_BASE_PLOT_PARAMS)
-    if fed_on:
-        plot_params.insert(plot_params.index("Da_micro") + 1, "Da_meso")
-    if incl_h:
-        plot_params += _HEAT_PARAMS
-    if incl_p:
-        plot_params += _PARTICLE_PARAMS
+    plot_params = scale_up.plot_params(fed_on, incl_h, incl_p)
 
     sparging = GasTransfer.from_label(state.vc_gas_transfer) is GasTransfer.SPARGING
     v_s = _sf(state.vc_vs) if (gas_on and sparging) else 0.0
@@ -516,19 +426,13 @@ def on_vc_compute(state):
         "corr_mode": CorrSource.from_label(state.vc_corr_mode, CorrSource.LITERATURE),
     }
 
-    env_rows, reactor_info, curve_data, skipped = _corner_and_curves(names, ctx)
-    if not env_rows:
+    cmp = scale_up.compare_vessels(names, ctx)
+    ctx["inputs"] = cmp["inputs"]
+    if cmp["env_df"] is None:
         notify(state, "E", "No computable vessels in the selection (missing geometry).")
         return
-    env_df = pd.DataFrame(env_rows)
-    env_df["RPM_pct"] = env_df["RPM"] / env_df["RPM_max"] * 100.0
-
-    present = [p for p in plot_params if p in env_df.columns]
-    agg = env_df.groupby("Reactor", sort=False).agg(
-        {**{p: ["min", "max"] for p in present}, "Scale": "first",
-         "Volume (L)": ["min", "max"]})
-    agg.columns = ["_".join(c).strip("_") for c in agg.columns]
-    agg_df = agg.reset_index()
+    env_df, agg_df, present = cmp["env_df"], cmp["agg_df"], cmp["present"]
+    reactor_info, curve_data, skipped = cmp["reactor_info"], cmp["curve_data"], cmp["skipped"]
 
     # cache for chart rebuild / PDF / save
     state._vc_cache = {
@@ -621,63 +525,12 @@ def _build_env_fig(state):
     cache = state._vc_cache
     if not cache:
         return
-    env_df = cache["env_df"]
-    curve_data = cache["curve_data"]
     params = [p for p in (state.vc_env_params or []) if p in cache["present"]]
     if not params:
         params = cache["present"][:1]
-
-    n = len(params)
-    cols = min(2, n)
-    rows = int(np.ceil(n / cols))
-    positions = [(i // cols + 1, i % cols + 1) for i in range(n)]
-    vspace = min(0.22, 0.6 / max(rows - 1, 1))
-    fig = make_subplots(rows=rows, cols=cols, subplot_titles=[_display(p) for p in params],
-                        vertical_spacing=vspace, horizontal_spacing=0.08)
-
-    reactor_list = env_df["Reactor"].drop_duplicates().tolist()
-    for pi, (param, (r, c)) in enumerate(zip(params, positions)):
-        first_param = (pi == 0)
-        for i, name in enumerate(reactor_list):
-            color = _PALETTE[i % len(_PALETTE)]
-            curves = curve_data[name]
-            pct = curves["pct_arr"]
-            y_hi = curves["maxV"][param]
-            y_lo = curves["minV"][param]
-            poly_x = np.concatenate([pct, pct[::-1], [pct[0]]])
-            poly_y = np.concatenate([y_hi, y_lo[::-1], [y_hi[0]]])
-            fig.add_trace(go.Scatter(
-                x=poly_x, y=poly_y, fill="toself", fillcolor=color, opacity=0.18,
-                line={"width": 0}, mode="lines", legendgroup=name,
-                showlegend=False, hoverinfo="skip"), row=r, col=c)
-            fig.add_trace(go.Scatter(
-                x=pct, y=y_hi, mode="lines", line={"color": color, "width": 2},
-                name=name, legendgroup=name, showlegend=first_param,
-                hoverinfo="skip"), row=r, col=c)
-            fig.add_trace(go.Scatter(
-                x=pct, y=y_lo, mode="lines",
-                line={"color": color, "width": 2, "dash": "dot"},
-                legendgroup=name, showlegend=False, hoverinfo="skip"), row=r, col=c)
-        fig.update_xaxes(title_text="Stir speed (% of max RPM)", range=[0, 105], row=r, col=c)
-        if param in _LOG_PARAMS:
-            fig.update_yaxes(type="log", row=r, col=c)
-            for thr, col_ in ((0.1, "orange"), (1.0, "red")):
-                fig.add_hline(y=thr, line_dash="dash", line_color=col_, row=r, col=c)
-        if param == "N/N_js":
-            fig.add_hline(y=1.0, line_dash="dash", line_color="red", row=r, col=c)
-        if param == "Q_gen/Q_cool (%)":
-            fig.add_hline(y=100.0, line_dash="dash", line_color="red", row=r, col=c)
-
-    fig_height = max(360, rows * 360)
-    _t_margin = 90
-    _plot_area = max(fig_height - _t_margin - 40, 120)
-    _legend_y = 1 + 45 / _plot_area
-    fig.update_layout(height=fig_height, margin={"t": _t_margin, "b": 40},
-                      # No explicit paper/font colors: Taipy swaps the plotly
-                      # template per theme, keeping legends legible in dark mode.
-                      plot_bgcolor="rgba(225,37,27,0.06)",
-                      legend={"title": "Vessel", "orientation": "h", "y": _legend_y,
-                              "yanchor": "bottom", "x": 0.5, "xanchor": "center"})
+    fig, rows = viz_vessel.comparison_envelope(
+        cache["curve_data"], cache["env_df"]["Reactor"].drop_duplicates().tolist(), params,
+        _LOG_PARAMS)
     state.vc_env_fig = fig
     state.vc_env_class = f"env-rows-{min(rows, 8)}"
 
@@ -814,21 +667,10 @@ def on_vc_export_pdf(state):
         return
     cache = state._vc_cache
     try:
-        report_chart_params = [p for p in ["Da_micro", "Da_macro", "Da_GL", "P/V (W/L)",
-                                           "Blend time 95% (s)", "Tip speed (m/s)"]
-                               if p in cache["present"]]
-        snap = {
-            "selected_names": cache["env_df"]["Reactor"].drop_duplicates().tolist(),
-            "fluid": cache["fluid_name"], "fluid_T_C": cache["fluid_T_C"],
-            "reaction": cache["rxn_name"], "t_rxn": cache["t_rxn"],
-            "env_df": cache["env_df"], "agg_df": cache["agg_df"],
-            "reactor_info": cache["reactor_info"], "include_heat": cache["incl_heat"],
-            "include_particles": cache["incl_particles"],
-            "scaling_results": [], "scaling_all_params": [],
-            "scale_param": state.vc_scale_param if is_on(state.vc_incl_scaling) else "",
-            "scale_basis_reactor": state.vc_basis if is_on(state.vc_incl_scaling) else "",
-            "curve_data": cache["curve_data"], "report_chart_params": report_chart_params,
-        }
+        snap = snapshots.comparison_snapshot(
+            cache,
+            scale_param=state.vc_scale_param if is_on(state.vc_incl_scaling) else "",
+            scale_basis_reactor=state.vc_basis if is_on(state.vc_incl_scaling) else "")
         state.vc_pdf_bytes = build_reactor_comparison_pdf(snap)
         state.vc_pdf_name = report_filename(
             "Vessel_Comparison", snap["selected_names"][0] if snap["selected_names"] else "")

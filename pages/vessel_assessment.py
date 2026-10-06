@@ -15,11 +15,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from taipy.gui import Markdown, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import heat_balance_assessment, particle_suspension_criterion
 from utils.solvent_properties import (
     is_known_solvent,
     list_solvents,
@@ -30,8 +28,11 @@ from utils.report_builder import build_vessel_assessment_pdf, report_filename
 from core import operating_point as op
 from core import sensitivity_rules as rules
 from core.kinetics import effective_t_rxn as _auto_t_rxn
-from core.envelope import operating_window, solve_operating_point, surface_grid, sweep
+from core.envelope import envelope_data, solve_operating_point, surface_data
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
+from viz import vessel as viz_vessel
+from reports import snapshots
+from reports.tables import MT_COLUMNS, assessment_tables
 from core.records import (
     VesselGeometry,
     fluid_props as _fluid_props,
@@ -43,7 +44,7 @@ from core.records import (
     sf as _sf,
 )
 from pages import _db_common as db
-from vessel_media import build_vessel_viewer_html, media_caption
+from pages._vessel_media import build_vessel_viewer_html, media_caption
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
@@ -245,7 +246,7 @@ _HYDRO_ENV_KEYS = [
 va_env_params_options = ["Da_macro", "Da_micro", "Da_GL"] + _HYDRO_ENV_KEYS
 va_env_params = ["Da_macro", "Da_micro", "P/V (W/L)", "Blend time 95% (s)",
                  "Tip speed (m/s)", "Re"]
-_ENV_LOG = {"Da_macro", "Da_micro", "Da_GL"}
+_ENV_LOG = viz_vessel.LOG_PARAMS
 # Chart height is driven by a dynamic CSS class (env-rows-N in app.py) keyed to
 # the subplot row count, because the Taipy chart `height` property is not
 # reactive after first render.
@@ -277,29 +278,11 @@ va_solve_df = pd.DataFrame(columns=["#", "Solved variable", "Value", "Achieved",
 va_solve_value = 0.0
 va_solve_found = False
 
-# Hydrodynamics results-table rows: (hydro-dict key, display name, unit).
-_HYDRO_ROWS = [
-    ("Re", "Reynolds number", "–"),
-    ("Power (W)", "Power", "W"),
-    ("P/V (W/L)", "Power per volume", "W/L"),
-    ("Tip speed (m/s)", "Tip speed", "m/s"),
-    ("Blend time 95% (s)", "Blend time (95%)", "s"),
-    ("Micromix time t_E (s)", "Micromixing time t_E", "s"),
-    ("Kolmogorov η (µm)", "Kolmogorov length η", "µm"),
-    ("Circulation time (s)", "Circulation time", "s"),
-    ("Avg shear rate (1/s)", "Average shear rate", "1/s"),
-    ("Max shear rate (1/s)", "Maximum shear rate", "1/s"),
-    ("Torque (N·m)", "Torque", "N·m"),
-    ("Froude number", "Froude number", "–"),
-    ("kLa_surface (1/s)", "Surface kLa", "1/s"),
-]
-
 # Results
 va_status = "Set inputs and click Compute Assessment."
 va_hydro_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_dam_df = pd.DataFrame(columns=["Type", "Damköhler", "Value", "Regime"])
-va_mt_df = pd.DataFrame(columns=["Transfer path", "kLa (1/s)", "Demand 1/t_rxn (1/s)",
-                                 "Capacity / demand", "Screening"])
+va_mt_df = pd.DataFrame(columns=MT_COLUMNS)
 va_assess = ""
 va_corr_applicability = ""
 va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
@@ -460,16 +443,15 @@ def on_va_export_pdf(state):
         return
     try:
         t_rxn = _auto_t_rxn(state.va_order, state.va_k, state.va_c0, state.va_trxn)
-        snap = {
-            "reactor": state.va_reactor, "fluid": state.va_fluid,
-            "T": state.va_T, "P": state.va_P, "N_rpm": state.va_n_rpm,
-            "V_L": state.va_v_l, "corr_mode": state.va_corr_mode,
-            "reaction": state.va_reaction, "t_rxn": t_rxn, "dH": state.va_dH,
-            "hydro_df": state.va_hydro_df, "assessment": state.va_assess,
-            "dam_df": state.va_dam_df, "sl_df": state.va_sl_df,
-            "heat_df": state.va_heat_df, "env_fig": state.va_env_fig,
-            "env_caption": state.va_env_caption, "env_params": state.va_env_params,
-        }
+        snap = snapshots.assessment_snapshot(
+            reactor=state.va_reactor, fluid=state.va_fluid, T_C=state.va_T, P_atm=state.va_P,
+            N_rpm=state.va_n_rpm, V_L=state.va_v_l, corr_label=state.va_corr_mode,
+            reaction=state.va_reaction, t_rxn=t_rxn, dH=state.va_dH,
+            tables={"hydro": state.va_hydro_df, "assessment": state.va_assess,
+                    "damkohler": state.va_dam_df, "solids": state.va_sl_df,
+                    "heat": state.va_heat_df},
+            env_fig=state.va_env_fig, env_caption=state.va_env_caption,
+            env_params=state.va_env_params)
         state.va_pdf_bytes = build_vessel_assessment_pdf(snap)
         state.va_pdf_name = report_filename("Vessel_Assessment", state.va_reactor)
         state.va_pdf_ready = True
@@ -555,70 +537,15 @@ def on_va_compute(state):
 
     hydro = op.evaluate_point(_inputs(state, t_rxn), state.va_n_rpm / 60.0, state.va_v_l)
     state.va_corr_applicability = _correlation_applicability(state, hydro)
-    sl_on, gas_on, fed_on = (is_on(state.va_sl_mode), is_on(state.va_gas_mode),
-                             is_on(state.va_fed_mode))
-
-    kla_sl = hydro.get("kLa_SL (1/s)", 0.0)
-    if sl_on:
-        n_js_rpm = hydro.get("N_js (RPM)", 0.0)
-        assess = particle_suspension_criterion(state.va_n_rpm / 60.0, n_js_rpm / 60.0)
-        state.va_sl_df = pd.DataFrame([
-            {"Parameter": "Just-suspended speed N_js", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
-            {"Parameter": "Operating speed N", "Value": f"{state.va_n_rpm:.1f}", "Units": "RPM"},
-            {"Parameter": "N / N_js", "Value": f"{(state.va_n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
-            {"Parameter": "Suspension state", "Value": assess, "Units": "–"},
-            {"Parameter": "Settling velocity v_t", "Value": f"{hydro.get('v_t (m/s)', 0.0):.3g}", "Units": "m/s"},
-            {"Parameter": "Solid-liquid k_SL", "Value": f"{hydro.get('k_SL (m/s)', 0.0):.3g}", "Units": "m/s"},
-            {"Parameter": "Solid-liquid kLa_SL", "Value": f"{kla_sl:.3g}", "Units": "1/s"},
-        ])
-    else:
-        state.va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
-
+    tables = assessment_tables(hydro, state.va_n_rpm, t_rxn, solids_on=is_on(state.va_sl_mode),
+                               gas_on=is_on(state.va_gas_mode), fed_on=is_on(state.va_fed_mode))
+    state.va_hydro_df = tables["hydro"]
+    state.va_dam_df = tables["damkohler"]
+    state.va_sl_df = tables["solids"]
+    state.va_heat_df = tables["heat"]
+    state.va_mt_df = tables["mass_transfer"]
+    state.va_assess = tables["assessment"]
     dam = {k: hydro[k] for k in ("Da_macro", "Da_micro", "Da_GL", "Da_SL", "Assessment")}
-
-    transfer_paths = []
-    if gas_on:
-        transfer_paths.append(("Gas-liquid", hydro["kLa (1/s)"]))
-    if sl_on:
-        transfer_paths.append(("Solid-liquid", kla_sl))
-    state.va_mt_df = pd.DataFrame(rules.mass_transfer_screen(transfer_paths, t_rxn),
-                                  columns=va_mt_df.columns)
-
-    # Hydrodynamics KPI table
-    state.va_hydro_df = pd.DataFrame(
-        [{"Parameter": name, "Value": f"{hydro[key]:,.4g}", "Units": unit}
-         for key, name, unit in _HYDRO_ROWS])
-
-    _regime = rules.regime_label
-
-    da_meso = hydro.get("Da_meso", 0.0)
-    gl_type = ("Gas–liquid mass transfer" if gas_on
-               else "Gas–liquid mass transfer (surface aeration)")
-
-    dam_rows = [
-        {"Type": "Macromixing (bulk blending)", "Damköhler": "Da_macro", "Value": f"{dam['Da_macro']:.3g}", "Regime": _regime(dam["Da_macro"])},
-    ]
-    if fed_on:
-        dam_rows.append({"Type": "Mesomixing (feed dispersion)", "Damköhler": "Da_meso", "Value": f"{da_meso:.3g}", "Regime": _regime(da_meso)})
-    dam_rows.append({"Type": "Micromixing (engulfment)", "Damköhler": "Da_micro", "Value": f"{dam['Da_micro']:.3g}", "Regime": _regime(dam["Da_micro"])})
-    dam_rows.append({"Type": gl_type, "Damköhler": "Da_GL", "Value": f"{dam['Da_GL']:.3g}", "Regime": _regime(dam["Da_GL"])})
-    if sl_on:
-        dam_rows.append({"Type": "Solid–liquid mass transfer", "Damköhler": "Da_SL", "Value": f"{dam['Da_SL']:.3g}", "Regime": _regime(dam["Da_SL"])})
-    state.va_dam_df = pd.DataFrame(dam_rows)
-    state.va_assess = f"**Assessment:** {dam['Assessment']}"
-
-    # Heat balance (optional — only when a heat of reaction is set)
-    if "Q_gen (W)" in hydro:
-        q_gen, q_cool = hydro["Q_gen (W)"], hydro["Q_cool (W)"]
-        state.va_heat_df = pd.DataFrame([
-            {"Parameter": "Heat generation Q_gen", "Value": f"{q_gen:,.1f}", "Units": "W"},
-            {"Parameter": "Overall U", "Value": f"{hydro['U (W/m²·K)']:,.1f}", "Units": "W/m²·K"},
-            {"Parameter": "Jacket area A", "Value": f"{hydro['A_ht (m²)']:,.4g}", "Units": "m²"},
-            {"Parameter": "Cooling capacity Q_cool", "Value": f"{q_cool:,.1f}", "Units": "W"},
-            {"Parameter": "Balance", "Value": heat_balance_assessment(q_gen, q_cool), "Units": "–"},
-        ])
-    else:
-        state.va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 
     _build_envelope(state, t_rxn)
     _mark_surface_stale(state)
@@ -722,144 +649,32 @@ def _env_params(state) -> list[str]:
     return params or ["Da_macro"]
 
 
-def _env_ranges(state) -> tuple[np.ndarray, float, float]:
-    """(RPM sweep array, V_min, V_max) for the selected vessel."""
-    return operating_window(_reactor_row(state.va_reactor), state.va_n_rpm, state.va_v_l)
-
-
 def _build_envelope(state, t_rxn: float):
-    """Plot each SELECTED parameter as an operating *region*: an RPM sweep
-    bounded by the vessel's minimum and maximum fill volume, with the current
-    operating point marked. The subplot grid adapts to the number of chosen
-    parameters."""
+    """Each selected parameter as an operating region (RPM sweep between V_min and
+    V_max) with the current operating point marked."""
     params = _env_params(state)
-    n_arr, v_min, v_max = _env_ranges(state)
-    evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
-    curves = sweep(evaluate, n_arr, (v_max, v_min), params)
-    hi_v, lo_v = curves[v_max], curves[v_min]
-    current = evaluate(state.va_n_rpm, state.va_v_l)
-
-    n = len(params)
-    cols = min(3, n)
-    rows = int(np.ceil(n / cols))
-    positions = [(i // cols + 1, i % cols + 1) for i in range(n)]
-    # Give each inter-row gap enough room for the lower row's x-axis title and
-    # the next row's subplot title (Plotly spacing is a fraction of the total
-    # height, so scale it down only as the row count grows).
-    vspace = min(0.22, 0.6 / max(rows - 1, 1))
-    fig = make_subplots(rows=rows, cols=cols, subplot_titles=params,
-                        vertical_spacing=vspace, horizontal_spacing=0.08)
-    for p, (r, c) in zip(params, positions):
-        first = (p == params[0])
-        y_hi, y_lo = hi_v[p], lo_v[p]
-        # Shaded operating region between min- and max-volume boundaries.
-        fig.add_trace(go.Scatter(
-            x=np.concatenate([n_arr, n_arr[::-1]]),
-            y=np.concatenate([y_hi, y_lo[::-1]]),
-            fill="toself", fillcolor="rgba(92,102,112,0.22)",
-            line={"width": 0}, hoverinfo="skip", showlegend=False), row=r, col=c)
-        # Max-volume boundary (solid) and min-volume boundary (dotted) — mid
-        # gray stays visible on both the light and dark chart backgrounds.
-        fig.add_trace(go.Scatter(
-            x=n_arr, y=y_hi, mode="lines", line={"width": 2, "color": "#808080"},
-            name=f"V_max = {v_max:.0f} L", legendgroup="vmax",
-            showlegend=first), row=r, col=c)
-        fig.add_trace(go.Scatter(
-            x=n_arr, y=y_lo, mode="lines",
-            line={"width": 2, "color": "#808080", "dash": "dot"},
-            name=f"V_min = {v_min:.0f} L", legendgroup="vmin",
-            showlegend=first), row=r, col=c)
-        # Current operating point (red star).
-        fig.add_trace(go.Scatter(
-            x=[state.va_n_rpm], y=[current[p]], mode="markers",
-            marker={"symbol": "star", "size": 15, "color": "red",
-                    "line": {"width": 1, "color": "black"}},
-            name="Operating point", legendgroup="op",
-            showlegend=first), row=r, col=c)
-        fig.update_xaxes(title_text="N (RPM)", row=r, col=c)
-        if p in _ENV_LOG:
-            fig.update_yaxes(type="log", row=r, col=c)
-            for thr, col_ in ((0.1, "orange"), (1.0, "red")):
-                fig.add_hline(y=thr, line_dash="dash", line_color=col_, row=r, col=c)
-    fig_height = max(360, rows * 360)
-    # Place the horizontal legend a consistent ~45 px above the plot area (legend
-    # y is a fraction of plot-area height, so it must scale with the figure).
-    _t_margin = 90
-    _plot_area = max(fig_height - _t_margin - 40, 120)
-    _legend_y = 1 + 45 / _plot_area
-    fig.update_layout(
-        height=fig_height, margin={"t": _t_margin, "b": 40},
-        # No explicit paper/font colors: Taipy swaps the plotly template per
-        # theme, so legends/titles/axes stay legible in both light and dark mode.
-        plot_bgcolor="rgba(225,37,27,0.06)",
-        legend={"orientation": "h", "y": _legend_y, "yanchor": "bottom",
-                "x": 0.5, "xanchor": "center"})
+    d = envelope_data(_evaluator(_inputs(state, t_rxn, heat=False)),
+                      _reactor_row(state.va_reactor), state.va_n_rpm, state.va_v_l, params)
+    fig, rows = viz_vessel.assessment_envelope(
+        d["n_rpm"], d["hi"], d["lo"], d["v_min"], d["v_max"], params,
+        state.va_n_rpm, d["op"], _ENV_LOG)
     state.va_env_fig = fig
     state.va_env_class = f"env-rows-{min(rows, 8)}"
-    state.va_env_caption = (f"**Operating envelope** — RPM sweep across "
-                            f"V = {v_min:.3g}–{v_max:.3g} L")
+    state.va_env_caption = viz_vessel.assessment_envelope_caption(d["v_min"], d["v_max"])
 
 
 def _build_surface(state, t_rxn: float):
-    """3D response surfaces z = f(N, V) for each selected parameter over the
-    vessel's full RPM × fill-volume window, with the operating point marked."""
+    """3D response surfaces z = f(N, V) over the vessel's RPM x fill-volume window."""
     params = _env_params(state)
-    n_full, v_min, v_max = _env_ranges(state)
-    n_arr = np.linspace(n_full[0], n_full[-1], _SURF_N_PTS)
-    v_arr = np.linspace(v_min, v_max, _SURF_V_PTS)
-    evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
-    z = surface_grid(evaluate, n_arr, v_arr, params)
-    current = evaluate(state.va_n_rpm, state.va_v_l)
-
-    n = len(params)
-    cols = min(3, n)
-    rows = int(np.ceil(n / cols))
-    fig = make_subplots(
-        rows=rows, cols=cols, subplot_titles=params,
-        specs=[[{"type": "surface"}] * cols for _ in range(rows)],
-        vertical_spacing=0.06, horizontal_spacing=0.03)
-
-    for idx, p in enumerate(params):
-        r, c = idx // cols + 1, idx % cols + 1
-        zp = z[p]
-        log_z = p in _ENV_LOG and bool(np.all(zp > 0))
-        fig.add_trace(go.Surface(
-            x=n_arr, y=v_arr, z=zp, colorscale="Viridis", showscale=False,
-            opacity=0.9, name=p, showlegend=False,
-            hovertemplate=("N = %{x:.0f} RPM<br>V = %{y:.3g} L<br>"
-                           + p + " = %{z:.3g}<extra></extra>"),
-            contours={"z": {"show": True, "usecolormap": True,
-                            "project": {"z": True}}},
-        ), row=r, col=c)
-        if log_z:
-            # Translucent planes at the 0.1 / 1.0 mixing-sensitivity thresholds.
-            for thr, col_ in ((0.1, "orange"), (1.0, "red")):
-                fig.add_trace(go.Surface(
-                    x=n_arr, y=v_arr, z=np.full_like(zp, thr),
-                    colorscale=[[0, col_], [1, col_]], showscale=False,
-                    opacity=0.25, hoverinfo="skip", showlegend=False), row=r, col=c)
-        fig.add_trace(go.Scatter3d(
-            x=[state.va_n_rpm], y=[state.va_v_l], z=[current[p]], mode="markers",
-            marker={"symbol": "diamond", "size": 7, "color": "red",
-                    "line": {"width": 1, "color": "black"}},
-            name="Operating point", legendgroup="op", showlegend=(idx == 0),
-        ), row=r, col=c)
-        fig.update_scenes(
-            xaxis={"title": "N (RPM)"}, yaxis={"title": "V (L)"},
-            zaxis={"title": p, "type": "log" if log_z else "linear"},
-            camera={"eye": {"x": 1.6, "y": -1.6, "z": 0.9}},
-            row=r, col=c)
-
-    fig_height = max(360, rows * 360)
-    fig.update_layout(
-        height=fig_height, margin={"t": 60, "b": 10, "l": 0, "r": 0},
-        legend={"orientation": "h", "y": 1.02, "yanchor": "bottom",
-                "x": 0.5, "xanchor": "center"})
+    d = surface_data(_evaluator(_inputs(state, t_rxn, heat=False)),
+                     _reactor_row(state.va_reactor), state.va_n_rpm, state.va_v_l, params,
+                     _SURF_N_PTS, _SURF_V_PTS)
+    fig, rows = viz_vessel.assessment_surfaces(
+        d["n_rpm"], d["v_l"], d["z"], params, state.va_n_rpm, state.va_v_l, d["op"], _ENV_LOG)
     state.va_surf_fig = fig
     state.va_surf_class = f"env-rows-{min(rows, 8)}"
-    state.va_surf_caption = (
-        f"**Response surfaces** — N = {n_arr[0]:.0f}–{n_arr[-1]:.0f} RPM × "
-        f"V = {v_min:.3g}–{v_max:.3g} L ({_SURF_N_PTS}×{_SURF_V_PTS} grid)")
+    state.va_surf_caption = viz_vessel.assessment_surfaces_caption(
+        d["n_rpm"], d["v_min"], d["v_max"], _SURF_N_PTS, _SURF_V_PTS)
 
 
 # ---------------------------------------------------------------------------

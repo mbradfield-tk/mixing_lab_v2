@@ -99,6 +99,20 @@ def solvent_props(solvent: str, T_C: float) -> dict | None:
         return None
 
 
+def thermal_props(name: str, T_C: float) -> dict:
+    """{rho, mu, cp, k} for a custom fluid (fixed) or a library solvent at T_C (water defaults otherwise)."""
+    row = fluid_row(name)
+    if not row.empty:
+        return {"rho": sf(row.get("rho_kg_m3"), 1000.0), "mu": sf(row.get("mu_Pa_s"), 0.001),
+                "cp": sf(row.get("Cp_J_per_kgK"), 4182.0), "k": sf(row.get("k_W_per_mK"), 0.607)}
+    canonical = resolve_solvent_name(name)
+    if canonical:
+        p = get_properties(canonical, T_C)
+        return {"rho": p["rho_kg_m3"], "mu": p["mu_Pa_s"],
+                "cp": p["Cp_J_per_kgK"], "k": p["k_W_per_mK"]}
+    return {"rho": 1000.0, "mu": 0.001, "cp": 4182.0, "k": 0.607}
+
+
 def bottom_dish_height(row: pd.Series) -> float:
     """Measured bottom-dish height (m) for a reactor row, 0.0 when unknown.
 

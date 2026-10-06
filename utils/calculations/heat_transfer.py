@@ -31,7 +31,7 @@ None of the heat-transfer correlations below appear in the context source
         Series-resistance / lumped-capacitance energy balances.
         Ref: standard process heat-transfer texts (e.g. Coulson & Richardson
         vol. 1; Perry's Handbook).  [NOT in context/ - verify]
-        (Transient batch simulations live in heat_transfer_core.py.)
+        (Transient batch simulations live in core/heat_transfer.py.)
     WALL_CONDUCTIVITY, LINING_CONDUCTIVITY, *_THICKNESS, JACKET_HTC, FOULING
         Tabulated material/typical values.  [SOURCE MISSING - verify against
         material datasheets / Perry's]
@@ -134,7 +134,7 @@ def estimate_U(material: str = "", N_rps: float = 0.0,
 # Material property lookup tables
 # ---------------------------------------------------------------------------
 
-# Keep in sync with heat_transfer_core.py, which holds the referenced source table
+# Keep in sync with core/heat_transfer.py, which holds the referenced source table
 # (WALL_CONDUCTIVITY_REF / LINING_CONDUCTIVITY_REF) for every value below.
 WALL_CONDUCTIVITY: dict[str, float] = {
     "stainless steel": 15.0, "stainless": 15.0,

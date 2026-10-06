@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from core.records import bottom_dish_height
+
 # Process-side Nusselt correlations for jacketed agitated vessels:
 #   Nu = C * Re^a * Pr^b * (mu/mu_wall)^c
 # Each entry carries a `ref` so the constants can be audited by hand. Entries
@@ -818,6 +820,55 @@ def resistance_items(h_i: float, h_o: float, wall_k: float, wall_thickness_mm: f
     if h_o > 0:
         items.append(("Outside film (jacket)", 1.0 / h_o))
     return items
+
+
+def resistance_breakdown(items: list[tuple[str, float]]) -> list[tuple[str, float, float]]:
+    """(name, R, % of the total series resistance) for each resistance."""
+    r_total = sum(r for _, r in items) or 1.0
+    return [(name, r, r / r_total * 100.0) for name, r in items]
+
+
+def time_factor(unit: str) -> float:
+    """Seconds per display time unit ("Seconds" | "Minutes" | "Hours")."""
+    return {"Seconds": 1.0, "Minutes": 60.0, "Hours": 3600.0}.get(unit, 60.0)
+
+
+def round_sig(value: float, digits: int = 4) -> float:
+    if value == 0 or not np.isfinite(value):
+        return value
+    return round(value, -int(np.floor(np.log10(abs(value)))) + digits - 1)
+
+
+def reactor_jacket_area(row: pd.Series, d_tank: float, v_l: float) -> float:
+    """Wetted jacket area (m², 4 significant figures) of a reactor at a fill volume (L)."""
+    h_max = safe_float(row.get("H_max_m"), safe_float(row.get("H_m"), 0.2))
+    dish = str(row.get("bottom_dish", ""))
+    dish_height = bottom_dish_height(row)
+    h = liquid_height_from_volume(v_l, d_tank, h_max, dish, dish_height)
+    return round_sig(estimate_jacket_area(d_tank, h, dish, dish_height))
+
+
+def ua_sweep_series(base: dict[str, Any], htm_db: dict[str, dict[str, Any]], row: pd.Series,
+                    a_ht: float, n_pts: int = 40) -> dict[str, np.ndarray | list[float]]:
+    """UA vs stir speed (area fixed) and UA vs fill volume (U fixed) around the
+    operating point in ``base``; ranges come from the reactor row when recorded."""
+    cur_rpm = max(base["n_rpm"], 1.0)
+    rmin, rmax = safe_float(row.get("N_rpm_min"), 0.0), safe_float(row.get("N_rpm_max"), 0.0)
+    if not (rmax > rmin > 0):
+        rmin, rmax = max(1.0, 0.1 * cur_rpm), 2.0 * cur_rpm
+    rpm = np.linspace(rmin, rmax, n_pts)
+
+    cur_vol = max(base["v_l"], 1e-6)
+    vmin, vmax = safe_float(row.get("V_L_min"), 0.0), safe_float(row.get("V_L_max"), 0.0)
+    if not (vmax > vmin > 0):
+        vmin, vmax = 0.1 * cur_vol, 2.0 * cur_vol
+    vol = np.linspace(max(vmin, 1e-6), vmax, n_pts)
+    h_max = safe_float(row.get("H_max_m"), safe_float(row.get("L_tan_tan_m"), 0.2))
+    return {
+        "rpm": rpm, "ua_rpm": ua_vs_rpm(base, htm_db, a_ht, rpm),
+        "volume": vol, "ua_volume": ua_vs_volume(base, htm_db, h_max, str(row.get("bottom_dish", "")),
+                                                 bottom_dish_height(row), vol),
+    }
 
 
 def jacket_area_at(v_l: float, d_tank: float, h_max: float, bottom_dish: str,

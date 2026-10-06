@@ -27,13 +27,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import impeller_power, power_per_volume
 from utils.solvent_properties import is_known_solvent, list_solvents
 from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
 from utils import bourne_kpi as kpi
@@ -42,6 +40,8 @@ from core import bourne_io
 from core import bourne_plan as plan
 from core import sensitivity_rules as rules
 from core.options import CenterMode, FeedBasis, Toggle, is_on
+from viz import bourne as viz_bourne
+from reports import snapshots
 from core.records import (
     VesselGeometry,
     range_midpoint as _avg_range,
@@ -50,7 +50,7 @@ from core.records import (
     sf as _sf,
 )
 from pages import _db_common as db
-from vessel_media import build_image_html, build_vessel_viewer_html, media_caption
+from pages._vessel_media import build_image_html, build_vessel_viewer_html, media_caption
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 reactors_df = pd.read_csv(DATA_DIR / "reactors.csv")
@@ -103,9 +103,6 @@ _kpi_criticality = kpi.kpi_criticality
 def _assess(low: float, center: float, high: float) -> tuple[float, bool]:
     """Return (max % change from centre, sensitive?) using the default threshold."""
     return kpi.assess_with_threshold(low, center, high, _SENS_THRESHOLD)
-
-
-_n_for_pm = plan.n_for_pm
 
 
 def _system(state) -> plan.BourneSystem:
@@ -476,9 +473,6 @@ def on_bp_plan_sys_change(state):
 # ---------------------------------------------------------------------------
 # Test 1
 # ---------------------------------------------------------------------------
-_T1_CONDITIONS = plan.T1_CONDITIONS
-
-
 def _t1_condition_rows(state) -> list[dict]:
     """Raw (unformatted) Test 1 conditions after RPM clamping — the single source
     for the on-page table, the P/m range check and the PDF snapshot."""
@@ -513,59 +507,12 @@ def _build_t1(state):
 
 def _build_t1_plot(state):
     """Impeller-speed vs fill-volume iso-P/m plot (0.1× / 1× / 10× centre)."""
-    v_min, v_max = state.bp_v_min, state.bp_v_max
-    if not (v_max > v_min > 0):
-        state.bp_t1_show_plot = False
-        state.bp_t1_plot = go.Figure()
-        return
-    state.bp_t1_show_plot = True
-    D, Np = state.bp_d_imp, state.bp_np
-    pm_c = state.bp_t1_pm_eff
-    vols = np.linspace(v_min, v_max, 50)
-    targets = [("0.1× P/m", pm_c * 0.1, "#9E9E9E"),
-               ("1× P/m (centre)", pm_c, "#E1251B"),
-               ("10× P/m", pm_c * 10.0, "#7A1008")]
-    fig = go.Figure()
-    for label, pm, color in targets:
-        rpm = [_n_for_pm(pm, v / 1000.0, Np, D) * 60.0 for v in vols]
-        fig.add_trace(go.Scatter(x=vols, y=rpm, mode="lines", name=label,
-                                 line=dict(color=color, width=2)))
-    # Centre-point marker at the working volume
-    rpm_ctr = _n_for_pm(pm_c, state.bp_v_l / 1000.0, Np, D) * 60.0
-    fig.add_trace(go.Scatter(
-        x=[state.bp_v_l], y=[rpm_ctr], mode="markers",
-        name=f"Centre ({state.bp_v_l:g} L)",
-        marker=dict(color="black", size=12, symbol="circle")))
-    # Fed-batch adjustment set-points, if enabled
-    if is_on(state.bp_t1_adj_mode):
-        adj = [_sf(r.get("Volume (L)")) for _, r in state.bp_t1_adj_vols_df.iterrows()
-               if _sf(r.get("Volume (L)")) > 0]
-        if adj:
-            for i, (label, pm, color) in enumerate(targets):
-                yv = [_n_for_pm(pm, v / 1000.0, Np, D) * 60.0 for v in adj]
-                fig.add_trace(go.Scatter(
-                    x=adj, y=yv, mode="markers",
-                    name="Fed-batch set-points" if i == 0 else None,
-                    showlegend=(i == 0),
-                    marker=dict(color=color, size=11, symbol="diamond",
-                                line=dict(color="black", width=1)),
-                    hovertemplate="%{x:.3g} L → %{y:.1f} RPM<extra></extra>"))
-    # Reactor RPM bounds
-    if state.bp_n_min > 0:
-        fig.add_hline(y=state.bp_n_min, line_dash="dash", line_color="gray",
-                      annotation_text=f"Min RPM ({state.bp_n_min:.0f})",
-                      annotation_position="top left")
-    if state.bp_n_max > 0:
-        fig.add_hline(y=state.bp_n_max, line_dash="dash", line_color="gray",
-                      annotation_text=f"Max RPM ({state.bp_n_max:.0f})",
-                      annotation_position="bottom left")
-    fig.update_layout(
-        xaxis_title="Fill volume (L)", yaxis_title="Impeller speed (RPM)",
-        # Dark legend text: the box stays white-ish even in Taipy dark mode.
-        legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.75)",
-                    font=dict(color="#2A2E33")),
-        margin=dict(l=10, r=10, t=30, b=10))
-    state.bp_t1_plot = fig
+    adj = ([_sf(r.get("Volume (L)")) for _, r in state.bp_t1_adj_vols_df.iterrows()]
+           if is_on(state.bp_t1_adj_mode) else [])
+    data = plan.t1_speed_plan(_system(state), state.bp_t1_pm_eff, state.bp_v_min,
+                              state.bp_v_max, adj)
+    state.bp_t1_show_plot = data is not None
+    state.bp_t1_plot = viz_bourne.t1_speed_plan(data) if data else go.Figure()
 
 
 def _build_t1_adj(state):
@@ -918,37 +865,6 @@ def _build_summary(state):
 # ---------------------------------------------------------------------------
 # PDF export
 # ---------------------------------------------------------------------------
-def _kpi_snapshot(res: dict, test: int) -> dict:
-    """Convert an ``_assess_kpis`` result into the report_builder response dict."""
-    low, ctr, high = KPI_COLUMNS[test]
-    kpi_results = [{
-        "name": f'{r["name"]} ({r["unit"]})' if r["unit"] else r["name"],
-        "qualitative": False,
-        "resp": [r["low"], r["ctr"], r["high"]],
-        "max_pct": r["max_pct"],
-        "sensitive": r["sensitive"],
-    } for r in res["results"]]
-    return {
-        "labels": [low, ctr, high],
-        "kpi_results": kpi_results,
-        "n_sensitive": res["n_sensitive"],
-        "n_total": res["n_total"],
-        "status": res["status"],
-        "sensitive": res["sensitive"],
-    }
-
-
-def _t1_conditions_snap(state) -> list:
-    keep = ("Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)",
-            "Tip speed (m/s)", "Avg shear rate (1/s)", "kLa_surface (1/s)")
-    out = []
-    for r in _t1_condition_rows(state):
-        snap = {k: r[k] for k in keep}
-        snap["Condition"] = r["Condition"].replace("×", "x") + r["note"]
-        out.append(snap)
-    return out
-
-
 def _centerpoint_metrics(state) -> dict:
     return plan.centerpoint_metrics(_system(state), state.bp_t1_pm_eff)
 
@@ -961,67 +877,29 @@ def _feed_time_centre(state) -> float:
 
 
 def _t2_conditions_snap(state) -> dict:
-    D, Np = state.bp_d_imp, state.bp_np
-    V_m3 = state.bp_v_l / 1000.0
-    vol = state.bp_t2_feed_vol
-    t_c = _feed_time_centre(state)
-    rows = []
-    for label, tf in (("Slow (1/3x rate)", t_c * 3.0), ("Centre", t_c), ("Fast (3x rate)", t_c / 3.0)):
-        rows.append({"Condition": label, "Feed time (min)": tf,
-                     "Flow rate (mL/min)": vol / tf if tf > 0 else 0.0})
-    return {
-        "N_RPM": _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D) * 60.0,
-        "feed_vol_mL": vol,
-        "feed_location": "Held constant (centerpoint)",
-        "rows": rows,
-    }
+    return plan.t2_report_conditions(_report_system(state), state.bp_t1_pm_eff,
+                                     state.bp_t2_feed_vol, _feed_time_centre(state))
 
 
 def _t3_conditions_snap(state) -> dict:
-    D, Np, rho = state.bp_d_imp, state.bp_np, state.bp_rho
-    V_m3 = state.bp_v_l / 1000.0
-    n_rps = _n_for_pm(state.bp_t1_pm_eff, V_m3, Np, D)
-    P = impeller_power(Np, rho, n_rps, D)
-    eps_avg = (power_per_volume(P, V_m3) / rho) if (V_m3 > 0 and rho > 0) else 0.0  # W/kg
-    rows = []
-    for loc, ratio in (
-        ("Surface", _sf(state.bp_t3_surface_ratio, 0.1)),
-        ("Sub-surface (mid-tank)", _sf(state.bp_t3_mid_ratio, 1.0)),
-        ("Impeller zone", _sf(state.bp_t3_impeller_ratio, 3.0)),
-    ):
-        ratio = max(ratio, 1e-9)
-        rows.append({"Feed Location": loc, "eps_loc/eps_avg": ratio,
-                     "eps_loc (W/kg)": ratio * eps_avg})
-    return {"N_RPM": n_rps * 60.0, "feed_time_min": _feed_time_centre(state),
-            "eps_avg_W_kg": eps_avg, "rows": rows}
+    ratios = plan.t3_location_ratios(_sf(state.bp_t3_surface_ratio, 0.1),
+                                     _sf(state.bp_t3_mid_ratio, 1.0),
+                                     _sf(state.bp_t3_impeller_ratio, 3.0))
+    return plan.t3_report_conditions(_report_system(state), state.bp_t1_pm_eff, ratios,
+                                     _feed_time_centre(state))
+
+
+def _report_system(state) -> plan.BourneSystem:
+    """Power-draw inputs only (no fluid lookup) for the report conditions."""
+    return plan.BourneSystem(D_imp=state.bp_d_imp, Np=state.bp_np, rho=state.bp_rho,
+                             mu=0.0, D_mol=0.0, V_L=state.bp_v_l)
 
 
 def _dominant_and_conclusions(state):
     """Return (dominant regime, list of (test, verdict, icon) conclusions)."""
-    def _verdict(res):
-        n, N = res["n_sensitive"], res["n_total"]
-        thr = kpi.threshold_phrase(res) if res.get("results") else f"≥ {_SENS_THRESHOLD:.0f}%"
-        if res["status"] == "sensitive":
-            return f"**Sensitive** ({n}/{N} KPIs {thr})"
-        if res["status"] == "inconclusive":
-            return f"**Inconclusive** ({n}/{N} KPIs {thr})"
-        return f"**Not sensitive** (0/{N} KPIs)"
-
     o = _protocol_outcome(state)
-    conclusions = []
-    if state.bp_t1_result:
-        v = _verdict(state.bp_t1_result)
-        if o["s1"] == "not_sensitive" and not o["range_ok"]:
-            v += f" - only a {o['ratio']:.1f}x P/m span was achieved; treated as inconclusive"
-        conclusions.append(("Test 1 - Impeller speed", v, ""))
-    if state.bp_t2_result:
-        conclusions.append(("Test 2 - Feed rate", _verdict(state.bp_t2_result), ""))
-    if state.bp_t3_result:
-        conclusions.append(("Test 3 - Feed location", _verdict(state.bp_t3_result), ""))
-    if o["tentative"]:
-        conclusions.append(("Confidence", "**Tentative** - an upstream test was inconclusive; "
-                            "replicate it before fixing the scale-up rule", ""))
-    return o["dominant"], conclusions
+    return o["dominant"], rules.bourne_conclusions(
+        o, {1: state.bp_t1_result, 2: state.bp_t2_result, 3: state.bp_t3_result})
 
 
 def on_bp_export_pdf(state):
@@ -1030,28 +908,16 @@ def on_bp_export_pdf(state):
         return
     try:
         dominant, conclusions = _dominant_and_conclusions(state)
-        snap = {
-            "reactor": state.bp_reactor,
-            "fluid": state.bp_fluid,
-            "V_L": state.bp_v_l,
-            "dominant": dominant,
-            "conclusions": conclusions,
-            "scaleup_notes": [],
-            "t1_conditions": _t1_conditions_snap(state),
-            "t1_responses": _kpi_snapshot(state.bp_t1_result, 1),
-            "centerpoint_metrics": _centerpoint_metrics(state),
-        }
-        if state.bp_t2_result:
-            snap["t2_conditions"] = _t2_conditions_snap(state)
-            snap["t2_responses"] = _kpi_snapshot(state.bp_t2_result, 2)
-        if state.bp_t3_result:
-            snap["t3_conditions"] = _t3_conditions_snap(state)
-            snap["t3_responses"] = _kpi_snapshot(state.bp_t3_result, 3)
         unit_op = state.bp_unit_operation if state.bp_unit_operation != UNIT_OPERATION_OPTIONS[0] else ""
-        snap["project_name"] = state.bp_project_name
-        snap["step_number"] = state.bp_step_text
-        snap["unit_operation"] = unit_op
-        snap["process_version"] = state.bp_process_version
+        snap = snapshots.bourne_snapshot(
+            reactor=state.bp_reactor, fluid=state.bp_fluid, V_L=state.bp_v_l,
+            dominant=dominant, conclusions=conclusions,
+            t1_rows=_t1_condition_rows(state), t1_result=state.bp_t1_result,
+            centerpoint=_centerpoint_metrics(state),
+            t2=(_t2_conditions_snap(state), state.bp_t2_result) if state.bp_t2_result else None,
+            t3=(_t3_conditions_snap(state), state.bp_t3_result) if state.bp_t3_result else None,
+            project=snapshots.project_meta(state.bp_project_name, state.bp_step_text, unit_op,
+                                           state.bp_process_version))
         state.bp_pdf_bytes = build_bourne_protocol_pdf(snap)
         state.bp_pdf_name = report_filename("Bourne", report_header_label(snap) or state.bp_reactor)
         state.bp_pdf_ready = True

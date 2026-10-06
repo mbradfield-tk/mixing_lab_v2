@@ -243,7 +243,9 @@ m_dot_jacket = 1.0
 
 fouling = FOULING_DEFAULT
 mu_wall = 0.0
-include_agitator = True
+# String toggle: a lov-less boolean toggle in a page module never updates state.
+include_agitator = "On"
+include_agitator_options = ["Off", "On"]
 q_rxn = 0.0
 t_start = 25.0
 t_target = 5.0
@@ -508,7 +510,7 @@ def _shared_ht_data(state) -> dict:
         "d_hyd_jacket": state.d_hyd_jacket,
         "m_dot_jacket": state.m_dot_jacket,
         "cp_jacket": state.cp_jacket,
-        "include_agitator": state.include_agitator,
+        "include_agitator": state.include_agitator in (True, "On"),
         "wall_k": state.wall_k,
         "wall_thickness_mm": state.wall_thickness_mm,
         "lining_k": state.lining_k,
@@ -615,7 +617,7 @@ def on_compute(state):
         "m_dot_jacket": state.m_dot_jacket,
         "cp_jacket": state.cp_jacket,
         "q_rxn": state.q_rxn,
-        "include_agitator": state.include_agitator,
+        "include_agitator": state.include_agitator in (True, "On"),
         "wall_k": state.wall_k,
         "wall_thickness_mm": state.wall_thickness_mm,
         "lining_k": state.lining_k,
@@ -947,7 +949,7 @@ def _export_batch_pdf(state):
             "htm_name": state.selected_htm, "v_jacket": state.v_jacket,
             "d_hyd_jacket": state.d_hyd_jacket, "m_dot_jacket": state.m_dot_jacket,
             "cp_jacket": state.cp_jacket, "q_rxn": state.q_rxn,
-            "include_agitator": state.include_agitator, "wall_k": state.wall_k,
+            "include_agitator": state.include_agitator in (True, "On"), "wall_k": state.wall_k,
             "wall_thickness_mm": state.wall_thickness_mm, "lining_k": state.lining_k,
             "lining_thickness_mm": state.lining_thickness_mm, "fouling": state.fouling,
             "a_ht": state.a_ht,
@@ -1101,25 +1103,28 @@ Choose heat/cool operation, a reaction temperature profile, or a two-parameter U
 
 <|part|class_name=va-card|
 ## 2. Geometry, Materials, and Operating Inputs
-### Reactor Specifications
+### Reactor & Operating Point
 <|layout|columns=1 1 1 1|
 <|{d_tank}|number|label=D_tank (m)|>
 
 <|{d_imp}|number|label=D_imp (m)|>
 
 <|{np_in}|number|label=Np|>
-|>
-
-### Volume, Area & Fouling
-<|layout|columns=1 1 1 1|
-<|{fouling}|number|label=Fouling resistance (m2.K/W)|>
-
-<|{v_l}|number|label=Liquid volume (L)|on_change=on_v_l_change|>
-
-<|{a_ht}|number|label=Heat-transfer area A_ht (m2)|>
 
 <|{n_rpm}|number|label=N (RPM)|>
 |>
+
+<|layout|columns=1 1 1 1|
+<|{v_l}|number|label=Liquid volume (L)|on_change=on_v_l_change|>
+
+<|{a_ht}|number|label=Heat-transfer area A_ht (m²)|>
+
+<|{fouling}|number|label=Fouling resistance (m²·K/W)|>
+
+<|{q_rxn}|number|label=Extra heat input (W)|>
+|>
+
+<|{include_agitator}|toggle|lov={include_agitator_options}|label=Include agitator heat|class_name=onoff-toggle|>
 
 ### Wall
 <|layout|columns=1 1 1 1|
@@ -1161,13 +1166,6 @@ Choose heat/cool operation, a reaction temperature profile, or a two-parameter U
 <|{m_dot_jacket}|number|label=Jacket mass flow (kg/s)|>
 
 <|{cp_jacket}|number|label=Jacket Cp (J/kg.K)|>
-|>
-
-### Heat Input
-<|layout|columns=1 1 1 1|
-<|{q_rxn}|number|label=Extra heat input (W)|>
-
-<|{include_agitator}|toggle|label=Include agitator heat|>
 |>
 
 ### Temperatures
@@ -1259,7 +1257,7 @@ not modelled) and the profile runs until 99% conversion.
 |>
 |>
 
-<|part|render={ht_mode == "Heat / cool vessel"}|
+<|part|render={ht_mode == "Heat / cool vessel" and result_ready}|
 <|part|class_name=va-card|
 ## 3. Core KPIs
 <|{kpi_df}|table|width=100%|>

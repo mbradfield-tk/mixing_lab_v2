@@ -310,6 +310,46 @@ button.compute-btn-ok:hover {
     background: #ffffff;
 }
 
+/* Vessel Assessment phase panels: equal-height side-by-side sub-cards. */
+.phase-grid {
+    align-items: stretch !important;
+}
+@media (max-width: 1100px) {
+    .phase-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+.phase-panel {
+    height: 100%;
+    box-sizing: border-box;
+    border: 1px solid #E6E6E6;
+    border-radius: 6px;
+    padding: 0 14px 10px;
+    background: #FAFAFA;
+}
+.phase-panel h3 {
+    margin: 10px 0 12px;
+}
+.phase-panel .taipy-number,
+.phase-panel .taipy-selector {
+    width: 100%;
+    max-width: none;
+}
+.phase-hint {
+    display: block;
+    color: #6E757C;
+    font-size: 0.9em;
+    font-style: italic;
+    margin: 6px 0;
+}
+.taipy-dark .phase-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+.taipy-dark .phase-hint {
+    color: #A9AFB6;
+}
+
 /* Explore-vessel properties column: cap at the 3D viewer height (380px) so the
    filter selector + table can never extend past the model panel. The table's
    wrapper flexes to fill the space left by the selector and scrolls internally. */
@@ -509,6 +549,7 @@ button.compute-btn-ok:hover {
 .taipy-layout .taipy-input,
 .taipy-layout .taipy-date {
     width: 100%;
+    max-width: none;
 }
 .taipy-number .MuiInputBase-root,
 .taipy-input .MuiInputBase-root,

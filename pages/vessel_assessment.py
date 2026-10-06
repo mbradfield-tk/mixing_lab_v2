@@ -1165,7 +1165,7 @@ page = Markdown(
 <|{va_T_cool}|number|label=Coolant temp (°C)|on_change=on_va_input_change|>
 |>
 
-<|layout|columns=1 2|
+<|layout|columns=1 1|
 <|{va_n_rpm}|number|label=Agitation speed N (RPM)|on_change=on_va_input_change|>
 
 <|{va_v_l}|number|label=Working volume (L)|on_change=on_va_input_change|>
@@ -1205,11 +1205,12 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 
 <|part|class_name=va-card|
 ## 2. Phases
-
+<|layout|columns=1 1 1|gap=16px|class_name=phase-grid|
+<|part|class_name=phase-panel|
 ### __ICON:Fluid_Database__Liquid / Solvent
-<|layout|columns=1 1 1 1 1|
 <|{va_fluid}|selector|lov={fluid_options}|dropdown|label=Solvent / fluid|on_change=on_va_fluid_change|>
 
+<|layout|columns=1 1|
 <|{va_rho}|number|label=ρ (kg/m³)|on_change=on_va_input_change|>
 
 <|{va_mu}|number|label=μ (Pa·s)|on_change=on_va_input_change|>
@@ -1218,24 +1219,32 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 
 <|{va_sigma}|number|label=σ (N/m)|on_change=on_va_input_change|>
 |>
+|>
 
+<|part|class_name=phase-panel|
 ### __ICON:Particle_Database__Solid
 <|{va_sl_mode}|toggle|lov={va_sl_mode_options}|label=Include solid particles|class_name=onoff-toggle|on_change=on_va_input_change|>
 
 <|part|render={va_sl_mode == "On"}|
-<|layout|columns=1 1 1 1 1|
 <|{va_particle}|selector|lov={particle_options}|dropdown|label=Particle|on_change=on_va_particle_change|>
 
+<|layout|columns=1 1|
 <|{va_rho_p}|number|label=ρ_p (kg/m³)|on_change=on_va_input_change|>
 
 <|{va_d50}|number|label=d50 (µm)|on_change=on_va_input_change|>
 
 <|{va_phi}|number|label=Shape factor φ|on_change=on_va_input_change|>
 
-<|{va_x_wt}|number|label=Solids loading X (wt-%)|on_change=on_va_input_change|>
+<|{va_x_wt}|number|label=Solids loading (wt-%)|on_change=on_va_input_change|>
 |>
 |>
 
+<|part|render={va_sl_mode == "Off"}|class_name=phase-hint|
+Enable to check off-bottom suspension (just-suspended speed) and solid–liquid mass transfer.
+|>
+|>
+
+<|part|class_name=phase-panel|
 ### 🫧 Gas
 <|{va_gas_mode}|toggle|lov={va_gas_mode_options}|label=Include gas phase|class_name=onoff-toggle|on_change=on_va_input_change|>
 
@@ -1243,10 +1252,18 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 <|{va_gas_transfer}|toggle|lov={va_gas_transfer_options}|label=Mass-transfer mode|on_change=on_va_input_change|>
 
 <|part|render={va_gas_transfer == "Sparging"}|
-<|layout|columns=1 1|
 <|{va_vs}|number|label=Superficial gas velocity v_s (m/s)|on_change=on_va_input_change|>
 
 <|{va_coalescing}|toggle|lov={va_coalescing_options}|label=Coalescence|on_change=on_va_input_change|>
+|>
+
+<|part|render={va_gas_transfer == "Headspace"}|class_name=phase-hint|
+Gas–liquid transfer through the free surface (surface kLa).
+|>
+|>
+
+<|part|render={va_gas_mode == "Off"}|class_name=phase-hint|
+Enable to include gas–liquid mass transfer (headspace or sparged) in the Damköhler screen.
 |>
 |>
 |>
@@ -1254,9 +1271,11 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 
 <|part|class_name=va-card|
 ## 3. Reaction
+<|layout|columns=1 2|
 <|{va_reaction_source}|selector|lov={reaction_source_options}|dropdown|label=Reaction source|on_change=on_va_reaction_source_change|>
 
 <|{va_reaction}|selector|lov={va_reaction_options}|dropdown|label=Reaction|on_change=on_va_reaction_change|>
+|>
 
 <|{va_rxn_model}|text|mode=markdown|>
 
@@ -1282,9 +1301,11 @@ Feed inputs unlock the **mesomixing** assessment (feed-plume dispersion).
 Choose the correlation source used for the assessment. Only sources registered
 for the selected vessel are offered.
 
+<|layout|columns=1 2|
 <|{va_corr_mode}|selector|lov={va_corr_options}|dropdown|label=Correlation source|on_change=on_va_input_change|>
 
-<|{va_corr_status}|text|>
+<|{va_corr_status}|text|class_name=phase-hint|>
+|>
 |>
 
 <|Compute Assessment|button|on_action=on_va_compute|class_name={va_compute_class}|>
@@ -1335,10 +1356,16 @@ Confirm the result with solubility, phase composition, and concentration driving
 |>
 
 ### Heat balance
-<|{va_heat_df}|table|width=100%|show_all|>
+<|part|render={len(va_heat_df) > 0}|
+<|{va_heat_df}|table|width=100%|show_all|rebuild|>
 
 <|part|render={not va_stale}|
 <|Download heat-balance CSV|file_download|content={va_heat_csv}|name=vessel_assessment_heat_balance.csv|label=Download heat-balance CSV|>
+|>
+|>
+
+<|part|render={len(va_heat_df) == 0}|class_name=phase-hint|
+No heat of reaction set (ΔH = 0) — enter ΔH<sub>rxn</sub> in Section 3 to run the heat-balance check.
 |>
 |>
 

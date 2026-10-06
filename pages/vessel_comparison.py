@@ -1234,7 +1234,7 @@ fluid and reaction system.
 <|{vc_P}|number|label=Pressure (atm)|on_change=on_vc_input_change|>
 |>
 
-<|layout|columns=1 1|class_name=form-grid|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{vc_reaction_source}|selector|lov={reaction_source_options}|dropdown|label=Reaction source|on_change=on_vc_reaction_source_change|>
 
 <|{vc_reaction}|selector|lov={vc_reaction_options}|dropdown|label=Reaction (for Da numbers)|on_change=on_vc_reaction_change|>
@@ -1252,7 +1252,7 @@ fluid and reaction system.
 <|{vc_rxn_c0}|number|label=C₀ (mol/L)|on_change=on_vc_kin_change|>
 |>
 
-<|layout|columns=1 1|class_name=form-grid|
+<|layout|columns=1 1 1|class_name=form-grid|
 <|{vc_rxn_trxn}|number|label=t_rxn (s, 0 = derive from k)|on_change=on_vc_kin_change|>
 
 <|{vc_rxn_dh}|number|label=ΔH (kJ/mol)|on_change=on_vc_kin_change|>
@@ -1270,23 +1270,22 @@ Drag to rotate a 3D model; scroll to zoom. The row scrolls sideways when several
 
 <|part|class_name=va-card|
 ## 2. Options
+<|layout|columns=1 1 1|gap=16px|class_name=phase-grid|
+<|part|class_name=phase-panel|
 ### __ICON:Particle_Database__Solid particles
 <|{vc_incl_particles}|toggle|lov={vc_onoff_options}|label=Include solid particles|class_name=onoff-toggle|on_change=on_vc_input_change|>
 
 <|part|render={vc_incl_particles == "On"}|
-Particle properties are shared across all compared vessels.
-<|layout|columns=1 1 1 1|class_name=form-grid|
 <|{vc_particle}|selector|lov={particle_options}|dropdown|label=Particle|on_change=on_vc_particle_change|>
 
+<|layout|columns=1 1|
 <|{vc_rho_p}|number|label=ρ_p (kg/m³)|on_change=on_vc_input_change|>
 
 <|{vc_d50}|number|label=d50 (µm)|on_change=on_vc_input_change|>
 
 <|{vc_phi}|number|label=Shape factor φ|on_change=on_vc_input_change|>
-|>
 
-<|layout|columns=1 1 1 1|class_name=form-grid|
-<|{vc_x_wt}|number|label=Solids loading X (wt-%)|on_change=on_vc_input_change|>
+<|{vc_x_wt}|number|label=Solids loading (wt-%)|on_change=on_vc_input_change|>
 
 <|{vc_szw}|number|label=Zwietering S|on_change=on_vc_input_change|>
 
@@ -1296,6 +1295,12 @@ Particle properties are shared across all compared vessels.
 |>
 |>
 
+<|part|render={vc_incl_particles == "Off"}|class_name=phase-hint|
+Enable to check off-bottom suspension in each vessel. Particle properties are shared across all compared vessels.
+|>
+|>
+
+<|part|class_name=phase-panel|
 ### 🫧 Gas
 <|{vc_gas_mode}|toggle|lov={vc_onoff_options}|label=Include gas phase|class_name=onoff-toggle|on_change=on_vc_input_change|>
 
@@ -1303,32 +1308,40 @@ Particle properties are shared across all compared vessels.
 <|{vc_gas_transfer}|toggle|lov={vc_gas_transfer_options}|label=Mass-transfer mode|on_change=on_vc_input_change|>
 
 <|part|render={vc_gas_transfer == "Sparging"}|
-<|layout|columns=1 1|class_name=form-grid|
 <|{vc_vs}|number|label=Superficial gas velocity v_s (m/s)|on_change=on_vc_input_change|>
 
 <|{vc_coal}|selector|lov={coal_options}|dropdown|label=Liquid type (for kLa)|on_change=on_vc_input_change|>
 |>
 |>
+
+<|part|render={vc_gas_mode == "Off"}|class_name=phase-hint|
+Enable to include gas–liquid mass transfer (headspace or sparged) in each vessel.
+|>
 |>
 
+<|part|class_name=phase-panel|
 ### 🔁 Fed-batch
-<|{vc_fed_mode}|toggle|lov={vc_onoff_options}|label=Fed-batch (semi-batch) addition|class_name=onoff-toggle|on_change=on_vc_input_change|>
+<|{vc_fed_mode}|toggle|lov={vc_onoff_options}|label=Fed-batch addition|class_name=onoff-toggle|on_change=on_vc_input_change|>
 
 <|part|render={vc_fed_mode == "On"}|
-Feed inputs unlock the **mesomixing** Damköhler number (Da_meso), evaluated at the feed point.
 <|{vc_feed_location}|selector|lov={vc_feed_location_options}|dropdown|label=Feed location|on_change=on_vc_input_change|>
 
 **Feed pipe diameter per vessel** — defaults from each reactor's recorded feed-pipe ID; edit to override.
-<|{vc_feed_pipe_df}|table|editable|rebuild|on_edit=on_vc_feed_pipe_edit|width=60%|show_all|>
+<|{vc_feed_pipe_df}|table|editable|rebuild|on_edit=on_vc_feed_pipe_edit|width=100%|show_all|>
 
-**Feed schedule** — feed time is shared across vessels; feed volume is specified at the basis
-vessel and scaled to the other vessels by their max fill volume (V_L_max) relative to the basis.
-<|layout|columns=1 1 1|class_name=form-grid|
-<|{vc_feed_basis}|selector|lov={vc_reactors}|dropdown|label=Basis vessel (feed volume specified here)|on_change=on_vc_input_change|>
+**Feed schedule** — feed volume is set at the basis vessel and scaled to the others by V_L_max.
+<|{vc_feed_basis}|selector|lov={vc_reactors}|dropdown|label=Basis vessel|on_change=on_vc_input_change|>
 
-<|{vc_feed_volume_mL}|number|label=Volume which you add (mL)|on_change=on_vc_input_change|>
+<|layout|columns=1 1|
+<|{vc_feed_volume_mL}|number|label=Feed volume (mL)|on_change=on_vc_input_change|>
 
-<|{vc_feed_time_hr}|number|label=Feed time (hours)|on_change=on_vc_input_change|>
+<|{vc_feed_time_hr}|number|label=Feed time (h)|on_change=on_vc_input_change|>
+|>
+|>
+
+<|part|render={vc_fed_mode == "Off"}|class_name=phase-hint|
+Enable to add the mesomixing Damköhler number (Da_meso), evaluated at the feed point.
+|>
 |>
 |>
 |>

@@ -44,6 +44,7 @@ from core import operating_point as op
 from core import kinetics
 from core import records
 from core import scale_up
+from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from core.records import (
     VesselGeometry,
     particle_row as _particle_row,
@@ -111,7 +112,7 @@ def _display(p: str) -> str:
 
 def _corr_choices(names) -> tuple[list[str], str]:
     """Correlation-source labels shared by every selected vessel, plus a status note."""
-    labels = [op.CORR_LABELS[m] for m in available_modes_multi(list(names or []))]
+    labels = [CorrSource(m).label for m in available_modes_multi(list(names or []))]
     if len(labels) > 1:
         return labels, "Sources available for every selected vessel: " + ", ".join(labels) + "."
     return labels, ("Only empirical (literature) correlations are shared by all selected "
@@ -138,7 +139,10 @@ reaction_source_options = ["Measured kinetics", "Reaction classes"]
 reaction_options = reaction_measured_options or reaction_class_options
 particle_options = particles_df["particle_name"].dropna().astype(str).tolist()
 scale_solve_options = ["RPM (specify volume)", "Volume (specify RPM)"]
-coal_options = ["Coalescing (pure liquid)", "Non-coalescing (electrolyte)"]
+# This page's own wording for the coalescence options.
+_COAL_LABELS = {Coalescence.COALESCING: "Coalescing (pure liquid)",
+                Coalescence.NON_COALESCING: "Non-coalescing (electrolyte)"}
+coal_options = Coalescence.labels(_COAL_LABELS)
 
 
 # ---------------------------------------------------------------------------
@@ -187,10 +191,10 @@ vc_rxn_dh = _kd0["dH"]
 vc_rxn_caption = _kin_caption(vc_rxn_order, vc_rxn_k, vc_rxn_c0, vc_rxn_trxn, vc_rxn_dh)
 
 # Section 2: options
-vc_onoff_options = ["Off", "On"]
+vc_onoff_options = Toggle.labels()
 
 # Solid particles
-vc_incl_particles = "Off"
+vc_incl_particles = Toggle.OFF.label
 vc_particle = particle_options[0] if particle_options else ""
 _pp0 = _particle_row(vc_particle) if particle_options else pd.Series(dtype=object)
 vc_rho_p = _sf(_pp0.get("rho_p_kg_m3"), 1500.0)
@@ -202,17 +206,17 @@ vc_gmb_z = 3.0
 vc_cd = 0.33
 
 # Gas phase
-vc_gas_mode = "Off"
-vc_gas_transfer = "Sparging"
-vc_gas_transfer_options = ["Headspace", "Sparging"]
+vc_gas_mode = Toggle.OFF.label
+vc_gas_transfer = GasTransfer.SPARGING.label
+vc_gas_transfer_options = GasTransfer.labels()
 vc_vs = 0.005
 vc_coal = coal_options[0]
 
 # Fed-batch (mesomixing)
 _DEFAULT_FEED_PIPE_MM = 3.0
-vc_fed_mode = "Off"
-vc_feed_location = "Bulk (mid-liquid)"
-vc_feed_location_options = ["Near impeller", "Bulk (mid-liquid)", "Surface"]
+vc_fed_mode = Toggle.OFF.label
+vc_feed_location = FeedLocation.BULK.label
+vc_feed_location_options = FeedLocation.labels()
 vc_feed_basis = vc_reactors[0] if vc_reactors else ""
 vc_feed_volume_mL = 100.0
 vc_feed_time_hr = 1.0
@@ -231,7 +235,7 @@ def _seed_feed_pipe_rows(names) -> pd.DataFrame:
 vc_feed_pipe_df = _seed_feed_pipe_rows(vc_reactors)
 
 # Section 3: scale-up matching
-vc_incl_scaling = "Off"
+vc_incl_scaling = Toggle.OFF.label
 vc_basis = vc_reactors[0] if vc_reactors else ""
 vc_scale_param = SCALABLE_PARAMS[0]
 vc_scale_solve_for = scale_solve_options[0]
@@ -415,7 +419,7 @@ def _point_inputs(name: str, geo: VesselGeometry, d_feed_m: float, ctx: dict) ->
     solids = (op.Solids(rho_p=ctx["rho_p"], d50_um=ctx["d50"], phi=ctx["phi"], x_wt=ctx["x_wt"],
                         S_zw=ctx["szw"], gmb_z=ctx["gmb_z"], cd=ctx["cd"])
               if ctx["incl_particles"] else None)
-    feed = (op.Feed(str(ctx["feed_loc"]),
+    feed = (op.Feed(ctx["feed_loc"],
                     d_feed_m if d_feed_m > 0 else _DEFAULT_FEED_PIPE_MM / 1000.0)
             if ctx["fed"] else None)
     return op.PointInputs(
@@ -478,10 +482,10 @@ def on_vc_compute(state):
     rxn = {"order": _order, "k": _k, "C0": _C0,
            "t_rxn": _derive_trxn(_order, _k, _C0, _sf(state.vc_rxn_trxn)),
            "dH": _sf(state.vc_rxn_dh)}
-    incl_p = state.vc_incl_particles == "On" and _sf(state.vc_d50) > 0
+    incl_p = is_on(state.vc_incl_particles) and _sf(state.vc_d50) > 0
     incl_h = rxn["dH"] != 0.0
-    gas_on = state.vc_gas_mode == "On"
-    fed_on = state.vc_fed_mode == "On"
+    gas_on = is_on(state.vc_gas_mode)
+    fed_on = is_on(state.vc_fed_mode)
     x_wt = _sf(state.vc_x_wt)
 
     plot_params = list(_BASE_PLOT_PARAMS)
@@ -492,21 +496,24 @@ def on_vc_compute(state):
     if incl_p:
         plot_params += _PARTICLE_PARAMS
 
-    v_s = _sf(state.vc_vs) if (gas_on and state.vc_gas_transfer == "Sparging") else 0.0
+    sparging = GasTransfer.from_label(state.vc_gas_transfer) is GasTransfer.SPARGING
+    v_s = _sf(state.vc_vs) if (gas_on and sparging) else 0.0
     feed_pipe_mm = ({str(r["Reactor"]): _sf(r["Feed pipe ID (mm)"])
                     for _, r in state.vc_feed_pipe_df.iterrows()} if fed_on else {})
     ctx = {
         "rho": rho, "mu": mu, "D_mol": D_mol, "v_s": v_s,
-        "coalescing": state.vc_coal.startswith("Coalescing"),
+        "coalescing": (Coalescence.from_label(state.vc_coal, labels=_COAL_LABELS)
+                       is Coalescence.COALESCING),
         "t_rxn": rxn["t_rxn"], "order": rxn["order"], "k": rxn["k"], "C0": rxn["C0"],
         "dH": rxn["dH"], "incl_heat": incl_h, "incl_particles": incl_p, "gas_on": gas_on,
-        "fed": fed_on, "feed_pipe_mm": feed_pipe_mm, "feed_loc": state.vc_feed_location,
+        "fed": fed_on, "feed_pipe_mm": feed_pipe_mm,
+        "feed_loc": FeedLocation.from_label(state.vc_feed_location, FeedLocation.BULK),
         "rho_p": _sf(state.vc_rho_p), "d50": _sf(state.vc_d50), "phi": _sf(state.vc_phi),
         "x_wt": x_wt, "szw": _sf(state.vc_szw, 5.5),
         "gmb_z": _sf(state.vc_gmb_z, 3.0), "cd": _sf(state.vc_cd, 0.33),
         "T_process": state.vc_T, "T_coolant": _sf(state.vc_T_cool),
         "fluid_name": state.vc_fluid, "plot_params": plot_params,
-        "corr_mode": op.CORR_SOURCES.get(state.vc_corr_mode, "Literature"),
+        "corr_mode": CorrSource.from_label(state.vc_corr_mode, CorrSource.LITERATURE),
     }
 
     env_rows, reactor_info, curve_data, skipped = _corner_and_curves(names, ctx)
@@ -699,7 +706,7 @@ def _build_heat_summary(state, env_df, reactor_info, ctx):
 
 
 def _build_scaling(state, names, reactor_info, ctx):
-    if state.vc_incl_scaling != "On" or len(names) < 2:
+    if not is_on(state.vc_incl_scaling) or len(names) < 2:
         state.vc_scale_df = pd.DataFrame()
         state.vc_scale_full_df = pd.DataFrame()
         state.vc_scale_pct_df = pd.DataFrame()
@@ -818,8 +825,8 @@ def on_vc_export_pdf(state):
             "reactor_info": cache["reactor_info"], "include_heat": cache["incl_heat"],
             "include_particles": cache["incl_particles"],
             "scaling_results": [], "scaling_all_params": [],
-            "scale_param": state.vc_scale_param if state.vc_incl_scaling == "On" else "",
-            "scale_basis_reactor": state.vc_basis if state.vc_incl_scaling == "On" else "",
+            "scale_param": state.vc_scale_param if is_on(state.vc_incl_scaling) else "",
+            "scale_basis_reactor": state.vc_basis if is_on(state.vc_incl_scaling) else "",
             "curve_data": cache["curve_data"], "report_chart_params": report_chart_params,
         }
         state.vc_pdf_bytes = build_reactor_comparison_pdf(snap)

@@ -120,43 +120,60 @@ def match_parameter(hydro_at: Callable[[float, float], dict], param: str, target
             "hydro": hydro_at(n_rps, vol)}
 
 
-def feed_plan(reactor_info: dict, basis: str, feed_volume_mL: float,
-              feed_time_hr: float) -> tuple[list[dict], list[str], str | None]:
+def feed_plan_data(reactor_info: dict, basis: str, feed_volume_mL: float,
+                   feed_time_hr: float) -> tuple[list[dict], str | None]:
     """Scale the basis vessel's feed volume to every vessel by its V_L_max ratio.
 
     Feed time is shared, so only volume (and rate) scales; each vessel starts at
-    V_L_min. Returns (table rows, vessels whose end volume would exceed V_L_max,
-    blocking error message or None).
+    V_L_min. Returns (numeric rows, blocking error code "basis" or None).
     """
-    if basis not in reactor_info:
-        return [{"Reactor": basis, "Status": "Basis geometry missing"}], [], "basis"
+    if basis not in reactor_info or reactor_info[basis]["V_max_L"] <= 0:
+        return [], "basis"
     basis_vmax = reactor_info[basis]["V_max_L"]
-    if basis_vmax <= 0:
-        return [{"Reactor": basis, "Status": "Basis max volume unavailable"}], [], "basis"
     feed_time_hr = max(feed_time_hr, 1e-9)
-
-    rows, exceeded = [], []
+    rows = []
     for name, info in reactor_info.items():
         v_max, v_min = info["V_max_L"], info["V_min_L"]
         feed_vol_mL = feed_volume_mL * v_max / basis_vmax
-        feed_rate_mLmin = feed_vol_mL / (feed_time_hr * 60.0)
         end_vol_L = v_min + feed_vol_mL / 1000.0
-        exceeds = end_vol_L > v_max + 1e-9
-        if exceeds:
-            exceeded.append(f"{name} ({end_vol_L:.3g} L > {v_max:.3g} L)")
         rows.append({
-            "Reactor": name, "Role": "Basis" if name == basis else "Scaled",
-            "V_max (L)": f"{v_max:.3g}", "Start volume (L)": f"{v_min:.3g}",
-            "Feed volume (mL)": "—" if exceeds else f"{feed_vol_mL:.1f}",
-            "Feed rate (mL/min)": "—" if exceeds else f"{feed_rate_mLmin:.2f}",
-            "End volume (L)": "—" if exceeds else f"{end_vol_L:.3g}",
+            "reactor": name, "is_basis": name == basis, "V_max_L": v_max,
+            "start_volume_L": v_min, "feed_volume_mL": feed_vol_mL,
+            "feed_rate_mL_min": feed_vol_mL / (feed_time_hr * 60.0),
+            "end_volume_L": end_vol_L, "exceeds_max": end_vol_L > v_max + 1e-9,
+        })
+    return rows, None
+
+
+def feed_plan(reactor_info: dict, basis: str, feed_volume_mL: float,
+              feed_time_hr: float) -> tuple[list[dict], list[str], str | None]:
+    """Display table of :func:`feed_plan_data`: (rows, vessels that would overflow, error)."""
+    data, err = feed_plan_data(reactor_info, basis, feed_volume_mL, feed_time_hr)
+    if err:
+        status = ("Basis geometry missing" if basis not in reactor_info
+                  else "Basis max volume unavailable")
+        return [{"Reactor": basis, "Status": status}], [], err
+    rows, exceeded = [], []
+    for d in data:
+        exceeds = d["exceeds_max"]
+        if exceeds:
+            exceeded.append(f"{d['reactor']} ({d['end_volume_L']:.3g} L > {d['V_max_L']:.3g} L)")
+        rows.append({
+            "Reactor": d["reactor"], "Role": "Basis" if d["is_basis"] else "Scaled",
+            "V_max (L)": f"{d['V_max_L']:.3g}", "Start volume (L)": f"{d['start_volume_L']:.3g}",
+            "Feed volume (mL)": "—" if exceeds else f"{d['feed_volume_mL']:.1f}",
+            "Feed rate (mL/min)": "—" if exceeds else f"{d['feed_rate_mL_min']:.2f}",
+            "End volume (L)": "—" if exceeds else f"{d['end_volume_L']:.3g}",
             "Status": "⚠️ Exceeds max volume" if exceeds else "OK",
         })
     return rows, exceeded, None
 
 
-def impact_ratios(env_df: pd.DataFrame, present: list[str], incl_heat: bool) -> list[dict]:
-    """Envelope-mean ratios of each vessel to the first one (scale-up impact)."""
+def impact_ratio_data(env_df: pd.DataFrame, present: list[str], incl_heat: bool) -> list[dict]:
+    """Envelope-mean ratios of each vessel to the first one (NaN when undefined).
+
+    ``cooling_delta_pp`` is the change in Q_gen/Q_cool (percentage points), or None.
+    """
     reactors = env_df["Reactor"].drop_duplicates().tolist()
     if len(reactors) < 2:
         return []
@@ -170,18 +187,30 @@ def impact_ratios(env_df: pd.DataFrame, present: list[str], incl_heat: bool) -> 
         def _ratio(col):
             return row[col] / ref[col] if col in ref and ref[col] not in (0, np.nan) and np.isfinite(ref[col]) and ref[col] != 0 else np.nan
 
-        entry = {"From → To": f"{reactors[0]} → {name}",
-                 "Volume ×": f"{_ratio('Volume (L)'):.2f}",
-                 "P/V ×": f"{_ratio('P/V (W/L)'):.2f}",
-                 "Tip speed ×": f"{_ratio('Tip speed (m/s)'):.2f}",
-                 "Blend time ×": f"{_ratio('Blend time 95% (s)'):.2f}",
-                 "Da_macro ×": f"{_ratio('Da_macro'):.2f}"}
+        entry = {"from": reactors[0], "to": name, "volume": _ratio("Volume (L)"),
+                 "P_V": _ratio("P/V (W/L)"), "tip_speed": _ratio("Tip speed (m/s)"),
+                 "blend_time": _ratio("Blend time 95% (s)"), "Da_macro": _ratio("Da_macro"),
+                 "cooling_delta_pp": None}
         if incl_heat and "Q_gen/Q_cool (%)" in mid.columns:
             rp, tp = ref.get("Q_gen/Q_cool (%)", np.nan), row.get("Q_gen/Q_cool (%)", np.nan)
             if np.isfinite(rp) and np.isfinite(tp):
-                delta = tp - rp
-                verdict = ("≈ Similar" if abs(delta) < 1 else
-                           (f"✅ Improves ({delta:+.1f} pp)" if delta < 0 else f"⚠️ Worse ({delta:+.1f} pp)"))
-                entry["Cooling"] = verdict
+                entry["cooling_delta_pp"] = tp - rp
+        rows.append(entry)
+    return rows
+
+
+def impact_ratios(env_df: pd.DataFrame, present: list[str], incl_heat: bool) -> list[dict]:
+    """Display table of :func:`impact_ratio_data`."""
+    rows = []
+    for d in impact_ratio_data(env_df, present, incl_heat):
+        entry = {"From → To": f"{d['from']} → {d['to']}",
+                 "Volume ×": f"{d['volume']:.2f}", "P/V ×": f"{d['P_V']:.2f}",
+                 "Tip speed ×": f"{d['tip_speed']:.2f}",
+                 "Blend time ×": f"{d['blend_time']:.2f}", "Da_macro ×": f"{d['Da_macro']:.2f}"}
+        delta = d["cooling_delta_pp"]
+        if delta is not None:
+            entry["Cooling"] = ("≈ Similar" if abs(delta) < 1 else
+                                (f"✅ Improves ({delta:+.1f} pp)" if delta < 0
+                                 else f"⚠️ Worse ({delta:+.1f} pp)"))
         rows.append(entry)
     return rows

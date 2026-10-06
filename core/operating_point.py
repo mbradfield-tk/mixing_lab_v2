@@ -12,9 +12,11 @@ from functools import lru_cache
 
 import numpy as np
 
-from core.records import VesselGeometry
+from core.options import CorrSource, FeedLocation
+from core.records import VesselGeometry, reactor_row, sf, solvent_props
 from utils.calculations import (
     compute_damkohler_numbers,
+    compute_reactor_hydro,
     estimate_U_detailed,
     estimate_jacket_area,
     gmb_njs,
@@ -29,13 +31,10 @@ from utils.calculations import (
     zwietering_njs,
 )
 from utils.rom_registry import compute_reactor_hydro_with_mode
+from utils.solvent_properties import resolve_solvent_name
 
 # Display label -> correlation-registry mode key.
-CORR_SOURCES = {
-    "Empirical (literature)": "Literature",
-    "Experimental": "Experimental",
-    "Reduced-order (CFD)": "ROM",
-}
+CORR_SOURCES = {m.label: m.value for m in CorrSource}
 CORR_LABELS = {v: k for k, v in CORR_SOURCES.items()}
 
 
@@ -75,7 +74,7 @@ class Solids:
 
 @dataclass(frozen=True)
 class Feed:
-    location: str
+    location: FeedLocation
     d_pipe_m: float
 
 
@@ -91,7 +90,7 @@ class PointInputs:
     geometry: VesselGeometry
     fluid: Fluid
     reaction: Reaction
-    corr_mode: str = "Literature"
+    corr_mode: CorrSource = CorrSource.LITERATURE
     gas: Gas = field(default_factory=Gas)
     solids: Solids | None = None
     feed: Feed | None = None
@@ -140,12 +139,12 @@ def hydro(inp: PointInputs, N_rps: float, V_L: float) -> dict:
     return h
 
 
-def feed_dissipation(h: dict, location: str) -> float:
+def feed_dissipation(h: dict, location: FeedLocation) -> float:
     """Local energy dissipation (W/kg) at the feed point."""
     pv = h.get("P/V (W/kg)", 0.0)
-    if location.startswith("Near impeller"):
+    if location == FeedLocation.NEAR_IMPELLER:
         return h.get("ε_max (W/kg)", pv)
-    if location.startswith("Surface"):
+    if location == FeedLocation.SURFACE:
         return 0.2 * pv
     return pv
 
@@ -173,7 +172,7 @@ def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
         kLa_SL=kla_sl))
 
     if inp.feed is not None:
-        t_meso = mesomixing_time(feed_dissipation(h, str(inp.feed.location)), inp.feed.d_pipe_m)
+        t_meso = mesomixing_time(feed_dissipation(h, inp.feed.location), inp.feed.d_pipe_m)
         out["Da_meso"] = t_meso / t_rxn if t_rxn > 0 and np.isfinite(t_meso) else 0.0
 
     if inp.heat is not None and inp.reaction.dH != 0.0:
@@ -192,3 +191,28 @@ def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
             "Q_gen/Q_cool (%)": q_gen / q_cool * 100.0 if q_cool > 0 else np.inf,
         })
     return out
+
+
+def screening_damkohler(reactor: str, n_rpm: float, v_l: float, solvent: str, T_C: float,
+                        t_rxn: float) -> dict | None:
+    """Da_macro / Da_micro for a vessel at (N, V) with literature correlations and the
+    reaction solvent (water when unknown). None when the vessel geometry is incomplete."""
+    row = reactor_row(reactor)
+    d_tank, d_imp = sf(row.get("D_tank_m")), sf(row.get("D_imp_m"))
+    if row.empty or d_tank <= 0 or d_imp <= 0 or n_rpm <= 0 or v_l <= 0:
+        return None
+    props = solvent_props(solvent, T_C) or solvent_props("Water", T_C)
+    rho = props["rho_kg_m3"] if props else 1000.0
+    mu = props["mu_Pa_s"] if props else 1e-3
+    h_liq = VesselGeometry.from_row(row, H_max_fallback=d_tank).liquid_height(v_l)
+    h = compute_reactor_hydro(N=n_rpm / 60.0, D_imp=d_imp, D_tank=d_tank, H=h_liq,
+                              rho=rho, mu=mu, Np=sf(row.get("Np")) or None,
+                              Nq=sf(row.get("Nq")) or None)
+    t_blend, t_e = h["Blend time 95% (s)"], h["Micromix time t_E (s)"]
+    return {
+        "reactor": reactor, "N_rpm": n_rpm, "V_L": v_l,
+        "fluid": (resolve_solvent_name(solvent) or solvent) if props and solvent else "Water",
+        "t_blend": t_blend, "t_E": t_e, "Re": h["Re"], "P_V_W_L": h["P/V (W/L)"],
+        "Da_macro": t_blend / t_rxn if t_rxn > 0 else 0.0,
+        "Da_micro": t_e / t_rxn if t_rxn > 0 else 0.0,
+    }

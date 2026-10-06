@@ -121,3 +121,24 @@ def solve_target(value_at: Callable[[float], float], target: float, lo: float, h
         "first_in_window": next((x for x, ok in zip(roots, in_window) if ok), None),
         "span": (float(finite.min()), float(finite.max())) if finite.size else None,
     }
+
+
+def solve_operating_point(evaluate: PointEvaluator, row: pd.Series, param: str,
+                          target: float, solve_for: str, n_rpm: float, v_l: float) -> dict:
+    """Solve for N (``solve_for="N_rpm"``) at fixed V, or V (``"V_L"``) at fixed N, so
+    that ``param`` equals ``target``.
+
+    Speed is scanned beyond the rated range (0.25x min to 2x max) so out-of-range
+    answers are still reported. Adds ``search`` and ``window`` (lo, hi) to
+    :func:`solve_target`'s result.
+    """
+    n_arr, v_min, v_max = operating_window(row, n_rpm, v_l)
+    if solve_for == "N_rpm":
+        window = (float(n_arr[0]), float(n_arr[-1]))
+        search = (max(window[0] * 0.25, 1.0), window[1] * 2.0)
+        value_at = lambda x: float(evaluate(x, v_l)[param])  # noqa: E731
+    else:
+        window = search = (v_min, v_max)
+        value_at = lambda x: float(evaluate(n_rpm, x)[param])  # noqa: E731
+    res = solve_target(value_at, target, search[0], search[1], window)
+    return {**res, "search": search, "window": window}

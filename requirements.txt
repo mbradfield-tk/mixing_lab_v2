@@ -20,6 +20,7 @@ gevent-websocket==0.10.1
 # --- Data / numerics -------------------------------------------------------
 numpy==2.5.1
 pandas==2.2.2
+pydantic==2.13.5              # core/schemas.py JSON contracts (future FastAPI layer)
 
 # --- Charts / reports ------------------------------------------------------
 plotly==6.9.0

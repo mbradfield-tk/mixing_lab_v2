@@ -33,18 +33,21 @@ import pandas as pd
 from taipy.gui import Markdown, download, notify
 
 from utils.menu_icons import inject_icons
-from utils.calculations import compute_reactor_hydro
-from utils.solvent_properties import get_properties, is_known_solvent, resolve_solvent_name
 from utils.report_builder import build_protocol_pdf, report_filename, report_header_label
 from core import bourne_io
 from core import kinetics
+from core import operating_point as op
 from core import sensitivity_rules as rules
+from core.options import (
+    BOURNE_TESTS, BourneStatus, Competing, DhAction, DhBasis, Kinetics, Mechanism, Phase, Toggle,
+    bourne_test_number, is_on,
+)
 from core.records import (
-    VesselGeometry,
     range_midpoint as _mid,
     reaction_row as _reaction_row,
     reactor_row as _reactor_row,
     sf as _sf,
+    solvent_props as _solvent_props,
 )
 from pages import _db_common as db
 from vessel_media import build_image_html
@@ -61,16 +64,6 @@ ms_decision_tree_html = build_image_html(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _solvent_props(solvent: str, T_C: float) -> dict | None:
-    """Solvent property dict at T (None when the name is not in the library)."""
-    if not solvent or not is_known_solvent(solvent):
-        return None
-    try:
-        return get_properties(resolve_solvent_name(solvent) or solvent, T_C, 1.0)
-    except Exception:  # noqa: BLE001 - property library edge cases
-        return None
-
-
 def _update_rho_cp(state, solvent: str, T_C: float) -> None:
     p = _solvent_props(solvent, T_C)
     if p:
@@ -93,20 +86,18 @@ reaction_options = reaction_measured_options or reaction_class_options
 _dh_ref_df = reactions_df[reactions_df["delta_H_kJ_mol"].apply(lambda v: _sf(v) != 0.0)]
 dh_ref_options = sorted(_dh_ref_df["reaction_name"].dropna().astype(str).tolist()) or ["(none available)"]
 
-ms_kinetics_options = ["Yes - kinetics available in the database",
-                       "Approximate - use a similar reaction as a proxy",
-                       "No - kinetics not yet available"]
-ms_bourne_status_options = ["Not run - skip pre-screen",
-                            "Ran - sensitivity confirmed",
-                            "Ran - no sensitivity at lab scale",
-                            "Ran - inconclusive (Test 1 not completed)"]
-ms_bourne_mech_options = ["Not resolved", "Micromixing", "Mesomixing", "Macromixing"]
-ms_bourne_tests_options = ["Test 1", "Test 2", "Test 3"]
-ms_phase_options = ["Liquid", "Solid", "Gas"]
-ms_competing_options = ["- select -", "Yes", "No", "Not sure"]
-ms_dh_action_options = ["- select -",
-                        "Perform calorimetry - measure ΔH experimentally",
-                        "Estimate ΔH from a similar reaction"]
+_SELECT = "- select -"
+_NOT_RESOLVED = "Not resolved"
+ms_kinetics_options = Kinetics.labels()
+ms_bourne_status_options = BourneStatus.labels()
+ms_bourne_mech_options = [_NOT_RESOLVED] + Mechanism.labels()
+ms_bourne_tests_options = list(BOURNE_TESTS.values())
+ms_phase_options = Phase.labels()
+ms_competing_options = [_SELECT] + Competing.labels()
+ms_dh_action_options = [_SELECT] + DhAction.labels()
+# Labels referenced by the page's `active=` expressions.
+ms_lbl_confirmed = BourneStatus.CONFIRMED.label
+ms_lbl_estimate = DhAction.ESTIMATE.label
 ms_unit_operation_options = ["- select -", "Reaction", "Quench", "Crystallization",
                              "Liquid-Liquid Extraction", "Distillation", "Filtration",
                              "Drying", "Other"]
@@ -125,8 +116,8 @@ ms_process_version = ""
 # State - Step 0 (Bourne pre-screen)
 # ---------------------------------------------------------------------------
 ms_bourne_status = ms_bourne_status_options[0]
-ms_bourne_mech = "Not resolved"
-ms_bourne_tests = ["Test 1"]
+ms_bourne_mech = _NOT_RESOLVED
+ms_bourne_tests = [BOURNE_TESTS[1]]
 ms_bourne_upload = ""
 ms_step0_assess = ""
 ms_bourne_findings_df = pd.DataFrame(columns=["Test", "Finding", "Sensitive KPI(s)"])
@@ -145,7 +136,7 @@ _kin_defaults = kinetics.kinetics_defaults
 
 def _sync_reaction_options(state) -> None:
     """Use measured kinetics for confirmed data and class proxies otherwise."""
-    use_classes = state.ms_kinetics_avail.startswith("Approximate")
+    use_classes = Kinetics.from_label(state.ms_kinetics_avail) is Kinetics.APPROXIMATE
     options = reaction_class_options if use_classes else reaction_measured_options
     state.ms_reaction_options = options or ["(none available)"]
     if state.ms_reaction not in state.ms_reaction_options:
@@ -159,32 +150,32 @@ ms_rxn_c0 = _kd0["C0"]
 ms_rxn_trxn = _kd0["t_rxn"]
 ms_rxn_T = _kd0["T"]
 ms_rxn_dh = _kd0["dH"]
-ms_semi_batch = "Off"
-ms_semi_batch_options = ["Off", "On"]
+ms_semi_batch = Toggle.OFF.label
+ms_semi_batch_options = Toggle.labels()
 ms_kinetics_md = ""
 ms_step1_assess = ""
 
 # ---------------------------------------------------------------------------
 # State - Step 2 (phases)
 # ---------------------------------------------------------------------------
-ms_phases = ["Liquid"]
+ms_phases = [Phase.LIQUID.label]
 ms_step2_assess = ""
 
 # ---------------------------------------------------------------------------
 # State - Step 3 (competing reactions)
 # ---------------------------------------------------------------------------
-ms_competing = "- select -"
+ms_competing = _SELECT
 ms_step3_assess = ""
 
 # ---------------------------------------------------------------------------
 # State - Step 4 (heat transfer)
 # ---------------------------------------------------------------------------
 ms_show_dh_action = False
-ms_dh_action = "- select -"
+ms_dh_action = _SELECT
 ms_dh_ref = dh_ref_options[0]
 ms_dh_override = 0.0                        # kJ/mol, 0 = use the Step 1 / proxy value
-ms_dh_measured = "No - estimated"           # measured-ness of the override ΔH
-ms_dh_measured_options = ["Yes - measured", "No - estimated"]
+ms_dh_measured = DhBasis.ESTIMATED.label    # measured-ness of the override ΔH
+ms_dh_measured_options = DhBasis.labels()
 ms_rho_cp = 1800.0
 ms_c0_heat = 1.0
 ms_step4_assess = ""
@@ -195,8 +186,8 @@ ms_dt_ad_caption = ""
 # ---------------------------------------------------------------------------
 ms_trxn_caption = ""
 ms_step5_assess = ""
-ms_da_mode = "Off"
-ms_da_mode_options = ["Off", "On"]
+ms_da_mode = Toggle.OFF.label
+ms_da_mode_options = Toggle.labels()
 ms_da_reactor_options = sorted(reactors_df["reactor_name"].dropna().astype(str).unique().tolist())
 ms_da_reactor = ("TMA EasyMax-102" if "TMA EasyMax-102" in ms_da_reactor_options
                  else (ms_da_reactor_options[0] if ms_da_reactor_options else ""))
@@ -225,39 +216,28 @@ ms_pdf_ready = False
 
 
 # ---------------------------------------------------------------------------
-# Page answers -> core.sensitivity_rules.ProtocolInputs
+# Page answers (labels) -> core.sensitivity_rules.ProtocolInputs (codes)
 # ---------------------------------------------------------------------------
-_BOURNE_KEYS = {
-    "Ran - sensitivity confirmed": "confirmed",
-    "Ran - no sensitivity at lab scale": "insensitive",
-    "Ran - inconclusive (Test 1 not completed)": "inconclusive",
-}
-_DH_ACTION_KEYS = {
-    "Estimate ΔH from a similar reaction": "estimate",
-    "Perform calorimetry - measure ΔH experimentally": "calorimetry",
-}
-
-
 def _protocol_inputs(state) -> rules.ProtocolInputs:
-    avail = state.ms_kinetics_avail
-    dh_action = _DH_ACTION_KEYS.get(state.ms_dh_action, "")
+    dh_action = DhAction.from_label(state.ms_dh_action, "")
     return rules.ProtocolInputs(
         order=str(state.ms_rxn_order or "1"), k=_sf(state.ms_rxn_k), C0=_sf(state.ms_rxn_c0),
         t_specified=_sf(state.ms_rxn_trxn), dH=_sf(state.ms_rxn_dh),
         rxn_type=str(_reaction_row(state.ms_reaction).get("type", "") or ""),
-        kinetics=("approximate" if avail.startswith("Approximate")
-                  else "declined" if avail.startswith("No") else "available"),
-        bourne=_BOURNE_KEYS.get(state.ms_bourne_status, "skip"),
-        bourne_mech=state.ms_bourne_mech,
-        bourne_tests_done=[int(t.split()[-1]) for t in (state.ms_bourne_tests or [])],
+        kinetics=Kinetics.from_label(state.ms_kinetics_avail, Kinetics.AVAILABLE),
+        bourne=BourneStatus.from_label(state.ms_bourne_status, BourneStatus.SKIP),
+        bourne_mech=Mechanism.from_label(state.ms_bourne_mech, ""),
+        bourne_tests_done=[bourne_test_number(t) for t in (state.ms_bourne_tests or [])],
         bourne_rows=(state.ms_bourne_findings_df.to_dict("records")
                      if not state.ms_bourne_findings_df.empty else []),
-        semi_batch=state.ms_semi_batch == "On", phases=list(state.ms_phases or []),
-        competing=state.ms_competing, dh_override=_sf(state.ms_dh_override),
-        dh_override_measured=str(state.ms_dh_measured).startswith("Yes"),
+        semi_batch=is_on(state.ms_semi_batch),
+        phases=[Phase.from_label(p) for p in (state.ms_phases or [])],
+        competing=Competing.from_label(state.ms_competing, ""),
+        dh_override=_sf(state.ms_dh_override),
+        dh_override_measured=DhBasis.from_label(state.ms_dh_measured) is DhBasis.MEASURED,
         dh_action=dh_action,
         dh_ref_value=(_sf(_reaction_row(state.ms_dh_ref).get("delta_H_kJ_mol"))
-                      if dh_action == "estimate" else 0.0),
+                      if dh_action == DhAction.ESTIMATE else 0.0),
         c0_heat=state.ms_c0_heat, rho_cp=state.ms_rho_cp)
 
 
@@ -277,20 +257,21 @@ def _recompute(state):
         return
     res = rules.assess_protocol(_protocol_inputs(state),
                                 damkohler_for=lambda t: _inline_damkohler(state, t))
+    md = rules.protocol_md(res)
 
     for n in range(6):
-        setattr(state, f"ms_step{n}_assess", res[f"step{n}"])
-    state.ms_kinetics_md = res["kinetics_md"]
+        setattr(state, f"ms_step{n}_assess", md[f"step{n}"])
+    state.ms_kinetics_md = md["kinetics_md"]
     state.ms_show_dh_action = res["show_dh_action"]
-    state.ms_dt_ad_caption = res["dt_ad_caption"]
-    state.ms_da_caption = res["da_caption"]
-    state.ms_trxn_caption = res["trxn_caption"]
+    state.ms_dt_ad_caption = md["dt_ad_caption"]
+    state.ms_da_caption = md["da_caption"]
+    state.ms_trxn_caption = md["trxn_caption"]
     state.ms_ready = res["ready"]
     state.ms_findings_df = pd.DataFrame(
-        [{"Sensitivity Type": m, "Finding": f"{s} - {d}"} for m, s, d in res["findings"]])
-    state.ms_nextsteps_df = pd.DataFrame(res["next_steps"])
-    state.ms_verdict = res["verdict"] if res["ready"] else ""
-    state.ms_summary_note = res["summary_note"]
+        [{"Sensitivity Type": m, "Finding": f"{s} - {d}"} for m, s, d in md["findings"]])
+    state.ms_nextsteps_df = pd.DataFrame(md["next_steps"])
+    state.ms_verdict = md["verdict"] if res["ready"] else ""
+    state.ms_summary_note = md["summary_note"]
 
     # invalidate a previously generated PDF (inputs changed)
     state.ms_pdf_ready = False
@@ -300,13 +281,14 @@ def _recompute(state):
         None: "Not performed / undetermined"}[res["b_sensitive"]]
     state._ms_cache = {
         "reaction": state.ms_reaction, "t_rxn": res["t_rxn"], "rxn_delta_H": res["dH_eff"],
-        "dT_ad": res["dt_ad"], "phases": res["phases"], "findings": res["findings"],
-        "next_steps": res["next_steps"], "bourne_result": bourne_txt,
+        "dT_ad": res["dt_ad"], "phases": [Phase(p).label for p in res["phases"]],
+        "findings": md["findings"],
+        "next_steps": md["next_steps"], "bourne_result": bourne_txt,
         "bourne_tests": res["bourne_rows"],
         "bourne_mechanism": res["b_mechs"][0] if res["b_mechs"] else "",
         "bourne_meta": dict(getattr(state, "ms_bourne_meta", {}) or {}),
         "competing": state.ms_competing if res["competing_set"] else "Not assessed",
-        "overall_verdict": _strip_md(res["verdict"]), "using_approximate": res["using_approx"],
+        "overall_verdict": _strip_md(md["verdict"]), "using_approximate": res["using_approx"],
         "dh_estimated": res["dh_estimated"], "is_semi_batch": res["is_semi_batch"],
         "damkohler": dict(res["da"]) if res["da"] else {},
     }
@@ -319,31 +301,13 @@ def _inline_damkohler(state, t_rxn: float) -> dict | None:
     """Da_macro / Da_micro for the chosen vessel at the given N and V (literature
     correlations, solvent from the reaction row, else water). None when off or
     the vessel geometry is incomplete."""
-    if getattr(state, "ms_da_mode", "Off") != "On":
+    if not is_on(getattr(state, "ms_da_mode", Toggle.OFF.label)):
         return None
-    row = _reactor_row(getattr(state, "ms_da_reactor", ""))
-    d_tank, d_imp = _sf(row.get("D_tank_m")), _sf(row.get("D_imp_m"))
-    n_rpm, v_l = _sf(getattr(state, "ms_da_rpm", 0.0)), _sf(getattr(state, "ms_da_vl", 0.0))
-    if row.empty or d_tank <= 0 or d_imp <= 0 or n_rpm <= 0 or v_l <= 0:
-        return None
-    T_C = _sf(getattr(state, "ms_rxn_T", 25.0), 25.0)
     solvent = str(_reaction_row(state.ms_reaction).get("solvent", "") or "")
-    props = _solvent_props(solvent, T_C) or _solvent_props("Water", T_C)
-    rho = props["rho_kg_m3"] if props else 1000.0
-    mu = props["mu_Pa_s"] if props else 1e-3
-    h_liq = VesselGeometry.from_row(row, H_max_fallback=d_tank).liquid_height(v_l)
-    Np = _sf(row.get("Np")) or None
-    Nq = _sf(row.get("Nq")) or None
-    h = compute_reactor_hydro(N=n_rpm / 60.0, D_imp=d_imp, D_tank=d_tank, H=h_liq,
-                              rho=rho, mu=mu, Np=Np, Nq=Nq)
-    t_blend, t_e = h["Blend time 95% (s)"], h["Micromix time t_E (s)"]
-    return {
-        "reactor": str(getattr(state, "ms_da_reactor", "")), "N_rpm": n_rpm, "V_L": v_l,
-        "fluid": (resolve_solvent_name(solvent) or solvent) if props and solvent else "Water",
-        "t_blend": t_blend, "t_E": t_e, "Re": h["Re"], "P_V_W_L": h["P/V (W/L)"],
-        "Da_macro": t_blend / t_rxn if t_rxn > 0 else 0.0,
-        "Da_micro": t_e / t_rxn if t_rxn > 0 else 0.0,
-    }
+    return op.screening_damkohler(
+        str(getattr(state, "ms_da_reactor", "")), _sf(getattr(state, "ms_da_rpm", 0.0)),
+        _sf(getattr(state, "ms_da_vl", 0.0)), solvent,
+        _sf(getattr(state, "ms_rxn_T", 25.0), 25.0), t_rxn)
 
 
 _strip_md = rules.strip_md
@@ -417,12 +381,9 @@ def on_ms_bourne_import(state):
         notify(state, "E", f"Could not read the file: {exc}")
         return
     d = imp["fields"]
-    state.ms_bourne_status = {
-        "yes": "Ran - sensitivity confirmed",
-        "no": "Ran - no sensitivity at lab scale",
-    }.get(imp["overall"], "Ran - inconclusive (Test 1 not completed)")
-    state.ms_bourne_mech = imp["mechanism"] or "Not resolved"
-    state.ms_bourne_tests = imp["tests_done"] or ["Test 1"]
+    state.ms_bourne_status = imp["status"].label
+    state.ms_bourne_mech = Mechanism(imp["mechanism"]).label if imp["mechanism"] else _NOT_RESOLVED
+    state.ms_bourne_tests = [BOURNE_TESTS[n] for n in imp["tests_done"]] or [BOURNE_TESTS[1]]
     state.ms_bourne_findings_df = pd.DataFrame(imp["findings"]) if imp["findings"] else pd.DataFrame(
         columns=["Test", "Finding", "Sensitive KPI(s)"])
     state.ms_bourne_meta = imp["meta"]
@@ -495,8 +456,8 @@ def on_ms_reset(state):
     state.ms_unit_operation = ms_unit_operation_options[0]
     state.ms_process_version = ""
     state.ms_bourne_status = ms_bourne_status_options[0]
-    state.ms_bourne_mech = "Not resolved"
-    state.ms_bourne_tests = ["Test 1"]
+    state.ms_bourne_mech = _NOT_RESOLVED
+    state.ms_bourne_tests = [BOURNE_TESTS[1]]
     state.ms_bourne_upload = ""
     state.ms_kinetics_avail = ms_kinetics_options[0]
     state.ms_reaction = reaction_options[0] if reaction_options else ""
@@ -508,16 +469,16 @@ def on_ms_reset(state):
     state.ms_rxn_trxn = kd["t_rxn"]
     state.ms_rxn_T = kd["T"]
     state.ms_rxn_dh = kd["dH"]
-    state.ms_semi_batch = "Off"
-    state.ms_phases = ["Liquid"]
-    state.ms_competing = "- select -"
-    state.ms_dh_action = "- select -"
+    state.ms_semi_batch = Toggle.OFF.label
+    state.ms_phases = [Phase.LIQUID.label]
+    state.ms_competing = _SELECT
+    state.ms_dh_action = _SELECT
     state.ms_dh_ref = dh_ref_options[0]
     state.ms_dh_override = 0.0
-    state.ms_dh_measured = "No - estimated"
+    state.ms_dh_measured = DhBasis.ESTIMATED.label
     state.ms_rho_cp = 1800.0
     state.ms_c0_heat = 1.0
-    state.ms_da_mode = "Off"
+    state.ms_da_mode = Toggle.OFF.label
     state.ms_da_caption = ""
     # computed outputs
     state.ms_step0_assess = ""
@@ -605,7 +566,7 @@ have run the Bourne Protocol, enter the outcome (or import its results CSV).
 <|layout|columns=1 1 1|class_name=form-grid|
 <|{ms_bourne_status}|selector|lov={ms_bourne_status_options}|dropdown|label=Bourne outcome|on_change=on_ms_change|>
 
-<|{ms_bourne_mech}|selector|lov={ms_bourne_mech_options}|dropdown|label=Controlling scale identified|on_change=on_ms_change|active={ms_bourne_status == "Ran - sensitivity confirmed"}|>
+<|{ms_bourne_mech}|selector|lov={ms_bourne_mech_options}|dropdown|label=Controlling scale identified|on_change=on_ms_change|active={ms_bourne_status == ms_lbl_confirmed}|>
 
 <|{ms_bourne_tests}|selector|lov={ms_bourne_tests_options}|multiple|dropdown|label=Tests completed|on_change=on_ms_change|>
 |>
@@ -711,7 +672,7 @@ The selected reaction has **no ΔH data**. Choose how to proceed:
 <|layout|columns=1 1|class_name=form-grid|
 <|{ms_dh_action}|selector|lov={ms_dh_action_options}|dropdown|label=ΔH source|on_change=on_ms_change|>
 
-<|{ms_dh_ref}|selector|lov={dh_ref_options}|dropdown|label=Reference reaction for ΔH|on_change=on_ms_change|active={ms_dh_action == "Estimate ΔH from a similar reaction"}|>
+<|{ms_dh_ref}|selector|lov={dh_ref_options}|dropdown|label=Reference reaction for ΔH|on_change=on_ms_change|active={ms_dh_action == ms_lbl_estimate}|>
 |>
 |>
 

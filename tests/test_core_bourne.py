@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import bourne_io, bourne_plan as plan
+from core.options import BourneStatus, CenterMode
 from core.sensitivity_rules import bourne_outcome
 
 SYS = plan.BourneSystem(D_imp=0.05, Np=1.27, rho=997.0, mu=0.00089, D_mol=2.3e-9,
@@ -19,6 +20,15 @@ SYS = plan.BourneSystem(D_imp=0.05, Np=1.27, rho=997.0, mu=0.00089, D_mol=2.3e-9
 def test_n_for_pm_inverts_specific_power():
     n = plan.n_for_pm(0.5, SYS.V_m3, SYS.Np, SYS.D_imp)
     assert plan.specific_power(SYS, n) == pytest.approx(0.5, rel=1e-9)
+
+
+def test_center_point_is_structured_and_caption_matches():
+    c = plan.center_point(SYS, CenterMode.CUSTOM_RPM, 0.0, 2000.0)
+    assert c["source"] == "custom_rpm" and c["in_range"] is False and c["n_rpm"] == 2000.0
+    pm, info = plan.resolve_center_pm(SYS, CenterMode.CUSTOM_RPM, 0.0, 2000.0)
+    assert pm == c["pm"] and "Outside reactor range (50–1500 RPM)" in info
+    assert plan.center_point(SYS, CenterMode.CUSTOM_PM, 2.0, 0.0)["in_range"] is None
+    assert plan.center_point(SYS, CenterMode.DEFAULT, 0.0, 0.0)["pm"] == plan.DEFAULT_CENTER_PM
 
 
 def test_test1_conditions_clamp_and_span_100x_when_unclamped():
@@ -53,7 +63,7 @@ def test_export_then_parse_round_trip():
     df = pd.read_csv(io.BytesIO(bourne_io.write_csv(rows)), dtype=str, keep_default_na=False)
     imp = bourne_io.parse(df)
     assert imp["overall"] == "yes" and imp["mechanism"] == "Macromixing"
-    assert imp["tests_done"] == ["Test 1", "Test 2", "Test 3"]
+    assert imp["tests_done"] == [1, 2, 3] and imp["status"] is BourneStatus.CONFIRMED
     assert imp["findings"][0]["Sensitive KPI(s)"] == "Yield (12.0%)"
     assert imp["findings"][2]["Sensitive KPI(s)"] == "None (no KPI over threshold)"
     assert imp["meta"]["working_volume_L"] == "2.5"
@@ -65,3 +75,6 @@ def test_parse_rejects_foreign_csv():
         bourne_io.parse(pd.DataFrame({"a": ["x"]}))
     with pytest.raises(ValueError):
         bourne_io.parse(pd.DataFrame({"field": ["record_type"], "value": ["other"]}))
+    kpi_table = pd.DataFrame({"KPI": ["Yield (%)"], "Low speed": ["45"], "Sensitive?": ["No"]})
+    with pytest.raises(ValueError, match="Generate Sensitivity CSV"):
+        bourne_io.parse(kpi_table)

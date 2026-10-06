@@ -89,6 +89,16 @@ def fluid_props(name: str, T_C: float, P_atm: float = 1.0) -> dict:
     return {**DEFAULT_FLUID, "in_range": True, "note": ""}
 
 
+def solvent_props(solvent: str, T_C: float) -> dict | None:
+    """Library solvent property dict at T (None when the name is not in the library)."""
+    if not solvent or not is_known_solvent(solvent):
+        return None
+    try:
+        return get_properties(resolve_solvent_name(solvent) or solvent, T_C, 1.0)
+    except Exception:  # noqa: BLE001 - property library edge cases
+        return None
+
+
 def bottom_dish_height(row: pd.Series) -> float:
     """Measured bottom-dish height (m) for a reactor row, 0.0 when unknown.
 

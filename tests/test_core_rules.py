@@ -52,8 +52,8 @@ def test_unknown_reaction_gets_first_order_defaults():
 
 # ---- Reaction Sensitivity Protocol ----------------------------------------
 def _inputs(**kw):
-    base = dict(order="1", k=1.0, C0=1.0, t_specified=0.0, dH=-80.0, competing="No",
-                phases=["Liquid"], c0_heat=1.0, rho_cp=1800.0)
+    base = dict(order="1", k=1.0, C0=1.0, t_specified=0.0, dH=-80.0, competing="no",
+                phases=["liquid"], c0_heat=1.0, rho_cp=1800.0)
     base.update(kw)
     return rules.ProtocolInputs(**base)
 
@@ -71,7 +71,7 @@ def test_bourne_prescreen(status, mech, done, expected):
 
 def test_complete_answers_give_a_verdict_and_adiabatic_rise():
     r = rules.assess_protocol(_inputs())
-    assert r["ready"] and r["verdict"] and r["summary_note"] == ""
+    assert r["ready"] and r["verdict"].text and rules.protocol_md(r)["summary_note"] == ""
     assert r["t_rxn"] == pytest.approx(1.0)
     assert r["dt_ad"] == pytest.approx(80.0 * 1000.0 / 1800.0)
     assert r["findings"] and r["next_steps"]
@@ -85,7 +85,7 @@ def test_complete_answers_give_a_verdict_and_adiabatic_rise():
 ])
 def test_missing_answers_block_the_verdict(override):
     r = rules.assess_protocol(_inputs(**override))
-    assert not r["ready"] and r["summary_note"]
+    assert not r["ready"] and rules.protocol_md(r)["summary_note"]
 
 
 def test_declined_kinetics_and_calorimetry_still_resolve():
@@ -96,7 +96,7 @@ def test_declined_kinetics_and_calorimetry_still_resolve():
 def test_dh_estimate_from_similar_reaction_is_flagged_estimated():
     r = rules.assess_protocol(_inputs(dH=0.0, dh_action="estimate", dh_ref_value=-120.0))
     assert r["ready"] and r["dH_eff"] == -120.0 and r["dh_estimated"]
-    assert "estimated" in r["step4"]
+    assert "estimated" in r["steps"][4].text
 
 
 def test_measured_override_wins_over_database_dh():

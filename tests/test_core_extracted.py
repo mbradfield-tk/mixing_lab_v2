@@ -76,6 +76,17 @@ def test_mass_transfer_screen_bands():
 def test_regime_label_thresholds():
     assert [rules.regime_label(x) for x in (0, 0.05, 0.5, 2)] == [
         "—", "🟢 Mixing-insensitive", "🟡 Transitional", "🔴 Mixing-limited"]
+    assert [rules.regime(x)[0] for x in (0, 0.05, 0.5, 2)] == ["unknown", "ok", "warning", "critical"]
+
+
+def test_structured_screens_carry_codes_not_labels():
+    rows = rules.mass_transfer_data([("G", 0.005), ("Z", 0.0)], 100.0)
+    assert [r["screening"] for r in rows] == ["limited", "unknown"]
+    assert rows[0]["ratio"] == pytest.approx(0.5)
+    geo = VesselGeometry(D_tank=0.3, D_imp=0.1, H_max=0.4, Np=1.27, Nq=0.79)
+    res = rules.applicability_checks({"Re": 5e4}, geo, pd.Series({"baffles": "4"}), 10.0,
+                                     gas_on=True, solids_on=False)
+    assert "gas loading included" in res["checks"] and not any("**" in c for c in res["checks"])
 
 
 # --- heat transfer ---------------------------------------------------------------
@@ -102,6 +113,18 @@ def test_feed_plan_scales_by_max_volume_and_flags_overflow():
     assert rows[0]["Feed volume (mL)"] == "100.0" and rows[0]["Feed rate (mL/min)"] == "1.67"
     assert exceeded and exceeded[0].startswith("Big")
     assert scale_up.feed_plan(info, "Missing", 100.0, 1.0)[2] == "basis"
+    data, err = scale_up.feed_plan_data(info, "Small", 100.0, 1.0)
+    assert err is None and [d["exceeds_max"] for d in data] == [False, True]
+    assert data[0]["feed_rate_mL_min"] == pytest.approx(100.0 / 60.0)
+
+
+def test_impact_ratio_data_is_numeric():
+    env = pd.DataFrame({"Reactor": ["A", "A", "B", "B"], "Volume (L)": [1, 1, 10, 10],
+                        "P/V (W/L)": [1, 1, 2, 2], "Q_gen/Q_cool (%)": [50, 50, 40, 40]})
+    (d,) = scale_up.impact_ratio_data(env, ["P/V (W/L)", "Q_gen/Q_cool (%)"], incl_heat=True)
+    assert d["volume"] == 10 and d["P_V"] == 2 and d["cooling_delta_pp"] == -10
+    assert scale_up.impact_ratios(env, ["P/V (W/L)", "Q_gen/Q_cool (%)"], True)[0]["Cooling"] \
+        .startswith("✅ Improves")
 
 
 def _linear_hydro(n_rps, v_l):

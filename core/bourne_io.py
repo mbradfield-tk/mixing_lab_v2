@@ -7,9 +7,11 @@ import io
 
 import pandas as pd
 
+from core.options import BourneStatus, Mechanism
+
 RECORD_TYPE = "bourne_results"
 PROTOCOL_VERSION = "2"
-MECHANISMS = ("Micromixing", "Mesomixing", "Macromixing")
+MECHANISMS = tuple(Mechanism)
 TEST_NAMES = {1: "Test 1 - Impeller speed", 2: "Test 2 - Feed rate/time", 3: "Test 3 - Feed location"}
 META_KEYS = ("project_name", "step_number", "unit_operation", "process_version",
              "reactor", "fluid", "working_volume_L", "test_status", "protocol_version",
@@ -87,11 +89,18 @@ def parse(df: pd.DataFrame) -> dict:
     """Interpret an uploaded export (string-typed ``field,value`` frame).
 
     Raises ValueError with a user-facing message when the file is not a Bourne
-    results export. Returns {overall: yes|no|inconclusive, mechanism (or ""),
-    tests_done, findings (rows), meta, meta_caption, fields (raw dict)}.
+    results export. Returns {overall: yes|no|inconclusive, status (BourneStatus),
+    mechanism (or ""), tests_done (test numbers), findings (rows), meta, meta_caption,
+    fields (raw dict)}.
     """
     if not ({"field", "value"} <= set(df.columns)):
-        raise ValueError("Not a Bourne results CSV (expected 'field','value' columns).")
+        if {"KPI", "Sensitive?"} <= set(df.columns):
+            raise ValueError(
+                "This is a per-test KPI results table, not the Bourne results export. On the "
+                "Bourne Protocol page, use 'Generate Sensitivity CSV' then 'Download Sensitivity "
+                "CSV' and import that file.")
+        raise ValueError("Not a Bourne results CSV (expected 'field','value' columns). Export it "
+                         "with 'Generate Sensitivity CSV' on the Bourne Protocol page.")
     d = {str(k).strip(): str(v).strip() for k, v in zip(df["field"], df["value"])}
     if d.get("record_type") != RECORD_TYPE:
         raise ValueError("That CSV is not a Bourne Protocol results export.")
@@ -106,7 +115,7 @@ def parse(df: pd.DataFrame) -> dict:
         assessed = (d.get(f"test{n}_assessed") or d.get(f"test{n}_completed") or "no") == "yes"
         if not assessed:
             continue
-        done.append(f"Test {n}")
+        done.append(n)
         findings.append({"Test": TEST_NAMES[n], "Finding": d.get(f"test{n}_finding") or "-",
                          "Sensitive KPI(s)": d.get(f"test{n}_sensitive_kpis")
                          or "None (no KPI over threshold)"})
@@ -116,6 +125,8 @@ def parse(df: pd.DataFrame) -> dict:
         if d.get(fld, "")]
     return {
         "overall": overall,
+        "status": {"yes": BourneStatus.CONFIRMED, "no": BourneStatus.INSENSITIVE}.get(
+            overall, BourneStatus.INCONCLUSIVE),
         "mechanism": dom if dom in MECHANISMS else "",
         "tests_done": done,
         "findings": findings,

@@ -333,11 +333,11 @@ def test_update_assessment_preserves_inputs_and_recomputes(monkeypatch):
 
 
 def test_semi_batch_requires_feed_zone_assessment_not_auto_sensitive():
-    meso_sensitive, require_feed_zone = _mesomixing_risk("No", True)
+    meso_sensitive, require_feed_zone = _mesomixing_risk("no", True)
     assert meso_sensitive is False
     assert require_feed_zone is True
 
-    meso_sensitive, require_feed_zone = _mesomixing_risk("Yes", True)
+    meso_sensitive, require_feed_zone = _mesomixing_risk("yes", True)
     assert meso_sensitive is True
     assert require_feed_zone is False
 

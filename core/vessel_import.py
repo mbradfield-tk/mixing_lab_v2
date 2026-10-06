@@ -153,6 +153,7 @@ def build_import_changes(existing: pd.DataFrame, new_df: pd.DataFrame,
                         "reactor_name": label_name,
                         "match_by": match_by,
                         "col": col,
+                        "old": old_val,
                         "new": new_val,
                         "desc": (
                             f"**Update vessel:** {label_name}\n\n"

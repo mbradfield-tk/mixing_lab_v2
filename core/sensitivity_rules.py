@@ -1,7 +1,9 @@
 """Mixing-sensitivity decision rules: the Reaction Sensitivity Protocol findings,
 verdict and next steps, Damköhler bands, and the Bourne Protocol decision tree.
 
-Every function is a pure function of its arguments (no GUI state).
+Every function is a pure function of its arguments (no GUI state). The protocol
+returns structured objects (:mod:`core.messages`); ``protocol_md`` renders them
+to the Markdown the Taipy page and PDF report display.
 """
 from __future__ import annotations
 
@@ -11,6 +13,8 @@ from typing import Callable
 
 import numpy as np
 
+from core.messages import Action, Finding, Message, kind_of_label
+from core.options import BourneStatus, Competing, DhAction, Kinetics, Mechanism, Phase
 from utils.calculations import characteristic_reaction_time
 
 TEST_PURPOSE = {1: "impeller speed", 2: "feed rate/time", 3: "feed location"}
@@ -24,9 +28,7 @@ KNOWN_HOT = ["grignard", "nitration", "sulfonation", "diazotization",
 # ---------------------------------------------------------------------------
 def amd(kind: str, text: str) -> str:
     """Traffic-light assessment line: emoji + markdown text."""
-    icon = {"critical": "🔴", "warning": "🟡", "caution": "🟡",
-            "ok": "🟢", "unknown": "⚪"}.get(kind, "⚪")
-    return f"{icon} {text}"
+    return Message(kind, text).md()
 
 
 def strip_md(text: str) -> str:
@@ -88,7 +90,7 @@ def mesomixing_risk(competing: str, is_semi_batch: bool) -> tuple[bool, bool]:
     mesomixing sensitivity. The user must still assess the feed conditions and
     test data before the sensitivity is elevated.
     """
-    meso_sensitive = competing in ("Yes", "Not sure")
+    meso_sensitive = competing in (Competing.YES, Competing.NOT_SURE)
     require_feed_zone = is_semi_batch and not meso_sensitive
     return meso_sensitive, require_feed_zone
 
@@ -184,44 +186,77 @@ def heat_transfer_summary(abs_dH: float, dt_ad: float | None = None, *,
 # ---------------------------------------------------------------------------
 # Reactor-specific Damköhler bands
 # ---------------------------------------------------------------------------
+def regime(da: float) -> tuple[str, str]:
+    """(kind, label) regime for a single Damköhler number (0 = not evaluated)."""
+    if da <= 0:
+        return "unknown", "Not evaluated"
+    if da < 0.1:
+        return "ok", "Mixing-insensitive"
+    if da < 1.0:
+        return "warning", "Transitional"
+    return "critical", "Mixing-limited"
+
+
 def regime_label(da: float) -> str:
-    """Traffic-light regime for a single Damköhler number (0 = not evaluated)."""
+    """Traffic-light regime label for display."""
     if da <= 0:
         return "—"
-    if da < 0.1:
-        return "🟢 Mixing-insensitive"
-    if da < 1.0:
-        return "🟡 Transitional"
-    return "🔴 Mixing-limited"
+    kind, label = regime(da)
+    return Message(kind, label).md()
 
 
-def mass_transfer_screen(paths: list[tuple[str, float]], t_rxn: float) -> list[dict]:
+def mass_transfer_data(paths: list[tuple[str, float]], t_rxn: float) -> list[dict]:
     """Preliminary kLa capacity vs kinetic demand (1/t_rxn) per transfer path.
 
     A full mass-transfer demand still needs solubility, driving-force and
-    phase-composition data; this only flags paths worth checking.
+    phase-composition data; this only flags paths worth checking. ``screening``
+    is a code: unknown | limited | comparable | exceeds.
     """
     demand_rate = 1.0 / t_rxn if t_rxn > 0 else 0.0
     rows = []
     for path, kla_value in paths:
         ratio = kla_value / demand_rate if demand_rate > 0 else 0.0
         if kla_value <= 0:
-            screening = "Unknown — kLa unavailable"
+            screening = "unknown"
         elif ratio < 1.0:
-            screening = "Potentially transfer-limited"
+            screening = "limited"
         elif ratio < 10.0:
-            screening = "Capacity comparable to demand"
+            screening = "comparable"
         else:
-            screening = "Capacity exceeds kinetic demand"
-        rows.append({"Transfer path": path, "kLa (1/s)": f"{kla_value:.3g}",
-                     "Demand 1/t_rxn (1/s)": f"{demand_rate:.3g}",
-                     "Capacity / demand": f"{ratio:.3g}", "Screening": screening})
+            screening = "exceeds"
+        rows.append({"path": path, "kLa": kla_value, "demand": demand_rate, "ratio": ratio,
+                     "screening": screening})
     return rows
+
+
+MT_SCREENING_LABELS = {
+    "unknown": "Unknown — kLa unavailable", "limited": "Potentially transfer-limited",
+    "comparable": "Capacity comparable to demand", "exceeds": "Capacity exceeds kinetic demand",
+}
+
+
+def mass_transfer_screen(paths: list[tuple[str, float]], t_rxn: float) -> list[dict]:
+    """Display table of :func:`mass_transfer_data`."""
+    return [{"Transfer path": d["path"], "kLa (1/s)": f"{d['kLa']:.3g}",
+             "Demand 1/t_rxn (1/s)": f"{d['demand']:.3g}",
+             "Capacity / demand": f"{d['ratio']:.3g}",
+             "Screening": MT_SCREENING_LABELS[d["screening"]]}
+            for d in mass_transfer_data(paths, t_rxn)]
 
 
 def correlation_applicability(hydro: dict, geometry, row, v_l: float,
                               gas_on: bool, solids_on: bool) -> str:
-    """Markdown summary of applicability checks for the stirred-tank correlations.
+    """Markdown summary of :func:`applicability_checks`."""
+    res = applicability_checks(hydro, geometry, row, v_l, gas_on, solids_on)
+    lines = ["**Correlation applicability:** " + "; ".join(res["checks"]) + "."]
+    if res["warnings"]:
+        lines.append("**Review required:** " + "; ".join(res["warnings"]) + ".")
+    return "\n\n".join(lines)
+
+
+def applicability_checks(hydro: dict, geometry, row, v_l: float,
+                         gas_on: bool, solids_on: bool) -> dict[str, list[str]]:
+    """{checks, warnings}: applicability of the stirred-tank correlations.
 
     ``geometry`` is a :class:`core.records.VesselGeometry`; ``row`` is the reactor
     database row (baffles, impeller clearance and count are read from it).
@@ -279,11 +314,7 @@ def correlation_applicability(hydro: dict, geometry, row, v_l: float,
     checks.append("gas loading included" if gas_on else "no gas loading")
     checks.append("solids loading enabled; verify particle-concentration range" if solids_on
                   else "no solids loading")
-
-    lines = ["**Correlation applicability:** " + "; ".join(checks) + "."]
-    if warnings:
-        lines.append("**Review required:** " + "; ".join(warnings) + ".")
-    return "\n\n".join(lines)
+    return {"checks": checks, "warnings": warnings}
 
 
 def da_band(da: float) -> str:
@@ -330,11 +361,23 @@ def da_assessment(da: dict) -> tuple[str, str, bool]:
 # ---------------------------------------------------------------------------
 # Findings / verdict / next-steps builders (faithful to the Streamlit logic)
 # ---------------------------------------------------------------------------
+def _da_finding(da_value: float) -> tuple[str, str]:
+    if da_value >= 1.0:
+        return "critical", "Likely sensitive"
+    if da_value >= 0.1:
+        return "warning", "Transitional"
+    return "ok", "Unlikely"
+
+
 def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                    meso_sensitive, competing, is_semi_batch, multiphase, phases,
                    has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known,
-                   using_approx=False, dh_estimated=False, da=None):
-    findings: list[tuple[str, str, str]] = []
+                   using_approx=False, dh_estimated=False, da=None) -> list[Finding]:
+    findings: list[Finding] = []
+
+    def add(area, kind, status, detail, code):
+        findings.append(Finding(area, kind, status, detail, code))
+
     kpi_phrase = sensitive_kpi_phrase(test_rows)
     rem = remaining_tests(b_done)
     rem_action = (f"complete {fmt_tests(rem)} of the Bourne Protocol" if rem
@@ -343,267 +386,298 @@ def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
     proxy_note = " Based on proxy kinetics - verify with measured data." if using_approx else ""
 
     # Bourne pre-screen
+    area = "Bourne pre-screen"
     if b_sensitive is True:
         if b_mechs:
-            findings.append(("Bourne pre-screen", "🔴 Mixing sensitivity confirmed",
-                             f"Experimental pre-screen showed {kpi_phrase} changed with mixing "
-                             f"conditions. Controlling scale(s): {', '.join(b_mechs)}."))
+            add(area, "critical", "Mixing sensitivity confirmed",
+                f"Experimental pre-screen showed {kpi_phrase} changed with mixing "
+                f"conditions. Controlling scale(s): {', '.join(b_mechs)}.", "bourne.confirmed")
         else:
-            findings.append(("Bourne pre-screen", "🔴 Mixing sensitivity confirmed",
-                             f"Experimental pre-screen showed {kpi_phrase} changed with mixing "
-                             f"conditions. Controlling scale not yet identified - {rem_action}."))
+            add(area, "critical", "Mixing sensitivity confirmed",
+                f"Experimental pre-screen showed {kpi_phrase} changed with mixing "
+                f"conditions. Controlling scale not yet identified - {rem_action}.",
+                "bourne.confirmed_unresolved")
     elif b_sensitive is False:
-        findings.append(("Bourne pre-screen", "🟢 No sensitivity observed",
-                         "Experimental pre-screen showed no mixing sensitivity at lab scale."))
+        add(area, "ok", "No sensitivity observed",
+            "Experimental pre-screen showed no mixing sensitivity at lab scale.",
+            "bourne.insensitive")
     elif b_done:
-        findings.append(("Bourne pre-screen", "⚪ Inconclusive",
-                         "Bourne tests were started but Test 1 was not completed - finish "
-                         "Test 1 for a direct experimental answer."))
+        add(area, "unknown", "Inconclusive",
+            "Bourne tests were started but Test 1 was not completed - finish "
+            "Test 1 for a direct experimental answer.", "bourne.inconclusive")
     else:
-        findings.append(("Bourne pre-screen", "⚪ Not performed",
-                         "Run Bourne Protocol Part 1 for a direct experimental answer."))
+        add(area, "unknown", "Not performed",
+            "Run Bourne Protocol Part 1 for a direct experimental answer.", "bourne.not_performed")
 
     # Kinetics basis - proxy kinetics make every timescale conclusion provisional
     if kinetics_known and using_approx:
-        findings.append(("Kinetics basis", "🟡 Approximate (proxy reaction)",
-                         "t_rxn comes from a proxy reaction class - the micro-, meso- and "
-                         "macromixing conclusions below are provisional. Measure the actual "
-                         "kinetics to confirm them."))
+        add("Kinetics basis", "warning", "Approximate (proxy reaction)",
+            "t_rxn comes from a proxy reaction class - the micro-, meso- and "
+            "macromixing conclusions below are provisional. Measure the actual "
+            "kinetics to confirm them.", "kinetics.approximate")
 
     # Micromixing
+    area = "Micromixing"
     if not kinetics_known:
-        findings.append(("Micromixing", "⚪ Unknown",
-                         "Reaction kinetics not available - micromixing cannot be assessed from "
-                         "t_rxn. A Bourne pre-screen (Test 1) gives a direct experimental answer."))
+        add(area, "unknown", "Unknown",
+            "Reaction kinetics not available - micromixing cannot be assessed from "
+            "t_rxn. A Bourne pre-screen (Test 1) gives a direct experimental answer.",
+            "micromixing.unknown")
     elif da:
         dmi = da["Da_micro"]
-        icon = "🔴 Likely sensitive" if dmi >= 1.0 else ("🟡 Transitional" if dmi >= 0.1 else "🟢 Unlikely")
-        findings.append(("Micromixing", icon + proxy_tag,
-                         f"Da_micro = {dmi:.3g} in {da['reactor']} ({da['N_rpm']:.0f} RPM, "
-                         f"{da['V_L']:.3g} L): t_E = {da['t_E']:.3g} s vs t_rxn = {t_rxn:.4g} s."
-                         + proxy_note))
+        kind, status = _da_finding(dmi)
+        add(area, kind, status + proxy_tag,
+            f"Da_micro = {dmi:.3g} in {da['reactor']} ({da['N_rpm']:.0f} RPM, "
+            f"{da['V_L']:.3g} L): t_E = {da['t_E']:.3g} s vs t_rxn = {t_rxn:.4g} s."
+            + proxy_note, "micromixing.damkohler")
     elif micro_likely:
-        findings.append(("Micromixing", "🔴 Likely sensitive",
-                         f"t_rxn = {t_rxn:.4g} s - fast enough that local energy dissipation "
-                         "controls the mixing rate."))
+        add(area, "critical", "Likely sensitive",
+            f"t_rxn = {t_rxn:.4g} s - fast enough that local energy dissipation "
+            "controls the mixing rate.", "micromixing.fast_reaction")
     elif using_approx:
-        findings.append(("Micromixing", "🟡 Unlikely (proxy kinetics)",
-                         f"t_rxn = {t_rxn:.4g} s - slow relative to typical micromixing times, "
-                         "but this is based on proxy kinetics. Verify with measured data."))
+        add(area, "warning", "Unlikely (proxy kinetics)",
+            f"t_rxn = {t_rxn:.4g} s - slow relative to typical micromixing times, "
+            "but this is based on proxy kinetics. Verify with measured data.",
+            "micromixing.unlikely")
     else:
-        findings.append(("Micromixing", "🟢 Unlikely",
-                         f"t_rxn = {t_rxn:.4g} s - slow relative to typical micromixing times."))
+        add(area, "ok", "Unlikely",
+            f"t_rxn = {t_rxn:.4g} s - slow relative to typical micromixing times.",
+            "micromixing.unlikely")
 
     # Micro/mesomixing (selectivity)
     if meso_sensitive or is_semi_batch:
-        if is_semi_batch and competing == "No":
-            findings.append(("Mesomixing (feed-plume)", "🟡 Semi-batch - check experimentally",
-                             "No competing reactions, but feed-plume dispersion controls local "
-                             "concentration. Vary feed rate and location (Bourne Tests 2 & 3)."))
+        if is_semi_batch and competing == Competing.NO:
+            add("Mesomixing (feed-plume)", "warning", "Semi-batch - check experimentally",
+                "No competing reactions, but feed-plume dispersion controls local "
+                "concentration. Vary feed rate and location (Bourne Tests 2 & 3).",
+                "mesomixing.semi_batch")
         else:
-            findings.append(("Micro/mesomixing (selectivity)",
-                             "🟡 Potentially sensitive" if competing == "Not sure" else "🔴 Likely sensitive",
-                             "Competing reactions present - both micromixing (local ε) and "
-                             "mesomixing (feed dispersion) may affect selectivity."))
+            not_sure = competing == Competing.NOT_SURE
+            add("Micro/mesomixing (selectivity)", "warning" if not_sure else "critical",
+                "Potentially sensitive" if not_sure else "Likely sensitive",
+                "Competing reactions present - both micromixing (local ε) and "
+                "mesomixing (feed dispersion) may affect selectivity.", "selectivity.competing")
     else:
-        findings.append(("Micro/mesomixing (selectivity)", "🟢 Not a factor",
-                         "No competing reactions; batch process (no feed addition)."))
+        add("Micro/mesomixing (selectivity)", "ok", "Not a factor",
+            "No competing reactions; batch process (no feed addition).", "selectivity.none")
 
     # Macromixing
+    area = "Macromixing (blend time)"
     if not kinetics_known:
-        findings.append(("Macromixing (blend time)", "⚪ Unknown",
-                         "Reaction kinetics not available - t_rxn cannot be compared to the "
-                         "vessel blend time."))
+        add(area, "unknown", "Unknown",
+            "Reaction kinetics not available - t_rxn cannot be compared to the "
+            "vessel blend time.", "macromixing.unknown")
     elif da:
         dma = da["Da_macro"]
-        icon = "🔴 Likely sensitive" if dma >= 1.0 else ("🟡 Transitional" if dma >= 0.1 else "🟢 Unlikely")
-        findings.append(("Macromixing (blend time)", icon + proxy_tag,
-                         f"Da_macro = {dma:.3g} in {da['reactor']}: θ₉₅ = {da['t_blend']:.3g} s vs "
-                         f"t_rxn = {t_rxn:.4g} s. Blend time grows ~T^(2/3) at constant P/V - "
-                         "re-check at the next scale." + proxy_note))
+        kind, status = _da_finding(dma)
+        add(area, kind, status + proxy_tag,
+            f"Da_macro = {dma:.3g} in {da['reactor']}: θ₉₅ = {da['t_blend']:.3g} s vs "
+            f"t_rxn = {t_rxn:.4g} s. Blend time grows ~T^(2/3) at constant P/V - "
+            "re-check at the next scale." + proxy_note, "macromixing.damkohler")
     elif t_rxn < 60:
-        findings.append(("Macromixing (blend time)", "🟡 Check at scale",
-                         f"t_rxn = {t_rxn:.4g} s is within the range of blend times in larger "
-                         "vessels (10–120 s). Compute Da_macro for your reactor."))
+        add(area, "warning", "Check at scale",
+            f"t_rxn = {t_rxn:.4g} s is within the range of blend times in larger "
+            "vessels (10–120 s). Compute Da_macro for your reactor.", "macromixing.check_at_scale")
     elif using_approx:
-        findings.append(("Macromixing (blend time)", "🟡 Unlikely (proxy kinetics)",
-                         f"t_rxn = {t_rxn:.4g} s is much longer than typical blend times, but "
-                         "this is based on proxy kinetics. Verify with measured data."))
+        add(area, "warning", "Unlikely (proxy kinetics)",
+            f"t_rxn = {t_rxn:.4g} s is much longer than typical blend times, but "
+            "this is based on proxy kinetics. Verify with measured data.", "macromixing.unlikely")
     else:
-        findings.append(("Macromixing (blend time)", "🟢 Unlikely",
-                         f"t_rxn = {t_rxn:.4g} s is much longer than typical blend times."))
+        add(area, "ok", "Unlikely",
+            f"t_rxn = {t_rxn:.4g} s is much longer than typical blend times.",
+            "macromixing.unlikely")
 
     # Mass transfer
+    phase_names = [Phase(p).label for p in phases]
     if multiphase:
-        findings.append((f"Mass transfer ({' + '.join(phases)})", "🟡 System-dependent",
-                         "Multi-phase system - interphase transport may limit the observed rate. "
-                         "Characterise gas–liquid kLa and liquid–solid transport, including "
-                         "dissolution, adsorption, or desorption, for each reactor."))
+        add(f"Mass transfer ({' + '.join(phase_names)})", "warning", "System-dependent",
+            "Multi-phase system - interphase transport may limit the observed rate. "
+            "Characterise gas–liquid kLa and liquid–solid transport, including "
+            "dissolution, adsorption, or desorption, for each reactor.",
+            "mass_transfer.multiphase")
     else:
-        phase_lbl = phases[0] if phases else "Liquid"
-        findings.append(("Mass transfer", "🟢 Not applicable",
-                         f"Single phase ({phase_lbl}) - no interphase transport."))
+        phase_lbl = phase_names[0] if phase_names else Phase.LIQUID.label
+        add("Mass transfer", "ok", "Not applicable",
+            f"Single phase ({phase_lbl}) - no interphase transport.", "mass_transfer.single_phase")
 
     # Heat transfer
+    detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
+    if dt_ad is not None:
+        detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
     if has_enthalpy and heat_limiting:
-        detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
-        if dt_ad is not None:
-            detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
         duty = "cooling" if dH_eff < 0 else "heating"
-        status = ("🔴 Likely heat-transfer-limited (estimated ΔH)" if dh_estimated
-              else "🔴 Likely heat-transfer-limited")
         note = " ΔH is estimated - confirm it by reaction calorimetry." if dh_estimated else ""
-        findings.append(("Heat transfer", status,
-                         f"{detail} - run a heat balance to confirm adequate {duty} capacity.{note}"))
-    elif has_enthalpy and not heat_limiting and dh_estimated:
-        detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
-        if dt_ad is not None:
-            detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
-        findings.append(("Heat transfer", "🟡 Manageable (estimated ΔH)",
-                         f"{detail} - modest thermal load, but the ΔH is estimated. Measure it "
-                         "by reaction calorimetry to confirm."))
-    elif has_enthalpy and not heat_limiting:
-        detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
-        if dt_ad is not None:
-            detail += f", ΔT_ad ≈ {dt_ad:.0f} K"
-        findings.append(("Heat transfer", "🟢 Manageable",
-                         f"{detail} - modest thermal load, unlikely to be limiting in most "
-                         "configurations."))
+        add("Heat transfer", "critical",
+            "Likely heat-transfer-limited" + (" (estimated ΔH)" if dh_estimated else ""),
+            f"{detail} - run a heat balance to confirm adequate {duty} capacity.{note}",
+            "heat.limiting")
+    elif has_enthalpy and dh_estimated:
+        add("Heat transfer", "warning", "Manageable (estimated ΔH)",
+            f"{detail} - modest thermal load, but the ΔH is estimated. Measure it "
+            "by reaction calorimetry to confirm.", "heat.manageable")
+    elif has_enthalpy:
+        add("Heat transfer", "ok", "Manageable",
+            f"{detail} - modest thermal load, unlikely to be limiting in most "
+            "configurations.", "heat.manageable")
     else:
-        findings.append(("Heat transfer", "⚪ Unknown",
-                         "No ΔH data available - measure ΔH by reaction calorimetry (RC1 / µRC)."))
+        add("Heat transfer", "unknown", "Unknown",
+            "No ΔH data available - measure ΔH by reaction calorimetry (RC1 / µRC).",
+            "heat.unknown")
 
     # Semi-batch
     if is_semi_batch:
-        findings.append(("Semi-batch (fed-batch)", "🟡 Feed-point sensitive",
-                         "Mesomixing (feed-plume dispersion) controls local concentration, heat "
-                         "release and supersaturation at the feed point."))
+        add("Semi-batch (fed-batch)", "warning", "Feed-point sensitive",
+            "Mesomixing (feed-plume dispersion) controls local concentration, heat "
+            "release and supersaturation at the feed point.", "semi_batch.feed_point")
     return findings
 
 
+def _finding_parts(f) -> tuple[str, str]:
+    """(area, kind) of a Finding or a legacy rendered (area, status, detail) tuple."""
+    if isinstance(f, Finding):
+        return f.area, f.kind
+    return f[0], kind_of_label(f[1])
+
+
 def build_verdict(b_sensitive, b_mechs, b_done, findings, competing):
-    mech_findings = [f for f in findings if f[0] != "Bourne pre-screen"]
-    n_red = sum(1 for _, s, _ in mech_findings if "🔴" in s)
-    n_yellow = sum(1 for _, s, _ in mech_findings if "🟡" in s)
-    n_unknown = sum(1 for _, s, _ in mech_findings if "⚪" in s)
-    red_mechs = [m for m, s, _ in mech_findings if "🔴" in s]
+    """(Markdown verdict, kind) — see :func:`verdict_message`."""
+    m = verdict_message(b_sensitive, b_mechs, b_done, findings, competing)
+    return m.md(), m.kind
+
+
+def verdict_message(b_sensitive, b_mechs, b_done, findings, competing) -> Message:
+    mech = [_finding_parts(f) for f in findings]
+    mech = [(a, k) for a, k in mech if a != "Bourne pre-screen"]
+    n_red = sum(1 for _, k in mech if k == "critical")
+    n_yellow = sum(1 for _, k in mech if k in ("warning", "caution"))
+    n_unknown = sum(1 for _, k in mech if k == "unknown")
+    red_mechs = [a for a, k in mech if k == "critical"]
     rem = remaining_tests(b_done)
     rem_action = (f"complete {fmt_tests(rem)} of the Bourne Protocol" if rem
                   else "re-run the Bourne Protocol decision tree")
+    incomplete = Message(
+        "warning", f"**Incomplete assessment** - {n_unknown} item(s) could not be evaluated "
+        "(e.g. missing kinetics or ΔH), so a low-risk verdict cannot be confirmed. "
+        "Resolve the unknowns or run a Bourne pre-screen for a direct experimental "
+        "answer.", "incomplete")
 
     if b_sensitive is True:
         if b_mechs:
-            return (f"🔴 **Mixing sensitivity confirmed** - the Bourne Protocol identified "
-                    f"**{join_mechs(b_mechs)}** as the controlling scale(s). Focus scale-up "
-                    "efforts on this mechanism (see recommendations below)."), "critical"
+            return Message(
+                "critical", f"**Mixing sensitivity confirmed** - the Bourne Protocol identified "
+                f"**{join_mechs(b_mechs)}** as the controlling scale(s). Focus scale-up "
+                "efforts on this mechanism (see recommendations below).", "confirmed.mechanism")
         if red_mechs:
-            return (f"🔴 **Mixing sensitivity confirmed** - the reaction may be "
-                    f"**{join_mechs(red_mechs)} limited**, and the Bourne pre-screen confirms a "
-                    "sensitivity is present. Characterise the reaction in detail to identify "
-                    "the controlling mechanism."), "critical"
+            return Message(
+                "critical", f"**Mixing sensitivity confirmed** - the reaction may be "
+                f"**{join_mechs(red_mechs)} limited**, and the Bourne pre-screen confirms a "
+                "sensitivity is present. Characterise the reaction in detail to identify "
+                "the controlling mechanism.", "confirmed.theory_flagged")
         if n_yellow >= 1:
-            return ("🔴 **Mixing sensitivity confirmed** - the Bourne pre-screen shows a "
-                    "sensitivity is present. The theory did not flag a specific mechanism as "
-                    f"likely, but some items require verification at scale. To pinpoint the "
-                    f"controlling scale, {rem_action}."), "critical"
-        return ("🔴 **Mixing sensitivity confirmed** - the Bourne pre-screen shows an experimental "
-                "sensitivity even though the theory flagged no mechanism. Revisit the inputs "
-                f"(kinetics, phases, feed strategy) and {rem_action}."), "critical"
+            return Message(
+                "critical", "**Mixing sensitivity confirmed** - the Bourne pre-screen shows a "
+                "sensitivity is present. The theory did not flag a specific mechanism as "
+                f"likely, but some items require verification at scale. To pinpoint the "
+                f"controlling scale, {rem_action}.", "confirmed.needs_tests")
+        return Message(
+            "critical", "**Mixing sensitivity confirmed** - the Bourne pre-screen shows an "
+            "experimental sensitivity even though the theory flagged no mechanism. Revisit the "
+            f"inputs (kinetics, phases, feed strategy) and {rem_action}.", "confirmed.unexplained")
 
     if b_sensitive is False:
         if n_unknown >= 1:
-            return (f"🟡 **Incomplete assessment** - {n_unknown} item(s) could not be evaluated "
-                    "(e.g. missing kinetics or ΔH), so a low-risk verdict cannot be confirmed. "
-                    "Resolve the unknowns or run a Bourne pre-screen for a direct experimental "
-                    "answer."), "warning"
+            return incomplete
         if red_mechs:
-            return (f"🟡 **Possible scale-dependent sensitivity** - the Bourne pre-screen showed "
-                    f"no sensitivity at lab scale, but the assessment flags **{join_mechs(red_mechs)}** "
-                    "as likely to become limiting at larger scale. Confirm with Damköhler analysis "
-                    "before scale-up."), "warning"
+            return Message(
+                "warning", f"**Possible scale-dependent sensitivity** - the Bourne pre-screen "
+                f"showed no sensitivity at lab scale, but the assessment flags "
+                f"**{join_mechs(red_mechs)}** as likely to become limiting at larger scale. "
+                "Confirm with Damköhler analysis before scale-up.", "scale_dependent")
         if n_yellow >= 1:
-            return ("🟢 **Low mixing sensitivity risk** - the Bourne pre-screen showed no "
-                    "sensitivity and no mechanism is flagged as likely, though a few items warrant "
-                    "a check at scale."), "ok"
-        return ("🟢 **Low mixing sensitivity risk** - the Bourne pre-screen showed no sensitivity "
-                "and no mixing mechanism is expected to limit this reaction."), "ok"
+            return Message(
+                "ok", "**Low mixing sensitivity risk** - the Bourne pre-screen showed no "
+                "sensitivity and no mechanism is flagged as likely, though a few items warrant "
+                "a check at scale.", "low.with_checks")
+        return Message(
+            "ok", "**Low mixing sensitivity risk** - the Bourne pre-screen showed no sensitivity "
+            "and no mixing mechanism is expected to limit this reaction.", "low")
 
     # Bourne not performed - theory only
     if n_red >= 2:
-        return (f"🔴 **High mixing sensitivity risk** - multiple mechanisms "
-                f"(**{join_mechs(red_mechs)}**) are likely to limit this reaction at scale. "
-                "Characterise them in detail and run a Bourne pre-screen for direct "
-                "experimental confirmation."), "critical"
+        return Message(
+            "critical", f"**High mixing sensitivity risk** - multiple mechanisms "
+            f"(**{join_mechs(red_mechs)}**) are likely to limit this reaction at scale. "
+            "Characterise them in detail and run a Bourne pre-screen for direct "
+            "experimental confirmation.", "high")
     if n_red == 1:
-        return (f"🟡 **Moderate mixing sensitivity risk** - **{join_mechs(red_mechs)}** is likely "
-                "to be sensitive. Investigate this mechanism and run a Bourne pre-screen to "
-                "confirm whether a sensitivity is present experimentally."), "warning"
+        return Message(
+            "warning", f"**Moderate mixing sensitivity risk** - **{join_mechs(red_mechs)}** is "
+            "likely to be sensitive. Investigate this mechanism and run a Bourne pre-screen to "
+            "confirm whether a sensitivity is present experimentally.", "moderate")
     if n_unknown >= 1:
-        return (f"🟡 **Incomplete assessment** - {n_unknown} item(s) could not be evaluated "
-                "(e.g. missing kinetics or ΔH), so a low-risk verdict cannot be confirmed. "
-                "Resolve the unknowns or run a Bourne pre-screen for a direct experimental "
-                "answer."), "warning"
+        return incomplete
     if n_yellow >= 1:
-        return ("🟡 **Low-to-moderate mixing sensitivity risk** - no mechanisms are flagged as "
-                "likely sensitive, but some require verification at scale. Run a Bourne "
-                "pre-screen for a direct experimental answer."), "warning"
-    return ("🟢 **Low mixing sensitivity risk** - no mixing mechanisms are expected to limit this "
-            "reaction under typical operating conditions."), "ok"
+        return Message(
+            "warning", "**Low-to-moderate mixing sensitivity risk** - no mechanisms are flagged "
+            "as likely sensitive, but some require verification at scale. Run a Bourne "
+            "pre-screen for a direct experimental answer.", "low_to_moderate")
+    return Message(
+        "ok", "**Low mixing sensitivity risk** - no mixing mechanisms are expected to limit this "
+        "reaction under typical operating conditions.", "low")
+
+
+_MECH_ACTIONS = {
+    "Micromixing": "Hold local ε (P/V) constant on scale-up and keep the feed point near "
+                   "the impeller; confirm with Da_micro on the Vessel Assessment page.",
+    "Mesomixing": "Control feed-plume dispersion: hold local ε constant, cut feed rate, "
+                  "extend addition time, and/or add feed points.",
+    "Macromixing": "Reduce bulk blend time: high-efficiency / multiple impellers, optimise "
+                   "baffling, or use in-line / static mixers.",
+}
 
 
 def build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
                      meso_sensitive, multiphase, has_enthalpy, heat_limiting, is_semi_batch,
-                     kinetics_known, kinetics_declined, dh_estimated=False):
-    steps: list[dict] = []
+                     kinetics_known, kinetics_declined, dh_estimated=False) -> list[Action]:
+    steps: list[Action] = []
     if b_sensitive is None:
-        steps.append({"Area": "Bourne pre-screen",
-                      "Recommended action": "Run Bourne Protocol Part 1 (quick screen) to confirm "
-                      "whether mixing sensitivity exists experimentally."})
+        steps.append(Action("Bourne pre-screen", "Run Bourne Protocol Part 1 (quick screen) to "
+                            "confirm whether mixing sensitivity exists experimentally.",
+                            "bourne.run"))
     if b_sensitive is True and b_mechs:
-        mech_actions = {
-            "Micromixing": "Hold local ε (P/V) constant on scale-up and keep the feed point near "
-                           "the impeller; confirm with Da_micro on the Vessel Assessment page.",
-            "Mesomixing": "Control feed-plume dispersion: hold local ε constant, cut feed rate, "
-                          "extend addition time, and/or add feed points.",
-            "Macromixing": "Reduce bulk blend time: high-efficiency / multiple impellers, optimise "
-                           "baffling, or use in-line / static mixers.",
-        }
         for m in b_mechs:
-            if m in mech_actions:
-                steps.append({"Area": f"{m} (Bourne-confirmed)", "Recommended action": mech_actions[m]})
+            if m in _MECH_ACTIONS:
+                steps.append(Action(f"{m} (Bourne-confirmed)", _MECH_ACTIONS[m],
+                                    f"bourne.{m.lower()}"))
     if using_approx:
-        steps.append({"Area": "Kinetics",
-                      "Recommended action": "Measure actual kinetics to replace the approximate values."})
+        steps.append(Action("Kinetics", "Measure actual kinetics to replace the approximate "
+                            "values.", "kinetics.replace_approximate"))
     if kinetics_declined:
-        steps.append({"Area": "Kinetics",
-                      "Recommended action": "Measure the reaction kinetics (e.g. reaction "
-                      "calorimetry / in-situ monitoring) and add them to the database to enable "
-                      "the Damköhler-based mixing assessment."})
+        steps.append(Action("Kinetics", "Measure the reaction kinetics (e.g. reaction "
+                            "calorimetry / in-situ monitoring) and add them to the database to "
+                            "enable the Damköhler-based mixing assessment.", "kinetics.measure"))
     if kinetics_known and (micro_likely or t_rxn < 60):
-        steps.append({"Area": "Damköhler analysis",
-                      "Recommended action": "Compute Da_macro / Da_micro for your reactor on the "
-                      "Vessel Assessment page."})
+        steps.append(Action("Damköhler analysis", "Compute Da_macro / Da_micro for your reactor "
+                            "on the Vessel Assessment page.", "damkohler.compute"))
     if meso_sensitive:
-        steps.append({"Area": "Micro/mesomixing",
-                      "Recommended action": "Run the Bourne Protocol to screen micro/meso effects."})
+        steps.append(Action("Micro/mesomixing", "Run the Bourne Protocol to screen micro/meso "
+                            "effects.", "selectivity.bourne"))
     if multiphase:
-        steps.append({"Area": "Mass transfer",
-                      "Recommended action": "Assess Da_GL / Da_SL on the Vessel Assessment page."})
+        steps.append(Action("Mass transfer", "Assess Da_GL / Da_SL on the Vessel Assessment "
+                            "page.", "mass_transfer.assess"))
     if has_enthalpy and heat_limiting:
-        steps.append({"Area": "Heat transfer",
-                      "Recommended action": "Run a heat balance (Vessel Assessment) to quantify "
-                      "Q_gen vs Q_cool."})
+        steps.append(Action("Heat transfer", "Run a heat balance (Vessel Assessment) to quantify "
+                            "Q_gen vs Q_cool.", "heat.balance"))
     if has_enthalpy and dh_estimated:
-        steps.append({"Area": "Heat of reaction",
-                      "Recommended action": "Measure ΔH by reaction calorimetry (RC1 / µRC) to "
-                      "replace the estimated value used in this screening."})
+        steps.append(Action("Heat of reaction", "Measure ΔH by reaction calorimetry (RC1 / µRC) "
+                            "to replace the estimated value used in this screening.",
+                            "heat.calorimetry"))
     if is_semi_batch:
-        steps.append({"Area": "Semi-batch",
-                      "Recommended action": "Run the full Bourne Protocol: vary impeller speed, "
-                      "feed rate/time, and feed location."})
+        steps.append(Action("Semi-batch", "Run the full Bourne Protocol: vary impeller speed, "
+                            "feed rate/time, and feed location.", "semi_batch.full_bourne"))
     if not steps:
-        steps.append({"Area": "General",
-                      "Recommended action": "Low risk; standard scale-up practices are sufficient."})
+        steps.append(Action("General", "Low risk; standard scale-up practices are sufficient.",
+                            "general.low_risk"))
     return steps
 
 
@@ -689,11 +763,10 @@ def bourne_test_lines(o: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 @dataclass
 class ProtocolInputs:
-    """User answers for the Reaction Sensitivity Protocol, as plain values.
+    """User answers for the Reaction Sensitivity Protocol, as codes from :mod:`core.options`.
 
-    ``bourne``: "skip" | "confirmed" | "insensitive" | "inconclusive".
-    ``kinetics``: "available" | "approximate" | "declined".
-    ``dh_action`` (used only when no ΔH is known): "estimate" | "calorimetry" | "".
+    ``competing`` and ``dh_action`` are "" when unanswered; ``bourne_mech`` is ""
+    when the controlling scale was not resolved.
     """
     order: str
     k: float
@@ -701,17 +774,17 @@ class ProtocolInputs:
     t_specified: float
     dH: float
     rxn_type: str = ""
-    kinetics: str = "available"
-    bourne: str = "skip"
-    bourne_mech: str = ""
+    kinetics: Kinetics = Kinetics.AVAILABLE
+    bourne: BourneStatus = BourneStatus.SKIP
+    bourne_mech: Mechanism | str = ""
     bourne_tests_done: list[int] = field(default_factory=list)
     bourne_rows: list[dict] = field(default_factory=list)
     semi_batch: bool = False
-    phases: list[str] = field(default_factory=lambda: ["Liquid"])
-    competing: str = ""
+    phases: list[Phase] = field(default_factory=lambda: [Phase.LIQUID])
+    competing: Competing | str = ""
     dh_override: float = 0.0
     dh_override_measured: bool = False
-    dh_action: str = ""
+    dh_action: DhAction | str = ""
     dh_ref_value: float = 0.0
     c0_heat: float = 1.0
     rho_cp: float = 1800.0
@@ -720,25 +793,29 @@ class ProtocolInputs:
 def bourne_prescreen(status: str, mech: str, done: list[int]):
     """(sensitive True/False/None, confirmed mechanisms, completed tests) from the pre-screen."""
     done = sorted(done)
-    if status == "confirmed":
-        return True, ([mech] if mech in ("Micromixing", "Mesomixing", "Macromixing") else []), done
-    if status == "insensitive":
+    if status == BourneStatus.CONFIRMED:
+        return True, ([mech] if mech in tuple(Mechanism) else []), done
+    if status == BourneStatus.INSENSITIVE:
         return False, [], done
-    if status == "inconclusive":
+    if status == BourneStatus.INCONCLUSIVE:
         return None, [], done
     return None, [], []
 
 
-def _kinetics_text(order: str, t_rxn: float, t_90: float, t_basis: str) -> str:
+def rate_law(order: str) -> str:
     n_sym = "k'" if order.startswith("pseudo") else "k"
     conc = {"0": "", "1": "·C", "2": "·C²"}.get(order.split("-")[-1] if order else "1", f"·C^{order}")
-    law = f"−dC/dt = {n_sym}{conc}"
+    return f"−dC/dt = {n_sym}{conc}"
+
+
+def kinetics_md(kin: dict) -> str:
+    t_rxn, t_90 = kin["t_rxn"], kin["t_90"]
     if t_rxn <= 0:
         return ("⚠️ Cannot determine a characteristic reaction time - "
                 "check k, C₀ and t_rxn in the Reaction Database.")
     return (
-        f"**Kinetic model** (order {order}): {law}\n\n"
-        f"Characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({t_basis}). This is the "
+        f"**Kinetic model** (order {kin['order']}): {kin['law']}\n\n"
+        f"Characteristic reaction time **t_rxn = {t_rxn:.4g} s** ({kin['basis']}). This is the "
         "initial-rate time constant used in every Damköhler comparison below — the shortest "
         "(most conservative) estimate for mixing sensitivity."
         + (f" For process-window planning, 90% conversion takes about **{t_90:.4g} s**; "
@@ -751,133 +828,142 @@ def assess_protocol(inp: ProtocolInputs,
     """Run every step of the Reaction Sensitivity Protocol.
 
     ``damkohler_for(t_rxn)`` optionally returns reactor-specific Da numbers (see
-    ``da_caption``) for Step 5. Returns the per-step assessment texts, captions,
-    findings, verdict, next steps, ``ready`` and the values cached for the PDF.
+    ``da_caption``) for Step 5. Returns structured results: ``steps`` (one
+    :class:`Message` or None per step 0-5), ``findings``, ``verdict``,
+    ``next_steps``, ``ready`` and the underlying values. Render with :func:`protocol_md`.
     """
-    out: dict = {}
+    steps: list[Message | None] = [None] * 6
 
     # ---- Step 0: Bourne pre-screen -------------------------------------
     b_sensitive, b_mechs, b_done = bourne_prescreen(
         inp.bourne, inp.bourne_mech, inp.bourne_tests_done)
     test_rows = list(inp.bourne_rows)
-    if inp.bourne == "skip":
-        out["step0"] = amd(
+    if inp.bourne == BourneStatus.SKIP:
+        steps[0] = Message(
             "caution", "**Bourne pre-screen skipped** - proceeding with the theoretical "
-            "assessment. Running the Bourne Protocol gives a direct experimental answer.")
+            "assessment. Running the Bourne Protocol gives a direct experimental answer.",
+            "bourne.skipped")
     elif b_sensitive is True:
         if b_mechs:
-            out["step0"] = amd(
+            steps[0] = Message(
                 "critical", f"Bourne Protocol confirmed **mixing sensitivity** - the "
                 f"controlling scale is **{b_mechs[0].lower()}**. Carried into the summary "
-                "as an experimentally confirmed result.")
+                "as an experimentally confirmed result.", "bourne.confirmed")
         else:
             rem = remaining_tests(b_done)
             add = (f" Complete **{fmt_tests(rem)}** ({fmt_test_purposes(rem)}) to pinpoint "
                    "the controlling scale." if rem else "")
-            out["step0"] = amd(
+            steps[0] = Message(
                 "critical", "Bourne Protocol confirmed **mixing sensitivity**, but the "
-                "controlling scale is not yet resolved." + add)
+                "controlling scale is not yet resolved." + add, "bourne.confirmed_unresolved")
     elif b_sensitive is False:
-        out["step0"] = amd(
+        steps[0] = Message(
             "ok", "Bourne Protocol showed **no mixing sensitivity** at lab scale (Test 1 "
             "response insensitive to impeller speed). The remaining steps check for latent "
-            "risks at larger scale.")
+            "risks at larger scale.", "bourne.insensitive")
     else:
-        out["step0"] = amd(
+        steps[0] = Message(
             "caution", "Bourne results **inconclusive** - Test 1 was not completed, so "
-            "experimental mixing sensitivity is undetermined. Complete at least Test 1.")
+            "experimental mixing sensitivity is undetermined. Complete at least Test 1.",
+            "bourne.inconclusive")
 
     # ---- Step 1: kinetics ----------------------------------------------
     order = inp.order or "1"
     t_rxn, t_90, t_basis = characteristic_reaction_time(order, inp.k, inp.C0, inp.t_specified)
-    using_approx = inp.kinetics == "approximate"
-    kinetics_declined = inp.kinetics == "declined"
+    using_approx = inp.kinetics == Kinetics.APPROXIMATE
+    kinetics_declined = inp.kinetics == Kinetics.DECLINED
     kinetics_known = (t_rxn > 0) and not kinetics_declined
     kinetics_resolved = kinetics_known or kinetics_declined
-    out["kinetics_md"] = _kinetics_text(order, t_rxn, t_90, t_basis)
+    kinetics = {"order": order, "law": rate_law(order), "t_rxn": t_rxn, "t_90": t_90,
+                "basis": t_basis}
     if kinetics_declined:
-        out["step1"] = amd(
+        steps[1] = Message(
             "warning", "**Kinetics not yet available.** Measure them (e.g. by calorimetry / "
             "reaction monitoring), add the reaction to the database, and return here. A "
-            "Bourne pre-screen can still give a direct experimental answer in the meantime.")
+            "Bourne pre-screen can still give a direct experimental answer in the meantime.",
+            "kinetics.declined")
     elif not kinetics_known:
-        out["step1"] = amd(
+        steps[1] = Message(
             "critical", "Cannot determine a characteristic reaction time from the selected "
-            "reaction data.")
+            "reaction data.", "kinetics.missing")
     elif using_approx:
-        out["step1"] = amd(
+        steps[1] = Message(
             "warning", "**Approximate kinetics** - t_rxn is based on a proxy reaction. All "
             "downstream conclusions are only valid if the proxy kinetics match the true "
-            "reaction. Confirm with measured data.")
+            "reaction. Confirm with measured data.", "kinetics.approximate")
     else:
-        out["step1"] = amd("ok", "**Kinetics available** - characteristic reaction "
-                           "time shown above.")
+        steps[1] = Message("ok", "**Kinetics available** - characteristic reaction "
+                           "time shown above.", "kinetics.available")
     is_semi_batch = inp.semi_batch
 
     # ---- Step 2: phases -------------------------------------------------
     phases = list(inp.phases or [])
+    phase_names = [Phase(p).label for p in phases]
     multiphase = len(phases) > 1
     if not phases:
-        out["step2"] = amd("caution", "Select at least one phase to continue.")
+        steps[2] = Message("caution", "Select at least one phase to continue.", "phases.none")
     elif multiphase:
-        out["step2"] = amd(
-            "warning", "**Multi-phase system** (" + " + ".join(phases) + ") - interphase mass "
+        steps[2] = Message(
+            "warning", "**Multi-phase system** (" + " + ".join(phase_names) + ") - interphase mass "
             "transfer may limit the observed rate. Characterise kLa (gas–liquid) and/or "
             "solid–liquid transport, including dissolution, adsorption, or desorption, "
-            "and compute Da_GL / Da_SL for your reactor on the Vessel Assessment page.")
-    elif phases == ["Liquid"]:
-        out["step2"] = amd(
+            "and compute Da_GL / Da_SL for your reactor on the Vessel Assessment page.",
+            "phases.multiphase")
+    elif phases == [Phase.LIQUID]:
+        steps[2] = Message(
             "ok", "**Single liquid phase** - interphase mass transfer is not a factor. Micro-, "
-            "meso- and macromixing may still affect the reaction.")
+            "meso- and macromixing may still affect the reaction.", "phases.single_liquid")
     else:
-        out["step2"] = amd(
-            "caution", f"**Single phase selected ({phases[0]})** - a lone "
-            f"{phases[0].lower()} phase has no interphase transport, but check that the "
-            "liquid phase is not missing from the selection.")
+        steps[2] = Message(
+            "caution", f"**Single phase selected ({phase_names[0]})** - a lone "
+            f"{phase_names[0].lower()} phase has no interphase transport, but check that the "
+            "liquid phase is not missing from the selection.", "phases.single_other")
 
     # ---- Step 3: competing reactions -----------------------------------
     competing = inp.competing
-    competing_set = competing in ("Yes", "No", "Not sure")
+    competing_set = competing in tuple(Competing)
     meso_sensitive, require_feed_zone = mesomixing_risk(competing, is_semi_batch)
     if not competing_set:
-        out["step3"] = amd("caution", "Select an option to continue.")
-    elif competing == "Yes":
-        out["step3"] = amd(
+        steps[3] = Message("caution", "Select an option to continue.", "competing.unset")
+    elif competing == Competing.YES:
+        steps[3] = Message(
             "critical", "**Competing reactions present** - both micromixing (local ε) and "
-            "mesomixing (feed dispersion) can shift selectivity; likely mixing-sensitive.")
-    elif competing == "Not sure":
-        out["step3"] = amd(
+            "mesomixing (feed dispersion) can shift selectivity; likely mixing-sensitive.",
+            "competing.yes")
+    elif competing == Competing.NOT_SURE:
+        steps[3] = Message(
             "warning", "Treat as **potentially sensitive** until confirmed - a Bourne Protocol "
-            "screen resolves whether micro/mesomixing affects selectivity.")
+            "screen resolves whether micro/mesomixing affects selectivity.", "competing.not_sure")
     elif require_feed_zone:
-        out["step3"] = amd(
+        steps[3] = Message(
             "warning", "No competing reactions, but this is a **semi-batch** process - "
             "run a feed-zone assessment (feed rate/time and location) before assuming "
-            "mesomixing is controlling.")
+            "mesomixing is controlling.", "competing.no_semi_batch")
     else:
-        out["step3"] = amd(
+        steps[3] = Message(
             "ok", "**No competing reactions** in a batch process - micro/mesomixing unlikely "
-            "to affect selectivity.")
+            "to affect selectivity.", "competing.no")
 
     # ---- Step 4: heat transfer -----------------------------------------
     dh_from_override = inp.dh_override != 0.0
     has_enthalpy = inp.dH != 0.0 or dh_from_override
     dH_eff = inp.dh_override if dh_from_override else inp.dH
-    out["show_dh_action"] = not has_enthalpy
+    show_dh_action = not has_enthalpy
     heat_resolved = True
     dt_ad = None
+    heat_summary = None
     if not has_enthalpy:
-        if inp.dh_action == "estimate":
+        if inp.dh_action == DhAction.ESTIMATE:
             dH_eff = inp.dh_ref_value
             has_enthalpy = dH_eff != 0.0
-        elif inp.dh_action != "calorimetry":
+        elif inp.dh_action != DhAction.CALORIMETRY:
             heat_resolved = False
 
     # An override is measured only if declared so; otherwise ΔH inherits the
     # kinetics basis (proxy kinetics ==> proxy ΔH).
     if dh_from_override:
         dh_estimated = not inp.dh_override_measured
-    elif inp.dH == 0.0 and inp.dh_action == "estimate":
+    elif inp.dH == 0.0 and inp.dh_action == DhAction.ESTIMATE:
         dh_estimated = True
     else:
         dh_estimated = using_approx
@@ -888,6 +974,7 @@ def assess_protocol(inp: ProtocolInputs,
     if has_enthalpy:
         if inp.c0_heat > 0 and inp.rho_cp > 0:
             dt_ad = abs_dH * inp.c0_heat * 1000.0 / inp.rho_cp
+            heat_summary = heat_transfer_summary(abs_dH, dt_ad, dH_eff=dH_eff)
         heat_flag = abs_dH >= 50 or (dt_ad is not None and dt_ad >= 50)
         heat_limiting = heat_flag or heat_flagged_type
         sign = "exothermic" if dH_eff < 0 else "endothermic"
@@ -914,62 +1001,57 @@ def assess_protocol(inp: ProtocolInputs,
         if dh_estimated:
             msg += (" The ΔH used here is **estimated** (proxy/similar reaction) - measure it "
                     "by reaction calorimetry to confirm this screening.")
-        out["step4"] = amd("critical" if heat_limiting else heat_kind, msg)
-        out["dt_ad_caption"] = (
-            f"ΔT_ad = |ΔH|·C₀·1000/(ρ·Cp) ≈ **{dt_ad:.0f} K**  -  "
-            f"{heat_transfer_summary(abs_dH, dt_ad, dH_eff=dH_eff)}"
-            if dt_ad is not None else "Enter C₀ and ρ·Cp above to estimate ΔT_ad.")
+        steps[4] = Message("critical" if heat_limiting else heat_kind, msg,
+                           "heat.limiting" if heat_limiting else "heat.assessed")
+    elif inp.dh_action == DhAction.CALORIMETRY:
+        steps[4] = Message(
+            "caution", "Heat-transfer limitation **cannot be evaluated without ΔH** - measure it "
+            "by reaction calorimetry (RC1 / µRC), add it to the Reaction Database, and "
+            "return here.", "heat.calorimetry")
+    elif not heat_resolved:
+        steps[4] = Message(
+            "unknown", "No ΔH data for this reaction - choose how to proceed above "
+            "(measure by calorimetry, or estimate from a similar reaction).", "heat.unresolved")
     else:
-        if inp.dh_action == "calorimetry":
-            out["step4"] = amd(
-                "caution", "Heat-transfer limitation **cannot be evaluated without ΔH** - measure it "
-                "by reaction calorimetry (RC1 / µRC), add it to the Reaction Database, and "
-                "return here.")
-        elif not heat_resolved:
-            out["step4"] = amd(
-                "unknown", "No ΔH data for this reaction - choose how to proceed above "
-                "(measure by calorimetry, or estimate from a similar reaction).")
-        else:
-            out["step4"] = amd("unknown", "No ΔH data available - measure ΔH by reaction calorimetry.")
-        out["dt_ad_caption"] = ""
+        steps[4] = Message("unknown", "No ΔH data available - measure ΔH by reaction "
+                           "calorimetry.", "heat.no_data")
 
     # ---- Step 5: mixing time vs reaction time --------------------------
     da = damkohler_for(t_rxn) if (damkohler_for and kinetics_known and t_rxn > 0) else None
-    out["da_caption"] = da_caption(da)
     if kinetics_known and t_rxn > 0:
-        out["trxn_caption"] = f"Your reaction time: **t_rxn = {t_rxn:.4g} s**."
         if da:
             kind, text, micro_likely = da_assessment(da)
-            out["step5"] = amd(kind, text)
+            steps[5] = Message(kind, text, "timescale.damkohler")
         elif t_rxn < 0.1:
-            out["step5"] = amd(
+            steps[5] = Message(
                 "critical", "**Very fast reaction** - micromixing-sensitive in most reactor "
                 "configurations. Local turbulent energy dissipation near the impeller, feed "
-                "location, and tip speed are critical. " + damkohler_screening_note(t_rxn))
+                "location, and tip speed are critical. " + damkohler_screening_note(t_rxn),
+                "timescale.very_fast")
             micro_likely = True
         elif t_rxn < 1.0:
-            out["step5"] = amd(
+            steps[5] = Message(
                 "warning", "**Fast reaction** - micromixing likely relevant in larger vessels "
                 "where local ε at the feed point decreases. Confirm with Damköhler analysis. "
-                + damkohler_screening_note(t_rxn))
+                + damkohler_screening_note(t_rxn), "timescale.fast")
             micro_likely = True
         elif t_rxn < 10:
-            out["step5"] = amd(
+            steps[5] = Message(
                 "caution", "**Moderate reaction** - micromixing less likely to dominate, but "
                 "macromixing (blend time) could matter in larger vessels. Check blend time vs "
-                "t_rxn. " + damkohler_screening_note(t_rxn))
+                "t_rxn. " + damkohler_screening_note(t_rxn), "timescale.moderate")
             micro_likely = False
         else:
-            out["step5"] = amd(
+            steps[5] = Message(
                 "ok", "**Slow reaction** - mixing is unlikely to limit the reaction in "
-                "well-agitated vessels. " + damkohler_screening_note(t_rxn))
+                "well-agitated vessels. " + damkohler_screening_note(t_rxn), "timescale.slow")
             micro_likely = False
     else:
-        out["trxn_caption"] = ""
-        out["step5"] = (amd(
-            "unknown", "Reaction kinetics not available - the mixing-time vs reaction-time "
-            "comparison cannot be evaluated. A Bourne pre-screen (Test 1) gives a direct "
-            "experimental answer.") if kinetics_declined else "")
+        if kinetics_declined:
+            steps[5] = Message(
+                "unknown", "Reaction kinetics not available - the mixing-time vs reaction-time "
+                "comparison cannot be evaluated. A Bourne pre-screen (Test 1) gives a direct "
+                "experimental answer.", "timescale.no_kinetics")
         micro_likely = False
 
     # ---- Step 6: findings, verdict, next steps -------------------------
@@ -978,24 +1060,49 @@ def assess_protocol(inp: ProtocolInputs,
         meso_sensitive, competing, is_semi_batch, multiphase, phases,
         has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known, using_approx,
         dh_estimated, da)
-    verdict, verdict_kind = build_verdict(b_sensitive, b_mechs, b_done, findings, competing)
+    verdict = verdict_message(b_sensitive, b_mechs, b_done, findings, competing)
     next_steps = build_next_steps(
         b_sensitive, b_mechs, using_approx, micro_likely, t_rxn, meso_sensitive,
         multiphase, has_enthalpy, heat_limiting, is_semi_batch, kinetics_known,
         kinetics_declined, dh_estimated)
 
-    ready = bool(kinetics_resolved and phases and competing_set and heat_resolved)
-    out.update({
-        "ready": ready, "findings": findings, "next_steps": next_steps,
-        "verdict": verdict, "verdict_kind": verdict_kind,
-        "summary_note": "" if ready else (
-            "*Complete Steps 1–4 - select a reaction with kinetics, at least one phase, "
-            "whether competing reactions are present, and resolve ΔH - to see the overall "
-            "verdict.*"),
-        # values carried into the PDF snapshot
-        "t_rxn": t_rxn, "dH_eff": dH_eff, "dt_ad": dt_ad, "phases": phases,
+    return {
+        "steps": steps, "findings": findings, "verdict": verdict, "next_steps": next_steps,
+        "ready": bool(kinetics_resolved and phases and competing_set and heat_resolved),
+        "kinetics": kinetics, "kinetics_known": kinetics_known, "using_approx": using_approx,
+        "t_rxn": t_rxn, "has_enthalpy": has_enthalpy, "heat_resolved": heat_resolved,
+        "show_dh_action": show_dh_action, "dH_eff": dH_eff, "dt_ad": dt_ad,
+        "heat_summary": heat_summary, "dh_estimated": dh_estimated, "phases": phases,
+        "competing_set": competing_set, "is_semi_batch": is_semi_batch, "da": da,
         "bourne_rows": test_rows, "b_sensitive": b_sensitive, "b_mechs": b_mechs,
-        "competing_set": competing_set, "using_approx": using_approx,
-        "dh_estimated": dh_estimated, "is_semi_batch": is_semi_batch, "da": da,
+    }
+
+
+SUMMARY_PENDING = ("*Complete Steps 1–4 - select a reaction with kinetics, at least one phase, "
+                   "whether competing reactions are present, and resolve ΔH - to see the "
+                   "overall verdict.*")
+
+
+def protocol_md(res: dict) -> dict:
+    """Markdown rendering of :func:`assess_protocol` for the Taipy page and PDF report."""
+    out = {f"step{i}": (m.md() if m else "") for i, m in enumerate(res["steps"])}
+    t_rxn, dt_ad = res["t_rxn"], res["dt_ad"]
+    if not res["has_enthalpy"]:
+        dt_caption = ""
+    elif dt_ad is None:
+        dt_caption = "Enter C₀ and ρ·Cp above to estimate ΔT_ad."
+    else:
+        dt_caption = (f"ΔT_ad = |ΔH|·C₀·1000/(ρ·Cp) ≈ **{dt_ad:.0f} K**  -  "
+                      f"{res['heat_summary']}")
+    out.update({
+        "kinetics_md": kinetics_md(res["kinetics"]),
+        "dt_ad_caption": dt_caption,
+        "da_caption": da_caption(res["da"]),
+        "trxn_caption": (f"Your reaction time: **t_rxn = {t_rxn:.4g} s**."
+                         if res["kinetics_known"] else ""),
+        "summary_note": "" if res["ready"] else SUMMARY_PENDING,
+        "verdict": res["verdict"].md(),
+        "findings": [f.row() for f in res["findings"]],
+        "next_steps": [a.row() for a in res["next_steps"]],
     })
     return out

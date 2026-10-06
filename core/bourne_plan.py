@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.options import CenterMode
 from utils.calculations import (
     average_shear_rate,
     blend_time_turbulent,
@@ -60,39 +61,53 @@ def specific_power(sys: BourneSystem, n_rps: float) -> float:
     return power_per_volume(P, sys.V_m3) / sys.rho if (sys.V_m3 > 0 and sys.rho > 0) else 0.0
 
 
-def resolve_center_pm(sys: BourneSystem, mode: str, pm_custom: float,
-                      rpm_custom: float) -> tuple[float, str]:
-    """Test 1 centre-point P/m (W/kg) and an info caption.
-
-    Modes: "Custom RPM" (converted via the power draw), "Custom P/m", or the
-    default 0.2 W/kg.
+def center_point(sys: BourneSystem, mode: CenterMode, pm_custom: float,
+                 rpm_custom: float) -> dict:
+    """Test 1 centre point: {source (CenterMode), pm (W/kg), n_rpm, P_V_W_L, n_min, n_max,
+    in_range}. ``in_range`` is None when no range is checked (custom P/m).
     """
     n_min, n_max = sys.n_min, sys.n_max
-    if mode == "Custom RPM":
-        rpm = max(rpm_custom, 1e-9)
-        pm = specific_power(sys, rpm / 60.0)
-        P = impeller_power(sys.Np, sys.rho, rpm / 60.0, sys.D_imp)
-        info = (f"Custom centre: **N = {rpm:.1f} RPM** → **P/m = {pm:.4g} W/kg** "
-                f"({power_per_volume(P, sys.V_m3) / 1000:.4g} W/L).")
-        if n_max > 0 and (rpm > n_max or rpm < n_min):
-            info += f" ⚠ Outside reactor range ({n_min:.0f}–{n_max:.0f} RPM)."
-        return pm, info
-
-    if mode == "Custom P/m":
+    if mode == CenterMode.CUSTOM_RPM:
+        n_rpm = max(rpm_custom, 1e-9)
+        pm = specific_power(sys, n_rpm / 60.0)
+        P = impeller_power(sys.Np, sys.rho, n_rpm / 60.0, sys.D_imp)
+        source, p_v = CenterMode.CUSTOM_RPM, power_per_volume(P, sys.V_m3) / 1000
+    elif mode == CenterMode.CUSTOM_PM:
         pm = max(pm_custom, 0.0)
+        source, p_v = CenterMode.CUSTOM_PM, None
         n_rpm = n_for_pm(pm, sys.V_m3, sys.Np, sys.D_imp) * 60.0
-        return pm, f"Custom centre: **P/m = {pm:.4g} W/kg** at **N = {n_rpm:.0f} RPM**."
+    else:
+        pm = DEFAULT_CENTER_PM
+        source, p_v = CenterMode.DEFAULT, None
+        n_rpm = n_for_pm(pm, sys.V_m3, sys.Np, sys.D_imp) * 60.0
+    in_range = (n_min <= n_rpm <= n_max) if (n_max > 0 and source != CenterMode.CUSTOM_PM) else None
+    return {"source": source, "pm": pm, "n_rpm": n_rpm, "P_V_W_L": p_v,
+            "n_min": n_min, "n_max": n_max, "in_range": in_range}
 
-    pm = DEFAULT_CENTER_PM
-    n_rpm = n_for_pm(pm, sys.V_m3, sys.Np, sys.D_imp) * 60.0
-    info = f"Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = {n_rpm:.0f} RPM**."
-    if n_max > 0:
-        if n_rpm < n_min or n_rpm > n_max:
-            info += (f" ⚠ Requires {n_rpm:.0f} RPM — outside reactor range "
-                     f"({n_min:.0f}–{n_max:.0f} RPM).")
-        else:
-            info += f" Within reactor range ({n_min:.0f}–{n_max:.0f} RPM)."
-    return pm, info
+
+def center_info_md(c: dict) -> str:
+    rng = f"({c['n_min']:.0f}–{c['n_max']:.0f} RPM)"
+    if c["source"] == CenterMode.CUSTOM_RPM:
+        info = (f"Custom centre: **N = {c['n_rpm']:.1f} RPM** → **P/m = {c['pm']:.4g} W/kg** "
+                f"({c['P_V_W_L']:.4g} W/L).")
+        if c["in_range"] is False:
+            info += f" ⚠ Outside reactor range {rng}."
+        return info
+    if c["source"] == CenterMode.CUSTOM_PM:
+        return f"Custom centre: **P/m = {c['pm']:.4g} W/kg** at **N = {c['n_rpm']:.0f} RPM**."
+    info = f"Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = {c['n_rpm']:.0f} RPM**."
+    if c["in_range"] is False:
+        info += f" ⚠ Requires {c['n_rpm']:.0f} RPM — outside reactor range {rng}."
+    elif c["in_range"]:
+        info += f" Within reactor range {rng}."
+    return info
+
+
+def resolve_center_pm(sys: BourneSystem, mode: CenterMode, pm_custom: float,
+                      rpm_custom: float) -> tuple[float, str]:
+    """Test 1 centre-point P/m (W/kg) and its Markdown info caption."""
+    c = center_point(sys, mode, pm_custom, rpm_custom)
+    return c["pm"], center_info_md(c)
 
 
 def test1_conditions(sys: BourneSystem, pm_center: float) -> list[dict]:

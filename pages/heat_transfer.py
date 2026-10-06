@@ -46,6 +46,7 @@ from utils.report_builder import (
     report_header_label,
 )
 from utils.solvent_properties import get_properties, list_solvents, resolve_solvent_name
+from core.options import Toggle, is_on
 from core.records import (
     fluid_row as _fluid_row,
     range_midpoint as _avg_range,
@@ -198,8 +199,8 @@ m_dot_jacket = 1.0
 fouling = FOULING_DEFAULT
 mu_wall = 0.0
 # String toggle: a lov-less boolean toggle in a page module never updates state.
-include_agitator = "On"
-include_agitator_options = ["Off", "On"]
+include_agitator = Toggle.ON.label
+include_agitator_options = Toggle.labels()
 q_rxn = 0.0
 t_start = 25.0
 t_target = 5.0
@@ -464,7 +465,7 @@ def _shared_ht_data(state) -> dict:
         "d_hyd_jacket": state.d_hyd_jacket,
         "m_dot_jacket": state.m_dot_jacket,
         "cp_jacket": state.cp_jacket,
-        "include_agitator": state.include_agitator in (True, "On"),
+        "include_agitator": is_on(state.include_agitator),
         "wall_k": state.wall_k,
         "wall_thickness_mm": state.wall_thickness_mm,
         "lining_k": state.lining_k,

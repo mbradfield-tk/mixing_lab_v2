@@ -30,7 +30,8 @@ from utils.report_builder import build_vessel_assessment_pdf, report_filename
 from core import operating_point as op
 from core import sensitivity_rules as rules
 from core.kinetics import effective_t_rxn as _auto_t_rxn
-from core.envelope import operating_window, solve_target, surface_grid, sweep
+from core.envelope import operating_window, solve_operating_point, surface_grid, sweep
+from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from core.records import (
     VesselGeometry,
     fluid_props as _fluid_props,
@@ -51,10 +52,6 @@ particles_df = pd.read_csv(DATA_DIR / "particles.csv")
 fluids_df = pd.read_csv(DATA_DIR / "fluids.csv")
 
 RECORDED_CSV = DATA_DIR / "recorded_results.csv"
-
-# Correlation-source display labels <-> registry keys.
-_CORR_LABEL_TO_KEY = op.CORR_SOURCES
-_CORR_KEY_TO_LABEL = op.CORR_LABELS
 
 # 3D vessel viewer render height (px). The Taipy `part` pane is sized a little
 # taller so the image is fully visible without scrolling.
@@ -108,15 +105,17 @@ def _kinetic_model(row: pd.Series) -> tuple[str, str, str]:
 
 def _gas_params(state) -> tuple[float, bool]:
     """Return (superficial gas velocity v_s, coalescing?) from the gas settings."""
-    if state.va_gas_mode == "On" and state.va_gas_transfer == "Sparging":
-        return _sf(state.va_vs, 0.0), (state.va_coalescing == "Coalescing")
+    if (is_on(state.va_gas_mode)
+            and GasTransfer.from_label(state.va_gas_transfer) is GasTransfer.SPARGING):
+        return (_sf(state.va_vs, 0.0),
+                Coalescence.from_label(state.va_coalescing) is Coalescence.COALESCING)
     return 0.0, True
 
 
 def _refresh_corr(state):
     """Refresh the correlation-source options/status for the selected vessel."""
     modes = available_modes(state.va_reactor)
-    labels = [_CORR_KEY_TO_LABEL[m] for m in modes]
+    labels = [CorrSource(m).label for m in modes]
     state.va_corr_options = labels
     if state.va_corr_mode not in labels:
         state.va_corr_mode = labels[0]
@@ -162,12 +161,12 @@ va_nq = _sf(_r0.get("Nq"), 0.79)
 va_v_l = _avg_range(_r0, "V_L_min", "V_L_max", _sf(_r0.get("V_L"), 1.0))
 
 # Operation mode — fed-batch (unlocks feed inputs feeding the mesomixing check)
-va_fed_mode = "Off"
-va_fed_mode_options = ["Off", "On"]
+va_fed_mode = Toggle.OFF.label
+va_fed_mode_options = Toggle.labels()
 va_feed_rate = 5.0
 va_feed_diam = 3.0
-va_feed_location = "Bulk (mid-liquid)"
-va_feed_location_options = ["Near impeller", "Bulk (mid-liquid)", "Surface"]
+va_feed_location = FeedLocation.BULK.label
+va_feed_location_options = FeedLocation.labels()
 
 # ---------------------------------------------------------------------------
 # State — Section 2: Phases
@@ -181,8 +180,8 @@ va_dmol = _fp0["D_mol"]
 va_sigma = _fp0["sigma"]
 
 # Solid (optional)
-va_sl_mode = "Off"
-va_sl_mode_options = ["Off", "On"]
+va_sl_mode = Toggle.OFF.label
+va_sl_mode_options = Toggle.labels()
 va_particle = particle_options[0] if particle_options else ""
 _p0 = _particle_row(va_particle) if particle_options else pd.Series(dtype=object)
 va_rho_p = _sf(_p0.get("rho_p_kg_m3"), 1500.0)
@@ -194,13 +193,13 @@ va_gmb_z = 3.0
 va_cd = 0.33
 
 # Gas (optional)
-va_gas_mode = "Off"
-va_gas_mode_options = ["Off", "On"]
-va_gas_transfer = "Headspace"
-va_gas_transfer_options = ["Headspace", "Sparging"]
+va_gas_mode = Toggle.OFF.label
+va_gas_mode_options = Toggle.labels()
+va_gas_transfer = GasTransfer.HEADSPACE.label
+va_gas_transfer_options = GasTransfer.labels()
 va_vs = 0.005
-va_coalescing = "Coalescing"
-va_coalescing_options = ["Coalescing", "Non-coalescing"]
+va_coalescing = Coalescence.COALESCING.label
+va_coalescing_options = Coalescence.labels()
 
 # ---------------------------------------------------------------------------
 # State — Section 3: Reaction
@@ -220,9 +219,9 @@ va_rxn_model, va_rxn_law, va_rxn_scheme = _kinetic_model(_x0)
 # State — Section 4: Correlations
 # ---------------------------------------------------------------------------
 _modes0 = available_modes(va_reactor)
-va_corr_options = [_CORR_KEY_TO_LABEL[m] for m in _modes0]
+va_corr_options = [CorrSource(m).label for m in _modes0]
 va_corr_mode = va_corr_options[0]
-_extra0 = [m for m in _modes0 if m != "Literature"]
+_extra0 = [m for m in _modes0 if m != CorrSource.LITERATURE]
 va_corr_status = (
     "Available sources for this vessel: " + ", ".join(va_corr_options) + "."
     if _extra0 else
@@ -523,7 +522,7 @@ def _correlation_applicability(state, hydro: dict) -> str:
     """Summarize applicability checks for the selected hydro correlations."""
     return rules.correlation_applicability(
         hydro, _geometry(state), _reactor_row(state.va_reactor), _sf(state.va_v_l),
-        gas_on=state.va_gas_mode == "On", solids_on=state.va_sl_mode == "On")
+        gas_on=is_on(state.va_gas_mode), solids_on=is_on(state.va_sl_mode))
 
 
 def _inputs(state, t_rxn: float, *, heat: bool = True) -> op.PointInputs:
@@ -533,15 +532,16 @@ def _inputs(state, t_rxn: float, *, heat: bool = True) -> op.PointInputs:
                         phi=_sf(state.va_phi, 1.0), x_wt=_sf(state.va_x_wt),
                         S_zw=_sf(state.va_szw, 5.5), gmb_z=_sf(state.va_gmb_z, 3.0),
                         cd=_sf(state.va_cd, 0.33))
-              if state.va_sl_mode == "On" else None)
-    feed = (op.Feed(str(state.va_feed_location), _sf(state.va_feed_diam) / 1000.0)
-            if state.va_fed_mode == "On" else None)
+              if is_on(state.va_sl_mode) else None)
+    feed = (op.Feed(FeedLocation.from_label(state.va_feed_location, FeedLocation.BULK),
+                    _sf(state.va_feed_diam) / 1000.0)
+            if is_on(state.va_fed_mode) else None)
     return op.PointInputs(
         reactor=state.va_reactor, geometry=_geometry(state),
         fluid=op.Fluid(state.va_fluid, _sf(state.va_rho), _sf(state.va_mu), _sf(state.va_dmol)),
         reaction=op.Reaction(str(state.va_order), _sf(state.va_k), _sf(state.va_c0),
                              t_rxn, _sf(state.va_dH)),
-        corr_mode=_CORR_LABEL_TO_KEY.get(state.va_corr_mode, "Literature"),
+        corr_mode=CorrSource.from_label(state.va_corr_mode, CorrSource.LITERATURE),
         gas=op.Gas(v_s, coal), solids=solids, feed=feed,
         heat=op.Heat(_sf(state.va_T), _sf(state.va_T_cool)) if heat else None)
 
@@ -555,9 +555,11 @@ def on_va_compute(state):
 
     hydro = op.evaluate_point(_inputs(state, t_rxn), state.va_n_rpm / 60.0, state.va_v_l)
     state.va_corr_applicability = _correlation_applicability(state, hydro)
+    sl_on, gas_on, fed_on = (is_on(state.va_sl_mode), is_on(state.va_gas_mode),
+                             is_on(state.va_fed_mode))
 
     kla_sl = hydro.get("kLa_SL (1/s)", 0.0)
-    if state.va_sl_mode == "On":
+    if sl_on:
         n_js_rpm = hydro.get("N_js (RPM)", 0.0)
         assess = particle_suspension_criterion(state.va_n_rpm / 60.0, n_js_rpm / 60.0)
         state.va_sl_df = pd.DataFrame([
@@ -575,9 +577,9 @@ def on_va_compute(state):
     dam = {k: hydro[k] for k in ("Da_macro", "Da_micro", "Da_GL", "Da_SL", "Assessment")}
 
     transfer_paths = []
-    if state.va_gas_mode == "On":
+    if gas_on:
         transfer_paths.append(("Gas-liquid", hydro["kLa (1/s)"]))
-    if state.va_sl_mode == "On":
+    if sl_on:
         transfer_paths.append(("Solid-liquid", kla_sl))
     state.va_mt_df = pd.DataFrame(rules.mass_transfer_screen(transfer_paths, t_rxn),
                                   columns=va_mt_df.columns)
@@ -590,17 +592,17 @@ def on_va_compute(state):
     _regime = rules.regime_label
 
     da_meso = hydro.get("Da_meso", 0.0)
-    gl_type = ("Gas–liquid mass transfer" if state.va_gas_mode == "On"
+    gl_type = ("Gas–liquid mass transfer" if gas_on
                else "Gas–liquid mass transfer (surface aeration)")
 
     dam_rows = [
         {"Type": "Macromixing (bulk blending)", "Damköhler": "Da_macro", "Value": f"{dam['Da_macro']:.3g}", "Regime": _regime(dam["Da_macro"])},
     ]
-    if state.va_fed_mode == "On":
+    if fed_on:
         dam_rows.append({"Type": "Mesomixing (feed dispersion)", "Damköhler": "Da_meso", "Value": f"{da_meso:.3g}", "Regime": _regime(da_meso)})
     dam_rows.append({"Type": "Micromixing (engulfment)", "Damköhler": "Da_micro", "Value": f"{dam['Da_micro']:.3g}", "Regime": _regime(dam["Da_micro"])})
     dam_rows.append({"Type": gl_type, "Damköhler": "Da_GL", "Value": f"{dam['Da_GL']:.3g}", "Regime": _regime(dam["Da_GL"])})
-    if state.va_sl_mode == "On":
+    if sl_on:
         dam_rows.append({"Type": "Solid–liquid mass transfer", "Damköhler": "Da_SL", "Value": f"{dam['Da_SL']:.3g}", "Regime": _regime(dam["Da_SL"])})
     state.va_dam_df = pd.DataFrame(dam_rows)
     state.va_assess = f"**Assessment:** {dam['Assessment']}"
@@ -657,27 +659,19 @@ def on_va_solve(state):
         return
 
     solve_n = state.va_solve_var == _SOLVE_N
-    n_arr, v_min, v_max = _env_ranges(state)
     if solve_n:
-        rng_lo, rng_hi = float(n_arr[0]), float(n_arr[-1])
-        # Also scan beyond the rated speed range so out-of-range answers are reported.
-        lo, hi = max(rng_lo * 0.25, 1.0), rng_hi * 2.0
         name, unit, fixed = "N", "RPM", f"V = {state.va_v_l:.3g} L"
     else:
-        rng_lo, rng_hi = v_min, v_max
-        lo, hi = v_min, v_max
         name, unit, fixed = "V", "L", f"N = {state.va_n_rpm:.0f} RPM"
 
     try:
-        evaluate = _evaluator(_inputs(state, t_rxn, heat=False))
-        if solve_n:
-            value_at = lambda x: float(evaluate(x, state.va_v_l)[param])  # noqa: E731
-        else:
-            value_at = lambda x: float(evaluate(state.va_n_rpm, x)[param])  # noqa: E731
-        res = solve_target(value_at, target, lo, hi, (rng_lo, rng_hi))
+        res = solve_operating_point(
+            _evaluator(_inputs(state, t_rxn, heat=False)), _reactor_row(state.va_reactor),
+            param, target, "N_rpm" if solve_n else "V_L", state.va_n_rpm, state.va_v_l)
     except Exception as exc:  # noqa: BLE001
         notify(state, "E", f"Solve failed: {exc}")
         return
+    (lo, hi), (rng_lo, rng_hi) = res["search"], res["window"]
 
     roots = res["roots"]
     rows = [{"#": i, "Solved variable": f"{name} ({unit})",

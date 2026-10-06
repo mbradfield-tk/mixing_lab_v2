@@ -41,6 +41,7 @@ from core import records
 from core import bourne_io
 from core import bourne_plan as plan
 from core import sensitivity_rules as rules
+from core.options import CenterMode, FeedBasis, Toggle, is_on
 from core.records import (
     VesselGeometry,
     range_midpoint as _avg_range,
@@ -183,7 +184,8 @@ def _test1_range_ratio(state) -> float:
 
 def _resolve_center_pm(state) -> tuple[float, str]:
     """Resolve the Test 1 centre-point P/m (W/kg) and an info caption."""
-    return plan.resolve_center_pm(_system(state), state.bp_t1_ctr_mode,
+    return plan.resolve_center_pm(_system(state),
+                                  CenterMode.from_label(state.bp_t1_ctr_mode, CenterMode.DEFAULT),
                                   _sf(state.bp_t1_pm_center), _sf(state.bp_t1_rpm_center))
 
 
@@ -233,8 +235,13 @@ bp_process_version = ""
 # ---------------------------------------------------------------------------
 # State — Test 1 (impeller speed)
 # ---------------------------------------------------------------------------
-bp_t1_ctr_mode = "Default (0.2 W/kg)"
-bp_t1_ctr_mode_options = ["Default (0.2 W/kg)", "Custom P/m", "Custom RPM"]
+bp_t1_ctr_mode = CenterMode.DEFAULT.label
+bp_t1_ctr_mode_options = CenterMode.labels()
+# Labels referenced by the page's `active=` expressions.
+bp_lbl_custom_pm = CenterMode.CUSTOM_PM.label
+bp_lbl_custom_rpm = CenterMode.CUSTOM_RPM.label
+bp_lbl_feed_rate = FeedBasis.RATE.label
+bp_lbl_feed_time = FeedBasis.TIME.label
 bp_t1_pm_center = 0.2    # W/kg (Custom P/m mode)
 bp_t1_rpm_center = _avg_range(_r0, "N_rpm_min", "N_rpm_max", 300.0)  # RPM (Custom RPM mode)
 bp_t1_pm_eff = 0.2       # resolved centre P/m (W/kg), used by Tests 1 & 3
@@ -252,8 +259,8 @@ bp_t1_verdict = ""
 bp_show_t2 = False
 
 # Discrete speed adjustments (fed-batch: hold P/m as volume grows)
-bp_t1_adj_mode = "Off"
-bp_t1_adj_mode_options = ["Off", "On"]
+bp_t1_adj_mode = Toggle.OFF.label
+bp_t1_adj_mode_options = Toggle.labels()
 bp_t1_adj_vols_df = pd.DataFrame(columns=["Volume (L)"])
 bp_t1_adj_result_df = pd.DataFrame(columns=["Step", "Volume (L)", "Low (RPM)",
                                             "Centre (RPM)", "High (RPM)"])
@@ -267,8 +274,8 @@ bp_t1_show_plot = False
 # State — Test 2 (feed rate / time)
 # ---------------------------------------------------------------------------
 bp_t2_feed_vol = 100.0  # mL
-bp_t2_mode = "Feed rate"
-bp_t2_mode_options = ["Feed rate", "Feed time"]
+bp_t2_mode = FeedBasis.RATE.label
+bp_t2_mode_options = FeedBasis.labels()
 bp_t2_rate = 5.0        # mL/min
 bp_t2_time = 20.0       # min
 bp_t2_cond_df = pd.DataFrame(columns=["Condition", "Feed time (min)", "Flow rate (mL/min)", "Note"])
@@ -498,7 +505,7 @@ def _build_t1(state):
             "η (µm)": f"{r['η (µm)']:.3g}",
         })
     state.bp_t1_hydro_df = pd.DataFrame(rows)
-    if state.bp_t1_adj_mode == "On":
+    if is_on(state.bp_t1_adj_mode):
         _build_t1_adj(state)
     _build_t1_plot(state)
     _refresh_table_csv_exports(state)
@@ -530,7 +537,7 @@ def _build_t1_plot(state):
         name=f"Centre ({state.bp_v_l:g} L)",
         marker=dict(color="black", size=12, symbol="circle")))
     # Fed-batch adjustment set-points, if enabled
-    if state.bp_t1_adj_mode == "On":
+    if is_on(state.bp_t1_adj_mode):
         adj = [_sf(r.get("Volume (L)")) for _, r in state.bp_t1_adj_vols_df.iterrows()
                if _sf(r.get("Volume (L)")) > 0]
         if adj:
@@ -618,9 +625,9 @@ def _refresh_t1_adj(state):
 
 
 def on_bp_t1_adj_toggle(state):
-    if state.bp_t1_adj_mode == "On" and state.bp_t1_adj_vols_df.empty:
+    if is_on(state.bp_t1_adj_mode) and state.bp_t1_adj_vols_df.empty:
         state.bp_t1_adj_vols_df = pd.DataFrame([{"Volume (L)": round(state.bp_v_l * 2.0, 3)}])
-    if state.bp_t1_adj_mode == "On":
+    if is_on(state.bp_t1_adj_mode):
         _build_t1_adj(state)
     _build_t1_plot(state)
 
@@ -762,7 +769,8 @@ def on_bp_t1_assess(state):
 # Test 2
 # ---------------------------------------------------------------------------
 def _build_t2(state):
-    rows = plan.test2_conditions(_sf(state.bp_t2_feed_vol), state.bp_t2_mode == "Feed rate",
+    rows = plan.test2_conditions(_sf(state.bp_t2_feed_vol),
+                                 FeedBasis.from_label(state.bp_t2_mode) is FeedBasis.RATE,
                                  _sf(state.bp_t2_rate), _sf(state.bp_t2_time))
     state.bp_t2_cond_df = pd.DataFrame([
         {"Condition": r["Condition"], "Feed time (min)": f"{r['Feed time (min)']:.3g}",
@@ -947,7 +955,7 @@ def _centerpoint_metrics(state) -> dict:
 
 def _feed_time_centre(state) -> float:
     vol = state.bp_t2_feed_vol
-    if state.bp_t2_mode == "Feed rate":
+    if FeedBasis.from_label(state.bp_t2_mode) is FeedBasis.RATE:
         return vol / max(state.bp_t2_rate, 1e-9)
     return max(state.bp_t2_time, 1e-9)
 
@@ -1180,9 +1188,9 @@ volume. If the response barely moves, mixing is not rate-limiting.
 <|layout|columns=1 1 1|
 <|{bp_t1_ctr_mode}|selector|lov={bp_t1_ctr_mode_options}|dropdown|label=Centre-point method|on_change=on_bp_t1_recalc|>
 
-<|{bp_t1_pm_center}|number|label=Centre P/m (W/kg)|on_change=on_bp_t1_recalc|active={bp_t1_ctr_mode == "Custom P/m"}|>
+<|{bp_t1_pm_center}|number|label=Centre P/m (W/kg)|on_change=on_bp_t1_recalc|active={bp_t1_ctr_mode == bp_lbl_custom_pm}|>
 
-<|{bp_t1_rpm_center}|number|label=Centre RPM|on_change=on_bp_t1_recalc|active={bp_t1_ctr_mode == "Custom RPM"}|>
+<|{bp_t1_rpm_center}|number|label=Centre RPM|on_change=on_bp_t1_recalc|active={bp_t1_ctr_mode == bp_lbl_custom_rpm}|>
 |>
 
 <|{bp_t1_ctr_info}|text|mode=markdown|>
@@ -1258,9 +1266,9 @@ means the reaction is **micromixing**-controlled; sensitivity points to mesomixi
 
 <|{bp_t2_mode}|toggle|lov={bp_t2_mode_options}|label=Define by|on_change=on_bp_t2_input_change|>
 
-<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == "Feed rate"}|on_change=on_bp_t2_input_change|>
+<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == bp_lbl_feed_rate}|on_change=on_bp_t2_input_change|>
 
-<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == "Feed time"}|on_change=on_bp_t2_input_change|>
+<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == bp_lbl_feed_time}|on_change=on_bp_t2_input_change|>
 |>
 
 <|Recalculate conditions|button|on_action=on_bp_t2_recalc|>
@@ -1370,8 +1378,8 @@ Set the vessel, fluid and test inputs to calculate all three experimental condit
 ### Test 1: impeller speed
 <|layout|columns=1 1 1|
 <|{bp_t1_ctr_mode}|selector|lov={bp_t1_ctr_mode_options}|dropdown|label=Centre-point method|on_change=on_bp_plan_recalc|>
-<|{bp_t1_pm_center}|number|label=Centre P/m (W/kg)|active={bp_t1_ctr_mode == "Custom P/m"}|on_change=on_bp_plan_recalc|>
-<|{bp_t1_rpm_center}|number|label=Centre RPM|active={bp_t1_ctr_mode == "Custom RPM"}|on_change=on_bp_plan_recalc|>
+<|{bp_t1_pm_center}|number|label=Centre P/m (W/kg)|active={bp_t1_ctr_mode == bp_lbl_custom_pm}|on_change=on_bp_plan_recalc|>
+<|{bp_t1_rpm_center}|number|label=Centre RPM|active={bp_t1_ctr_mode == bp_lbl_custom_rpm}|on_change=on_bp_plan_recalc|>
 |>
 <|{bp_t1_ctr_info}|text|mode=markdown|>
 <|{bp_t1_hydro_df}|table|width=100%|show_all|>
@@ -1383,8 +1391,8 @@ Set the vessel, fluid and test inputs to calculate all three experimental condit
 <|layout|columns=1 1 1 1|
 <|{bp_t2_feed_vol}|number|label=Total feed volume (mL)|on_change=on_bp_plan_recalc|>
 <|{bp_t2_mode}|toggle|lov={bp_t2_mode_options}|label=Define by|on_change=on_bp_plan_recalc|>
-<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == "Feed rate"}|on_change=on_bp_plan_recalc|>
-<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == "Feed time"}|on_change=on_bp_plan_recalc|>
+<|{bp_t2_rate}|number|label=Feed rate (mL/min)|active={bp_t2_mode == bp_lbl_feed_rate}|on_change=on_bp_plan_recalc|>
+<|{bp_t2_time}|number|label=Feed time (min)|active={bp_t2_mode == bp_lbl_feed_time}|on_change=on_bp_plan_recalc|>
 |>
 <|{bp_t2_cond_df}|table|width=100%|show_all|>
 <|Download Test 2 conditions CSV|file_download|content={bp_t2_conditions_csv}|name=bourne_test_2_conditions.csv|label=Download Test 2 conditions CSV|>

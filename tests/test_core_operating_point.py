@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import operating_point as op
+from core.options import FeedLocation
 from core.records import VesselGeometry
 from utils.calculations import gmb_njs, zwietering_njs
 
@@ -65,15 +66,16 @@ def test_surface_kla_feeds_da_gl_without_a_gas_phase():
 
 
 def test_near_impeller_feed_falls_back_to_mean_dissipation():
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, "Near impeller") == 2.0
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0, "ε_max (W/kg)": 9.0}, "Near impeller") == 9.0
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, "Surface") == pytest.approx(0.4)
+    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, FeedLocation.NEAR_IMPELLER) == 2.0
+    assert op.feed_dissipation({"P/V (W/kg)": 2.0, "ε_max (W/kg)": 9.0},
+                               FeedLocation.NEAR_IMPELLER) == 9.0
+    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, FeedLocation.SURFACE) == pytest.approx(0.4)
 
 
 def test_optional_blocks_only_appear_when_requested():
     bare = op.evaluate_point(_inp(), 3.0, 10.0)
     assert "Da_meso" not in bare and "Q_gen (W)" not in bare and "N_js (RPM)" not in bare
     full = op.evaluate_point(
-        _inp(solids=SOLIDS, feed=op.Feed("Bulk (mid-liquid)", 0.003), heat=op.Heat(25.0, 15.0)),
+        _inp(solids=SOLIDS, feed=op.Feed(FeedLocation.BULK, 0.003), heat=op.Heat(25.0, 15.0)),
         3.0, 10.0)
     assert {"Da_meso", "Q_gen (W)", "N_js (RPM)", "Da_SL"} <= set(full)

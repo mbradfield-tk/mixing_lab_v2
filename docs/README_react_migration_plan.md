@@ -1,6 +1,6 @@
 # Modularization roadmap: FastAPI back end + React front end
 
-Status date: 2026-10-06. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 and P1 are complete** (see each section for what was delivered); P2, the React pages, is next.
+Status date: 2026-10-06. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 and P1 are complete. P2 has started:** the React app (`web/`) is live at `/app` with Home, Equations Reference, Unit Converter, all four databases (Vessel, Particle, Reaction, Fluid), Recorded Results and the Crystallization Sensitivity placeholder, and slow API results are cached. See the P2 section.
 
 ## Where we are
 
@@ -306,7 +306,7 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 *Delivered:*
 
 - **[core/units.py](../core/units.py)** holds all conversion tables, `convert()`, `units_for()` and `GAS_REFERENCE`. The Unit Converter page now only formats; its output for all 483 property/unit/value cases is identical.
-- **`GET /equations`** serves `data/equations_reference.json`, re-read when the file changes.
+- **`GET /equations`** serves the equations, re-read when the file changes. *(Changed in P2: it now serves the LaTeX source `data/equations_source.json`; see row 1.)*
 - **[core/version.py](../core/version.py)** holds `APP_VERSION` and `RELEASE_DATE`, used by the Home page and `GET /version`.
 
 ### P2: React migration (strangler pattern)
@@ -316,6 +316,14 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 - Replace per-session Taipy caches (`_va_cache`, `_vc_cache`, `_ms_cache`) with caches keyed by input hash (`functools.lru_cache` on frozen request models, or Redis on the server).
 - Long-running work (3D surfaces, multi-vessel comparisons, PDFs with kaleido) runs as `POST` → job id → poll, or with FastAPI `BackgroundTasks`. Add timeouts.
 - **File uploads.** Vessel import, Bourne CSV and DB imports become multipart endpoints that return a preview diff, followed by a separate apply call. This matches the current approve/skip dialog.
+
+*Delivered so far:*
+
+- **[api/cache.py](../api/cache.py)** is an in-process LRU cache with 48 entries.
+  - **Keyed on:** the endpoint, the canonical request JSON, and a data version (every `data/*.csv|json` modification time plus today's date, because PDFs print it). Editing any database invalidates all cached results.
+  - **Never cached:** errors.
+  - **Cached endpoints:** `POST /reports/{kind}`, `POST /charts/{kind}`, `/assessment/surface`, `/comparison`, `/comparison/scale-up` and `/heat-transfer/ua-surface`. A repeated PDF request returns instantly instead of taking about 11 s.
+- **Not yet:** background jobs (submit, then poll) for first-time slow requests, and the Bourne CSV upload endpoint. Do these with the Vessel Assessment and Bourne pages.
 
 **10. Build React pages one at a time, starting with the lowest risk.**
 
@@ -335,6 +343,116 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 - Each React page goes live behind the reverse proxy (`/app/<page>`), while the Taipy version stays reachable until users sign off.
 - **Front-end stack:** Vite + React + TypeScript, generated API types, TanStack Query for data fetching and caching, react-plotly.js, `@google/model-viewer`, and a table component that supports inline editing (for example AG Grid or TanStack Table).
 - **Acceptance per page:** same numbers as the golden scenarios (the API parity tests already guarantee this), PDF parity, and side-by-side UX review.
+
+*Delivered so far: rows 1–6 (Home, Equations Reference, Unit Converter; Particle, Reaction, Fluid and Vessel databases; Recorded Results; Vessel Assessment; Vessel Comparison) and the Crystallization Sensitivity placeholder. Next: row 7, Heat Transfer.*
+
+- **App:** [web/](../web) uses Vite 8, React 19, TypeScript 5.9 and React Router 7 (base path `/app`). Data comes from TanStack Query 5 through `openapi-fetch`, typed from `api/openapi.json`.
+- **Pages:**
+  - **Home:** version from `GET /version`.
+  - **Equations Reference:** collapsible sections plus a new search box (it also matches the LaTeX source). Markdown is rendered with `react-markdown` + GFM; inline HTML is sanitised.
+    - **Equations are real LaTeX now, not images.** `GET /equations` serves `data/equations_source.json`. Display equations are rendered by KaTeX; inline `$...$` goes through `remark-math` + `rehype-katex` (sanitiser first, then KaTeX).
+    - The pre-rendered PNG file (`data/equations_reference.json`, built by `scripts/build_equations.py` with matplotlib mathtext) is now Taipy-only. Delete it and the build step when Taipy is retired.
+    - The page and KaTeX (JS, CSS, fonts) are lazy-loaded, so the main bundle stays at 98 kB gzipped. The equations chunk is about 260 kB gzipped and triggers Vite's chunk-size warning; this is expected.
+  - **Unit Converter:** `POST /units/convert`.
+  - **Particle, Reaction and Fluid databases (row 2)** at `/app/particles`, `/app/reactions` and `/app/fluids`. They have the same sections as the Taipy pages, all backed by the P1 table routes.
+    - **Shared building blocks:**
+      - `components/DataTable.tsx`: sortable, paged; click a cell to edit (Enter saves, Esc cancels); delete asks for confirmation.
+      - `components/Database.tsx`: server-side search (`q`, `field`, `op`, including numeric `>`, `<=` …; debounced), the add form, and CSV export/import.
+      - `api/tables.ts`: query and mutation hooks for each table.
+      - `components/Notice.tsx`: toast showing the server's validation messages.
+    - Edits and deletes go by record **name**, not row position, so (unlike Taipy) editing also works while a search is active.
+    - **Admin:** `components/Admin.tsx` calls `POST /auth/login`. The token is held **in memory only**, so a reload locks editing again. The token is shared by every page, sent as `Authorization: Bearer` by `openapi-fetch` middleware, dropped a minute before it expires, and dropped on any 401.
+    - **Reactions:** separate "Reaction classes" and "Measured kinetics" tables (split on `class`), plus the scheme viewer.
+    - **Fluids:** tabs kept in the URL (`?tab=properties|custom|blend|io`).
+      - Library: `GET /fluids/library`.
+      - Solvent properties: `POST /fluids/solvent-state` plus the `solvent-properties` chart.
+      - Custom fluids: CRUD, including the HSP fields.
+      - Blend: `POST /fluids/blend` plus the `blend-phases` chart, with the same status lines, miscibility table and dispersion screen as Taipy.
+    - **Charts:** Plotly figure JSON from `POST /charts/{kind}` is drawn by `components/Plot.tsx`, which calls `Plotly.react` directly (no `react-plotly.js` wrapper).
+      - `plotly.js-dist-min` is pinned to **3.7.0**, the plotly.js version Python plotly 6.9 targets, so figures render as they do in Taipy.
+      - Plotly is about 1.4 MB gzipped, so it is lazy-loaded only when a chart is shown. The Fluid page is lazy-loaded too; the main bundle is 100 kB gzipped.
+    - **Not ported here:** the Vessel Database (row 3).
+  - **Vessel Database (row 3)** at `/app/vessels`:
+    - **Database:** the shared `DatabaseTable` (search, numeric filters, inline edit, delete) and an **Add vessel** form for the core geometry (Taipy only added a blank row).
+    - **Explore Vessel:** the selected vessel is kept in the URL (`?vessel=`).
+      - The 3D model loads `<model-viewer>` from `/vassets` on demand; otherwise the vessel image or a placeholder is shown.
+      - Property table with a "Properties to show" multi-select.
+      - 2D schematic PNG with a debounced fill volume, clamped to the brim-full volume. The default fill, status line and caption are ports of the Taipy helpers and are unit-tested.
+    - **Import:** `POST /vessels/import/preview` → a review dialog (Approve / Skip / Accept all remaining / Cancel) → `POST /vessels/import/apply` with the accepted change IDs. The server recomputes the changes from the same file, so nothing is held between requests.
+  - **Recorded Results (row 4)** at `/app/recorded-results`:
+    - Reactor, reaction and fluid multi-select filters; the table shows numbers to 4 significant figures, as in Taipy.
+    - Summary counts from `GET /results`; CSV export of the filtered set; Refresh; and "Clear all" with an in-page confirmation (no login, per the P0 decision).
+  - **Crystallization Sensitivity:** the placeholder page, ported as is.
+  - **Vessel Assessment (row 5)** at `/app/vessel-assessment`. It has the same four input cards, results, envelope, 3D surfaces, export/save and Solve-for as Taipy.
+    - **New API support** (the page needs no calculation code of its own):
+      - `POST /assessment/tables`: the formatted result tables (hydrodynamics, Damköhler, mass transfer, solids, heat), the assessment line and the correlation-applicability text. These are built by the same `reports.tables.assessment_tables` and `rules.correlation_applicability` code as the Taipy page and PDF; a test asserts they are equal.
+      - `GET /assessment/parameters`: the envelope / Solve-for parameter list, now one shared list, `core.envelope.ENVELOPE_PARAMETERS`, which the Taipy page imports too.
+      - `GET /assessment/vessel-defaults/{name}`: geometry, mid-range N and V, and the vessel's correlation sources with the status text.
+      - `GET /fluids/properties`: library-solvent or custom-fluid properties at T and P, resolving aliases.
+      - `POST /assessment/save`: append the point to Recorded Results through the shared `services.recorded_result_row`, which the Taipy page now uses too.
+    - **Front end:**
+      - `pages/assessment/model.ts`: the request builder, the `t_rxn` derivation, the kinetic-model and Solve-for text, and CSV export, all unit-tested against the Python strings.
+      - `components/Form.tsx`: number, select, switch and segmented controls.
+      - Changing an input after a run shows the “inputs changed” banner and turns Compute red again; the PDF and Save buttons wait for a fresh run.
+      - The envelope redraws whenever the parameter selection changes; the 3D surfaces are generated on demand, with a stale banner.
+      - The PDF comes from `POST /reports/assessment`; table CSVs are generated in the browser.
+  - **Vessel Comparison (row 6)** at `/app/vessel-comparison`. It has the same cards as Taipy: vessels and conditions, the selected-vessel 3D row, options (solids, gas, fed-batch with per-vessel feed pipes and a feed schedule), scale-up matching with per-target known values, all result tables, the envelope chart, PDF and save.
+    - **Shared formatting:** the Taipy page's table formatting moved to [reports/comparison_tables.py](../reports/comparison_tables.py). The setup defaults moved to `core.scale_up`: `feed_pipe_defaults`, `basis_defaults`, `target_defaults`, `recorded_rows`, `SCALABLE_PARAMS` and `DEFAULT_PLOT_PARAMS`. The Taipy page now calls them; its golden outputs are unchanged.
+    - **New endpoints:**
+      - `POST /comparison/setup`: shared correlation sources, feed-pipe IDs, basis and target defaults, and the scalable parameters.
+      - `POST /comparison/tables`: every result table plus the status and feed-overflow check (cached).
+      - `POST /comparison/save`.
+      - `GET /kinetics/defaults?reaction=`.
+    - A test drives the Taipy page through its full scenario (solids, sparging, fed-batch, heat, scale-up) and asserts that the HTTP tables equal the page tables.
+    - When a scaled feed would overflow a vessel, the page shows the status line, the warning and the feed-plan table, but not the other results (Taipy hid the feed plan too).
+- **Navigation:** the sidebar follows the Taipy menu order. Pages not migrated yet show ↗ and open in the Taipy app (`VITE_TAIPY_URL`, default `http://127.0.0.1:5000`).
+- **Styling:** `web/src/styles.css` reproduces the Takeda look: red `#E1251B` / grey `#5C6670`, white cards with a red left accent, and the centred page logo.
+- **Icons:** they come from a new `GET /api/v1/media/icons/{key}?px=` route (cached 96 px thumbnails). The source PNGs are 0.5–1 MB each. The thumbnail cache moved from `pages/_menu_icons.py` to `core/media.thumbnail`.
+- **Serving:** FastAPI serves the built app from `web/dist` at `/app`. Any `/app/...` path returns `index.html`, so deep links and reloads work. `/` redirects to `/app/` once the app is built, otherwise to the API docs. `/app` page loads are written to the usage log as `app:<path>`.
+- **Verification:**
+  - The Unit Converter number format matches Python's `_fmt` on 25 reference values (`web/src/format.test.ts`).
+  - Browser results match the Taipy page (pressure and gas-flow cases).
+  - The Equations Reference renders all 8 sections: 80 display and 287 inline KaTeX fragments, 0 KaTeX errors, KaTeX fonts loaded, no unrendered `$...$` left, and no console errors.
+  - Front-end tests: `npm test` (42 tests, including sanitiser, KaTeX, table sort/paging/edit/delete and token-expiry tests). Back-end tests: 842.
+  - Row 2 was tested end to end against an **isolated copy of the repo in /tmp** with throwaway admin credentials, so the real `data/*.csv` stayed untouched. The run covered:
+    - login (bad and good password); search, including a numeric search;
+    - inline edit; duplicate-name and invalid-value errors from the server;
+    - add and delete; editing a fluid named `60% Acetic Acid / 40% Water`;
+    - CSV export → import round trip, and locking.
+    - Solvent-state values and the blend results (ρ 929.5 kg/m³, μ 0.000714 Pa·s for 50/50 water/toluene) match the Python page format.
+    - Both charts render, with no console errors.
+  - Rows 3–4 were tested the same way (isolated copy, real data untouched):
+    - Vessel explorer: default fill, the Min/Max-volume and impeller-level status lines, the clamp, and the schematic PNG. The 3D model loads with no errors.
+    - Import review: approving one change, skipping one and accepting the rest applied exactly the accepted changes and gave the new vessel an ID.
+    - Recorded Results: filter counts and the filtered CSV export match, and clear-all works.
+  - Front-end tests: 45. Back-end tests: 843.
+  - Row 5 was tested the same way:
+    - The defaults match Taipy: mid-range N and V, and the first measured reaction with its database t_rxn.
+    - Compute renders all tables and the 6-panel envelope.
+    - Solve-for: P/V = 1 W/L gave N = 760.4 RPM; Apply + Compute then reported P/V = 1 W/L.
+    - 3D surfaces, the PDF (805 kB, correct filename) and Save to Recorded Results all work.
+    - Selecting Grignard switches the solvent to THF, and a temperature change reloads its properties. No console errors.
+  - Front-end tests: 52. Back-end tests: 844.
+  - Row 6 was tested the same way:
+    - The 4 default vessels compare; all tables and the envelope chart render.
+    - Scale-up: P/V from Cambrex R-101, solving for volume, gives the same Matched / “Not achievable [outside V]” rows as Taipy.
+    - Changing the basis reloads the basis RPM/volume and the target defaults.
+    - Save stores 4 rows; the PDF is 1.1 MB.
+    - Over-feeding shows the overflow warning per vessel.
+    - Selecting Grignard switches the fluid to THF. No console errors.
+  - Front-end tests: 58. Back-end tests: 845.
+- **Run it:**
+
+```zsh
+conda create -n mixing_lab_web -c conda-forge nodejs=22     # once (Node 22 LTS, separate env)
+export PATH=/opt/anaconda3/envs/mixing_lab_web/bin:$PATH
+cd web && npm install                                        # once
+npm run gen:api      # after `python scripts/export_openapi.py`
+npm run dev          # http://localhost:5173/app/ (proxies /api to uvicorn on :8000)
+npm run build        # web/dist, then served by `uvicorn api.main:app` at /app
+```
+
+- **Note:** `web/node_modules` (about 240 packages) sits inside the OneDrive-synced folder. Consider excluding it from sync, or keep the repo outside OneDrive.
 
 **11. Retire Taipy.**
 
@@ -358,10 +476,12 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 
 ## Suggested next increment
 
-Start P2 with step 10, row 1:
+Row 1 of step 10 and the step-9 cache are done. Next:
 
-1. Scaffold the Vite + React + TypeScript app and generate types from `api/openapi.json`.
-2. Build Home, Equations Reference and Unit Converter against `/api/v1`.
-3. Settle deployment: a reverse proxy routes `/api` to uvicorn and `/app` to React, while Taipy keeps the rest.
-
-In parallel, step 9 should add input-hash caching for the slow endpoints. Those are the 3D surfaces, comparisons and PDFs; a cold kaleido PDF takes about 11 s.
+1. **Row 2 (Particle, Reaction and Fluid databases):**
+   - an editable grid (AG Grid or TanStack Table) on `/particles`, `/reactions` and `/fluids/custom`;
+   - an admin login dialog using `POST /auth/login`, with the token kept in memory;
+   - CSV import and export;
+   - the Fluid Database's solvent-state, blend and phase-chart tabs.
+2. **Deployment:** reverse-proxy rules for `/api`, `/app` and `/vimages` to uvicorn, with everything else going to Taipy. Set `MIXING_LAB_API_SECRET` and the admin env vars on the server.
+3. **CI:** `pytest`, `npm test`, `npm run typecheck`, and the OpenAPI snapshot check.

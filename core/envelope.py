@@ -8,6 +8,18 @@ import pandas as pd
 
 from core.records import sf
 
+# Parameters offered for the Vessel Assessment envelope, surfaces and Solve-for (core keys).
+ENVELOPE_PARAMETERS = [
+    "Da_macro", "Da_micro", "Da_GL",
+    "Re", "Power (W)", "P/V (W/L)", "P/V (W/kg)", "Tip speed (m/s)",
+    "Pumping rate (m³/s)", "Blend time 95% (s)", "Circulation time (s)",
+    "Micromix time t_E (s)", "Kolmogorov η (µm)", "ε_max (W/kg)",
+    "EDCF (W/kg/s)", "Torque (N·m)", "Froude number", "Avg shear rate (1/s)",
+    "Max shear rate (1/s)", "Avg shear stress (Pa)", "kLa (1/s)",
+    "kLa_surface (1/s)",
+]
+DEFAULT_ENVELOPE = ["Da_macro", "Da_micro", "P/V (W/L)", "Blend time 95% (s)",
+                    "Tip speed (m/s)", "Re"]
 
 def operating_window(row: pd.Series, n_rpm: float, v_l: float,
                      n_pts: int = 40) -> tuple[np.ndarray, float, float]:

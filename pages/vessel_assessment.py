@@ -22,7 +22,10 @@ from core import repositories as repos
 from core import sensitivity_rules as rules
 from core.catalog import available_modes, is_known_solvent, resolve_solvent_name
 from core.kinetics import effective_t_rxn as _auto_t_rxn
-from core.envelope import envelope_data, solve_operating_point, surface_data
+from core.envelope import (
+    DEFAULT_ENVELOPE, ENVELOPE_PARAMETERS, envelope_data, solve_operating_point, surface_data,
+)
+from core.services import recorded_result_row
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from viz import vessel as viz_vessel
 from viz.common import empty as empty_fig
@@ -219,20 +222,8 @@ va_corr_status = (
 # ---------------------------------------------------------------------------
 # Operating-envelope parameter selection
 # ---------------------------------------------------------------------------
-# Every hydrodynamic / mass- / heat-transfer parameter that can be plotted as an
-# operating envelope. Da numbers are derived; the rest come straight from the
-# hydro dictionary.
-_HYDRO_ENV_KEYS = [
-    "Re", "Power (W)", "P/V (W/L)", "P/V (W/kg)", "Tip speed (m/s)",
-    "Pumping rate (m³/s)", "Blend time 95% (s)", "Circulation time (s)",
-    "Micromix time t_E (s)", "Kolmogorov η (µm)", "ε_max (W/kg)",
-    "EDCF (W/kg/s)", "Torque (N·m)", "Froude number", "Avg shear rate (1/s)",
-    "Max shear rate (1/s)", "Avg shear stress (Pa)", "kLa (1/s)",
-    "kLa_surface (1/s)",
-]
-va_env_params_options = ["Da_macro", "Da_micro", "Da_GL"] + _HYDRO_ENV_KEYS
-va_env_params = ["Da_macro", "Da_micro", "P/V (W/L)", "Blend time 95% (s)",
-                 "Tip speed (m/s)", "Re"]
+va_env_params_options = list(ENVELOPE_PARAMETERS)
+va_env_params = list(DEFAULT_ENVELOPE)
 _ENV_LOG = viz_vessel.LOG_PARAMS
 # Chart height is driven by a dynamic CSS class (env-rows-N in app.py) keyed to
 # the subplot row count, because the Taipy chart `height` property is not
@@ -453,30 +444,10 @@ def on_va_save_results(state):
         notify(state, "W", "Compute the assessment before saving.")
         return
     cache = state._va_cache
-    h, dam = cache["hydro"], cache["dam"]
-    row = {
-        "reactor": cache["reactor"], "reaction": cache["reaction"],
-        "fluid": cache["fluid"], "fluid_T_C": cache["fluid_T_C"],
-        "RPM": cache["rpm"], "Volume (L)": cache["v_l"],
-        "Re": h.get("Re", ""), "P/V (W/L)": h.get("P/V (W/L)", ""),
-        "Tip speed (m/s)": h.get("Tip speed (m/s)", ""),
-        "Blend time (s)": h.get("Blend time 95% (s)", ""),
-        "Circulation time (s)": h.get("Circulation time (s)", ""),
-        "Micromix t_E (s)": h.get("Micromix time t_E (s)", ""),
-        "Micromix t_E_local (s)": h.get("Micromix time t_E_local (s)", ""),
-        "Kolmogorov η (µm)": h.get("Kolmogorov η (µm)", ""),
-        "EDCF (W/kg/s)": h.get("EDCF (W/kg/s)", ""),
-        "Torque (N·m)": h.get("Torque (N·m)", ""),
-        "Froude number": h.get("Froude number", ""),
-        "Avg shear rate (1/s)": h.get("Avg shear rate (1/s)", ""),
-        "Max shear rate (1/s)": h.get("Max shear rate (1/s)", ""),
-        "Avg shear stress (Pa)": h.get("Avg shear stress (Pa)", ""),
-        "kLa (1/s)": h.get("kLa (1/s)", ""),
-        "kLa_surface (1/s)": h.get("kLa_surface (1/s)", ""),
-        "t_rxn (s)": cache["t_rxn"], "Da_macro": dam.get("Da_macro", ""),
-        "Da_micro": dam.get("Da_micro", ""), "Da_GL": dam.get("Da_GL", ""),
-        "Da_SL": dam.get("Da_SL", ""), "Assessment": dam.get("Assessment", ""),
-    }
+    row = recorded_result_row(
+        cache["hydro"], reactor=cache["reactor"], reaction=cache["reaction"],
+        fluid=cache["fluid"], T_C=cache["fluid_T_C"], N_rpm=cache["rpm"], V_L=cache["v_l"],
+        t_rxn=cache["t_rxn"])
     try:
         repos.results.append([row], db.ANONYMOUS)
         notify(state, "S", "Saved 1 result — view it on the Recorded Results page.")

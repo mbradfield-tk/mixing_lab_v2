@@ -14,14 +14,15 @@ from core import operating_point as op
 from core import repositories as repos
 from core import schemas as s
 from core import sensitivity_rules as rules
+from core.auth import ANONYMOUS
 from core.messages import Message
 from core.options import (
     BourneStatus, CenterMode, Coalescence, Competing, CorrSource, DhAction, DhBasis, FeedBasis,
     FeedLocation, GasTransfer, Kinetics, Mechanism, Phase,
 )
 from core.records import (
-    DATA_DIR, VesselGeometry, bottom_dish_height, fluid_props, range_midpoint, reactor_row, sf,
-    thermal_props,
+    DATA_DIR, VesselGeometry, bottom_dish_height, fluid_props, fluid_row, range_midpoint,
+    reaction_row, reactor_row, sf, thermal_props,
 )
 from core.serialize import jsonable
 from core.heat_transfer import (
@@ -147,6 +148,85 @@ def surface(req: s.SurfaceRequest) -> s.SurfaceResult:
                            z={p: jsonable(z[k]) for p, k in keys.items()})
 
 
+def envelope_parameters() -> list[s.ParameterOption]:
+    return [s.ParameterOption(field=s.CORE_KEYS[k], label=k,
+                              default=k in envelope.DEFAULT_ENVELOPE)
+            for k in envelope.ENVELOPE_PARAMETERS]
+
+
+def correlation_status(reactor: str) -> tuple[list[CorrSource], str]:
+    """(correlation sources registered for the vessel, explanatory status line)."""
+    modes = [CorrSource(m) for m in available_modes(reactor)]
+    if len(modes) > 1:
+        return modes, "Available sources for this vessel: " + ", ".join(m.label for m in modes) + "."
+    return modes, ("Only empirical (literature) correlations are registered for this vessel. "
+                   "Experimental and reduced-order (CFD) sources become available once fitted "
+                   "via ROM Fitting.")
+
+
+def vessel_defaults(reactor: str) -> s.VesselDefaults:
+    """The Vessel Assessment inputs a vessel loads when selected."""
+    row = _reactor(reactor)
+    modes, status = correlation_status(reactor)
+    return s.VesselDefaults(
+        reactor=reactor, D_tank_m=sf(row.get("D_tank_m"), 0.1), D_imp_m=sf(row.get("D_imp_m"), 0.05),
+        N_rpm=range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0),
+        V_L=range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0)),
+        Np=sf(row.get("Np"), 1.27), Nq=sf(row.get("Nq"), 0.79),
+        corr_sources=[s.OptionItem(code=m.value, label=m.label) for m in modes],
+        corr_status=status)
+
+
+def fluid_properties(name: str, T_C: float = 25.0, P_atm: float = 1.0) -> s.FluidProperties:
+    """Liquid properties at (T, P) for a library solvent (aliases resolved) or custom fluid."""
+    known = catalog.is_known_solvent(name)
+    resolved = (catalog.resolve_solvent_name(name) or name) if known else name
+    p = fluid_props(resolved, T_C, P_atm)
+    return s.FluidProperties(
+        name=resolved, found=known or not fluid_row(resolved).empty, library=known,
+        T_C=T_C, P_atm=P_atm,
+        rho_kg_m3=p["rho"], mu_Pa_s=p["mu"], D_mol_m2_s=p["D_mol"], surface_tension_N_m=p["sigma"],
+        in_range=bool(p["in_range"]), note=p["note"])
+
+
+# Recorded Results column -> evaluate_point key, for a saved assessment.
+_RECORDED_HYDRO = {
+    "Re": "Re", "P/V (W/L)": "P/V (W/L)", "Tip speed (m/s)": "Tip speed (m/s)",
+    "Blend time (s)": "Blend time 95% (s)", "Circulation time (s)": "Circulation time (s)",
+    "Micromix t_E (s)": "Micromix time t_E (s)",
+    "Micromix t_E_local (s)": "Micromix time t_E_local (s)",
+    "Kolmogorov η (µm)": "Kolmogorov η (µm)", "EDCF (W/kg/s)": "EDCF (W/kg/s)",
+    "Torque (N·m)": "Torque (N·m)", "Froude number": "Froude number",
+    "Avg shear rate (1/s)": "Avg shear rate (1/s)", "Max shear rate (1/s)": "Max shear rate (1/s)",
+    "Avg shear stress (Pa)": "Avg shear stress (Pa)", "kLa (1/s)": "kLa (1/s)",
+    "kLa_surface (1/s)": "kLa_surface (1/s)",
+    "Da_macro": "Da_macro", "Da_micro": "Da_micro", "Da_GL": "Da_GL", "Da_SL": "Da_SL",
+    "Assessment": "Assessment",
+}
+
+
+def recorded_result_row(hydro: dict, *, reactor: str, reaction: str, fluid: str, T_C: float,
+                        N_rpm: float, V_L: float, t_rxn: float) -> dict:
+    """One Recorded Results row for an assessed operating point."""
+    return {"reactor": reactor, "reaction": reaction, "fluid": fluid, "fluid_T_C": T_C,
+            "RPM": N_rpm, "Volume (L)": V_L, "t_rxn (s)": t_rxn,
+            **{col: hydro.get(key, "") for col, key in _RECORDED_HYDRO.items()}}
+
+
+def save_assessment(req: s.AssessmentReportRequest) -> int:
+    """Evaluate the point and append it to Recorded Results; returns the record count."""
+    p = req.point
+    inp, t_rxn, _row = point_inputs(p)
+    if t_rxn <= 0:
+        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
+                         "Damköhler numbers.")
+    hydro = op.evaluate_point(inp, p.N_rpm / 60.0, p.V_L)
+    row = recorded_result_row(hydro, reactor=p.reactor, reaction=req.reaction_name,
+                              fluid=p.fluid.name, T_C=p.fluid.T_C, N_rpm=p.N_rpm, V_L=p.V_L,
+                              t_rxn=t_rxn)
+    return repos.results.append([row], ANONYMOUS)
+
+
 # ---------------------------------------------------------------------------
 # Reaction Sensitivity Protocol
 # ---------------------------------------------------------------------------
@@ -245,6 +325,50 @@ def compare(req: s.ComparisonRequest) -> dict:
     return {**cmp, "ctx": ctx, "fluid_name": req.fluid.name, "fluid_T_C": req.fluid.T_C,
             "rxn_name": req.reaction_name, "t_rxn": ctx["t_rxn"],
             "incl_heat": ctx["incl_heat"], "incl_particles": ctx["incl_particles"]}
+
+
+def comparison_setup(req: s.ComparisonSetupRequest) -> s.ComparisonSetup:
+    """Inputs the Vessel Comparison page loads for a vessel selection."""
+    names = list(req.reactors)
+    for name in names:
+        _reactor(name)
+    modes = [CorrSource(m) for m in available_modes_multi(names)]
+    status = ("Sources available for every selected vessel: "
+              + ", ".join(m.label for m in modes) + "." if len(modes) > 1 else
+              "Only empirical (literature) correlations are shared by all selected vessels. "
+              "Experimental and reduced-order (CFD) sources appear once fitted for every "
+              "vessel in the selection.")
+    basis = req.basis_reactor if req.basis_reactor in names else names[0]
+    rpm, vol = scale_up.basis_defaults(basis)
+    return s.ComparisonSetup(
+        corr_sources=[s.OptionItem(code=m.value, label=m.label) for m in modes],
+        corr_status=status, feed_pipe_mm=scale_up.feed_pipe_defaults(names),
+        basis_reactor=basis, basis_N_rpm=rpm, basis_V_L=vol,
+        fixed=scale_up.target_defaults(names, basis, req.solve_for == "N_rpm"),
+        scalable=[s.ParameterOption(field=s.CORE_KEYS[k], label=k)
+                  for k in scale_up.SCALABLE_PARAMS])
+
+
+def kinetics_defaults(reaction: str) -> s.KineticsDefaults:
+    """Database kinetics for a reaction, plus its solvent when that is a known fluid."""
+    if reaction_row(reaction).empty:
+        raise LookupError(f"Unknown reaction '{reaction}'.")
+    kd = kinetics.kinetics_defaults(reaction)
+    resolved = catalog.resolve_solvent_name(kd["solvent"]) if kd["solvent"] else None
+    return s.KineticsDefaults(
+        order=kd["order"], k=kd["k"], C0_mol_L=kd["C0"], t_rxn_s=kd["t_rxn"], T_C=kd["T"],
+        dH_kJ_mol=kd["dH"],
+        fluid=resolved if resolved and resolved in catalog.fluid_names_grouped() else None)
+
+
+def save_comparison(req: s.ComparisonRequest) -> tuple[int, int]:
+    """Append each vessel's max-RPM / max-volume corner to Recorded Results: (saved, total)."""
+    cmp = compare(req)
+    rows = scale_up.recorded_rows(cmp["env_df"], reaction=req.reaction_name,
+                                  fluid=req.fluid.name, T_C=req.fluid.T_C, t_rxn=cmp["t_rxn"])
+    if not rows:
+        raise ValueError("Nothing to save.")
+    return len(rows), repos.results.append(rows, ANONYMOUS)
 
 
 def comparison_summary(req: s.ComparisonRequest) -> s.ComparisonResult:

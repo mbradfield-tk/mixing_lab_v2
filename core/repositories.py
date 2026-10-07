@@ -148,6 +148,10 @@ def normalize_reactions(df: pd.DataFrame) -> pd.DataFrame:
 class ReactorRepository(Repository):
     """Vessels keep generated ``reactor_id`` / ``search_name`` columns in step."""
 
+    def create(self, df, data, principal):
+        out, _ = vimport.assign_missing_reactor_ids(super().create(df, data, principal))
+        return self.save(vimport.fill_missing_search_names(out), principal)
+
     def edit(self, df, payload, principal):
         authorize(principal, self.table)
         out = vimport.refresh_search_names(tables.apply_edit(df.copy(), payload))

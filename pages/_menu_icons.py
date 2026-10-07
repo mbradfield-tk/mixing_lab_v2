@@ -16,8 +16,11 @@ import base64
 import re
 from pathlib import Path
 
-MENU_DIR = Path(__file__).resolve().parent.parent / "images" / "menu"
-THUMB_DIR = MENU_DIR / ".thumbs"
+from core.media import MENU_DIR, THUMB_DIR, thumbnail
+
+__all__ = ["MENU_DIR", "THUMB_DIR", "image_thumb_uri", "menu_icon_uri", "icon_md",
+           "inject_icons"]
+
 THUMB_PX = 96  # icons display at 18-44 px; 96 px stays crisp on retina
 
 _TOKEN_RE = re.compile(r"__ICON:([A-Za-z_]+)__")
@@ -25,25 +28,12 @@ _TOKEN_RE = re.compile(r"__ICON:([A-Za-z_]+)__")
 _uri_cache: dict[str, str] = {}
 
 
-def _thumb_path(source: Path, px: int = THUMB_PX) -> Path:
-    thumb = THUMB_DIR / f"{source.stem}_{px}.png"
-    if thumb.exists() and thumb.stat().st_mtime >= source.stat().st_mtime:
-        return thumb
-    from PIL import Image
-
-    THUMB_DIR.mkdir(exist_ok=True)
-    with Image.open(source) as img:
-        img.thumbnail((px, px), Image.LANCZOS)
-        img.save(thumb, "PNG", optimize=True)
-    return thumb
-
-
 def image_thumb_uri(source: Path, px: int = THUMB_PX) -> str:
     """Downscaled-PNG data URI for any image file ('' if the file is absent)."""
     if not source.exists():
         return ""
     try:
-        payload = _thumb_path(source, px).read_bytes()
+        payload = thumbnail(source, px).read_bytes()
     except Exception:  # noqa: BLE001 - fall back to the full-size image
         payload = source.read_bytes()
     return f"data:image/png;base64,{base64.b64encode(payload).decode('ascii')}"

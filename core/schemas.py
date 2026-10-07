@@ -251,6 +251,51 @@ class SurfaceResult(Contract):
     z: dict[str, list[list[Num]]] = Field(description="parameter -> rows along V_L, columns along N_rpm")
 
 
+class ParameterOption(Contract):
+    field: str = Field(description="PointResult field name (send this)")
+    label: str = Field(description="Display label")
+    default: bool = Field(False, description="Plotted by default on the operating envelope")
+
+
+class AssessmentTables(Contract):
+    """The Vessel Assessment result tables, formatted as on the page and in the PDF."""
+    point: PointResult
+    t_rxn_s: float
+    hydro: list[Row]
+    damkohler: list[Row]
+    mass_transfer: list[Row]
+    solids: list[Row]
+    heat: list[Row]
+    assessment: str = Field(description="Markdown")
+    applicability: str = Field(description="Markdown: correlation applicability checks")
+
+
+class VesselDefaults(Contract):
+    reactor: str
+    D_tank_m: float
+    D_imp_m: float
+    N_rpm: float
+    V_L: float
+    Np: float
+    Nq: float
+    corr_sources: list["OptionItem"]
+    corr_status: str
+
+
+class FluidProperties(Contract):
+    name: str = Field(description="Resolved name (library aliases mapped)")
+    found: bool = Field(description="A library solvent or custom fluid (else water defaults)")
+    library: bool = Field(description="Library solvent: properties depend on T and P")
+    T_C: float
+    P_atm: float
+    rho_kg_m3: float
+    mu_Pa_s: float
+    D_mol_m2_s: float
+    surface_tension_N_m: float
+    in_range: bool
+    note: str
+
+
 # ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
@@ -486,6 +531,25 @@ class UnitConversionResult(Contract):
 
 
 # ---------------------------------------------------------------------------
+# Equations reference
+# ---------------------------------------------------------------------------
+class EquationItem(Contract):
+    type: Literal["header", "latex", "md"]
+    text: str | None = Field(None, description="header / md: Markdown with inline $LaTeX$")
+    latex: str | None = Field(None, description="latex: a display equation")
+    level: int | None = Field(None, description="header: 3 or 4")
+
+
+class EquationSection(Contract):
+    title: str
+    items: list[EquationItem]
+
+
+class EquationsResult(Contract):
+    sections: list[EquationSection]
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 class LoginRequest(Contract):
@@ -558,6 +622,84 @@ class OptionsResult(Contract):
     fluids: list[str]
     particles: list[str]
     enums: dict[str, list[OptionItem]] = Field(description="Coded choices from core.options")
+
+
+VesselDefaults.model_rebuild()
+
+
+# ---------------------------------------------------------------------------
+# Vessel Comparison page
+# ---------------------------------------------------------------------------
+class FeedSchedule(Contract):
+    basis_reactor: str = Field(min_length=1, description="Vessel whose feed volume is given")
+    volume_mL: float = Field(100.0, ge=0)
+    time_h: float = Field(1.0, gt=0)
+
+
+class ScaleUpSpec(_NeedsParameters):
+    basis_reactor: str = Field(min_length=1)
+    parameter: str = Field(description="PointResult field held constant, e.g. 'P_V_W_L'")
+    basis_N_rpm: float = Field(gt=0)
+    basis_V_L: float = Field(gt=0)
+    solve_for: Literal["N_rpm", "V_L"] = "N_rpm"
+    fixed: dict[str, float] = Field(default_factory=dict,
+                                    description="Per target vessel: fixed V_L or N_rpm")
+
+    @field_validator("parameter")
+    @classmethod
+    def _known(cls, v: str) -> str:
+        return cls._check([v])[0]
+
+
+class ComparisonPageRequest(Contract):
+    comparison: ComparisonRequest
+    scale_up: ScaleUpSpec | None = None
+    feed_schedule: FeedSchedule | None = Field(None, description="Fed-batch feed plan (needs comparison.feed)")
+
+
+class ComparisonTables(Contract):
+    """The Vessel Comparison result tables, formatted as on the page."""
+    status: str
+    feed_ok: bool = Field(description="False when a scaled feed would overflow a vessel")
+    feed_warning: str
+    parameters: list[ParameterOption] = Field(description="Plottable parameters for this comparison")
+    summary: list[Row]
+    detail: list[Row]
+    rpm_ref: list[Row]
+    heat: list[Row]
+    scale: list[Row]
+    scale_full: list[Row]
+    scale_pct: list[Row]
+    impact: list[Row]
+    feed_plan: list[Row]
+    skipped: list[str]
+
+
+class ComparisonSetupRequest(Contract):
+    reactors: list[str] = Field(min_length=1)
+    basis_reactor: str = ""
+    solve_for: Literal["N_rpm", "V_L"] = "N_rpm"
+
+
+class ComparisonSetup(Contract):
+    corr_sources: list[OptionItem] = Field(description="Sources registered for every vessel")
+    corr_status: str
+    feed_pipe_mm: dict[str, float] = Field(description="Recorded feed-pipe ID per vessel (0 = none)")
+    basis_reactor: str
+    basis_N_rpm: float
+    basis_V_L: float
+    fixed: dict[str, float] = Field(description="Default known value per target vessel")
+    scalable: list[ParameterOption]
+
+
+class KineticsDefaults(Contract):
+    order: ReactionOrder
+    k: float
+    C0_mol_L: float
+    t_rxn_s: float = Field(description="Specified time from the database (0 = derive from k)")
+    T_C: float
+    dH_kJ_mol: float
+    fluid: str | None = Field(description="The reaction's solvent when it is a known fluid")
 
 
 # ---------------------------------------------------------------------------

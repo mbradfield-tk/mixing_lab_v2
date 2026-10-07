@@ -1,13 +1,14 @@
 """Report (PDF), chart (Plotly JSON), media and reference routes."""
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, Response, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 
+from api import cache
 from core import media, records
 from core import schemas as s
 from core.vessel_capacity import fill_summary
@@ -17,7 +18,8 @@ from viz.vessel_schematic import build_vessel_schematic
 outputs = APIRouter(tags=["Reports & charts"])
 reference = APIRouter(tags=["Reference"])
 
-EQUATIONS_JSON = records.DATA_DIR / "equations_reference.json"
+# The LaTeX source; equations_reference.json (pre-rendered PNGs) is only for the Taipy page.
+EQUATIONS_JSON = records.DATA_DIR / "equations_source.json"
 
 
 @outputs.post("/reports/{kind}", summary="Build a PDF report",
@@ -26,7 +28,8 @@ EQUATIONS_JSON = records.DATA_DIR / "equations_reference.json"
 async def report(kind: str, payload: dict[str, Any] = Body(...)) -> Response:
     if kind not in service.REPORTS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown report '{kind}'.")
-    pdf = await run_in_threadpool(service.render_report, kind, payload)
+    pdf = await run_in_threadpool(
+        cache.cached, f"report:{kind}", payload, lambda: service.render_report(kind, payload))
     return Response(pdf.content, media_type=pdf.media_type,
                     headers={"Content-Disposition": f'attachment; filename="{pdf.filename}"'})
 
@@ -36,7 +39,7 @@ async def report(kind: str, payload: dict[str, Any] = Body(...)) -> Response:
 def chart(kind: str, payload: dict[str, Any] = Body(...)) -> s.ChartResult:
     if kind not in charts.CHARTS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown chart '{kind}'.")
-    return charts.render_chart(kind, payload)
+    return cache.cached(f"chart:{kind}", payload, lambda: charts.render_chart(kind, payload))
 
 
 def _reactor(name: str):
@@ -69,12 +72,24 @@ def vessel_schematic(name: str, fill_L: float | None = Query(None, ge=0)) -> Res
 
 
 @lru_cache(maxsize=1)
-def _equations(mtime: float) -> dict:
-    return json.loads(EQUATIONS_JSON.read_text(encoding="utf-8"))
+def _equations(mtime: float) -> s.EquationsResult:
+    return s.EquationsResult.model_validate_json(EQUATIONS_JSON.read_text(encoding="utf-8"))
 
 
-@reference.get("/equations", summary="Equations reference (sections with pre-rendered images)")
-def equations() -> dict:
+@reference.get("/media/icons/{name}", summary="Menu icon or app logo ('logo') as a small PNG",
+               responses={200: {"content": {"image/png": {}}}})
+def icon(name: str, px: int = Query(96)) -> FileResponse:
+    if px not in media.ICON_SIZES:
+        raise ValueError(f"px must be one of {', '.join(map(str, media.ICON_SIZES))}.")
+    source = media.icon_source(name)
+    if source is None:
+        raise LookupError(f"No icon '{name}'.")
+    return FileResponse(media.thumbnail(source, px), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@reference.get("/equations", summary="Equations reference with raw LaTeX (render with KaTeX)")
+def equations() -> s.EquationsResult:
     return _equations(EQUATIONS_JSON.stat().st_mtime)
 
 

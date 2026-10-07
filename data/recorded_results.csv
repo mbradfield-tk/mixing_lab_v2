@@ -1,0 +1,1 @@
+reactor,reaction,fluid,fluid_T_C,RPM,Volume (L),Re,P/V (W/L),Tip speed (m/s),Blend time (s),Circulation time (s),Micromix t_E (s),Micromix t_E_local (s),Kolmogorov η (µm),EDCF (W/kg/s),Torque (N·m),Froude number,Avg shear rate (1/s),Max shear rate (1/s),Avg shear stress (Pa),kLa (1/s),kLa_surface (1/s),t_rxn (s),Da_macro,Da_micro,Da_GL,Da_SL,Assessment

@@ -1,7 +1,9 @@
-"""Build-time generator for the Equations Reference page.
+"""Build-time generator for the Taipy Equations Reference page.
 
 Taipy cannot render LaTeX, so every display equation is pre-rendered to a PNG
-at build time. The content lives in ``data/equations_source.json`` in THIS
+at build time. The React app does not need this step: ``GET /api/v1/equations``
+serves ``data/equations_source.json`` as-is and the browser renders it with KaTeX.
+The content lives in ``data/equations_source.json`` in THIS
 repo (originally snapshotted from the Streamlit ``mixing_lab`` source with all
 audit corrections applied — the sibling repo is no longer needed):
 

@@ -27,7 +27,6 @@ properties are shared across the selection. Point evaluations come from
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 from taipy.gui import Markdown, notify
 
@@ -42,14 +41,13 @@ from core.catalog import available_modes_multi, resolve_solvent_name
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from core.records import (
     particle_row as _particle_row,
-    range_midpoint as _avg,
     reactor_id as _reactor_id,
-    reactor_row as _reactor_row,
     sf as _sf,
 )
 from pages import _db_common as db
 from viz import vessel as viz_vessel
 from viz.common import empty as empty_fig
+from reports import comparison_tables as ctables
 from reports import snapshots
 from pages._vessel_media import build_multi_vessel_viewer_html
 
@@ -57,11 +55,7 @@ CORNER_LABELS = scale_up.CORNER_LABELS
 _BASE_PLOT_PARAMS = scale_up.BASE_PLOT_PARAMS
 _LOG_PARAMS = viz_vessel.LOG_PARAMS
 
-SCALABLE_PARAMS = [
-    "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
-    "Re", "kLa (1/s)", "kLa_surface (1/s)", "Avg shear rate (1/s)",
-    "Max shear rate (1/s)", "Kolmogorov η (µm)", "EDCF (W/kg/s)", "Froude number",
-]
+SCALABLE_PARAMS = scale_up.SCALABLE_PARAMS
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +177,8 @@ vc_feed_time_hr = 1.0
 
 def _seed_feed_pipe_rows(names) -> pd.DataFrame:
     """Default each vessel's feed-pipe ID from reactors.csv (mm); 0 if not recorded."""
-    rows = []
-    for name in names:
-        csv_m = _sf(_reactor_row(name).get("D_feed_pipe_m"))
-        val = round(csv_m * 1000.0, 2) if csv_m > 0 else 0.0
-        rows.append({"Reactor": name, "Feed pipe ID (mm)": val})
+    rows = [{"Reactor": n, "Feed pipe ID (mm)": mm}
+            for n, mm in scale_up.feed_pipe_defaults(list(names)).items()]
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Reactor", "Feed pipe ID (mm)"])
 
 
@@ -211,7 +202,7 @@ vc_summary_df = pd.DataFrame()
 vc_detail_df = pd.DataFrame()
 vc_rpm_ref_df = pd.DataFrame()
 vc_env_params_options = list(_BASE_PLOT_PARAMS)
-vc_env_params = ["Da_micro", "Da_macro", "Blend time 95% (s)", "P/V (W/L)"]
+vc_env_params = list(scale_up.DEFAULT_PLOT_PARAMS)
 vc_env_fig = empty_fig()
 vc_env_class = "env-rows-2"
 vc_heat_df = pd.DataFrame()
@@ -318,11 +309,7 @@ def on_vc_scaling_change(state):
 
 
 def on_vc_basis_change(state):
-    row = _reactor_row(state.vc_basis)
-    rpm_mid = _avg(row, "N_rpm_min", "N_rpm_max", 100.0)
-    vol_mid = _avg(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), 1.0))
-    state.vc_basis_rpm = round(max(rpm_mid, 0.1), 1)
-    state.vc_basis_vol = round(max(vol_mid, 0.001), 2)
+    state.vc_basis_rpm, state.vc_basis_vol = scale_up.basis_defaults(state.vc_basis)
     _build_targets(state)
     _mark_stale(state)
 
@@ -331,16 +318,8 @@ def _build_targets(state):
     """Rebuild the editable per-target known-value table for scale-up matching."""
     solve_rpm = state.vc_scale_solve_for.startswith("RPM")
     label = "Fill volume (L)" if solve_rpm else "Stir speed (RPM)"
-    rows = []
-    for name in (state.vc_reactors or []):
-        if name == state.vc_basis:
-            continue
-        row = _reactor_row(name)
-        if solve_rpm:
-            val = _avg(row, "V_L_min", "V_L_max", _sf(row.get("V_L"), 1.0))
-        else:
-            val = _avg(row, "N_rpm_min", "N_rpm_max", 100.0)
-        rows.append({"Reactor": name, label: round(max(val, 0.001), 2)})
+    rows = [{"Reactor": n, label: v} for n, v in scale_up.target_defaults(
+        list(state.vc_reactors or []), state.vc_basis, solve_rpm).items()]
     state.vc_targets_df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Reactor", label])
 
 
@@ -462,50 +441,9 @@ def on_vc_compute(state):
     notify(state, "S", "Comparison computed.")
 
 
-def _fmt_range(lo, hi) -> str:
-    if not (np.isfinite(lo) and np.isfinite(hi)):
-        return "—"
-    if abs(lo - hi) < 1e-12:
-        return f"{lo:.3g}"
-    return f"{lo:.3g} – {hi:.3g}"
-
-
 def _build_summary_tables(state, env_df, agg_df, present, ctx):
-    # Range summary (one row per reactor)
-    key_cols = [p for p in ["P/V (W/L)", "Blend time 95% (s)", "Tip speed (m/s)",
-                            "Da_macro", "Da_meso", "Da_micro", "Da_GL", "Re"] if p in present]
-    rows = []
-    for _, a in agg_df.iterrows():
-        row = {"Reactor": a["Reactor"], "Scale": a.get("Scale_first", ""),
-               "Volume (L)": _fmt_range(a["Volume (L)_min"], a["Volume (L)_max"])}
-        for p in key_cols:
-            row[p] = _fmt_range(a[f"{p}_min"], a[f"{p}_max"])
-        rows.append(row)
-    state.vc_summary_df = pd.DataFrame(rows)
-
-    # 4-corner detail
-    detail_cols = [c for c in ["Reactor", "Corner", "RPM", "V_L", "Re", "P/V (W/L)",
-                               "Tip speed (m/s)", "Blend time 95% (s)",
-                               "Micromix time t_E (s)", "Kolmogorov η (µm)",
-                               "Da_macro", "Da_meso", "Da_micro", "Da_GL", "Da_SL"] if c in env_df.columns]
-    det = env_df[detail_cols].copy()
-    for c in detail_cols:
-        if c not in ("Reactor", "Corner"):
-            det[c] = det[c].map(lambda v: f"{v:.3g}" if pd.notna(v) and np.isfinite(v) else "—")
-    state.vc_detail_df = det
-
-    # Stir-speed reference table
-    pct_steps = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    ref_rows = []
-    for name in agg_df["Reactor"].tolist():
-        sub = env_df[env_df["Reactor"] == name]
-        rpm_max = sub["RPM_max"].iloc[0]
-        rpm_min = sub[sub["Corner"] == CORNER_LABELS[0]]["RPM"].iloc[0]
-        row = {"Reactor": name, "RPM min": f"{rpm_min:.0f}", "RPM max": f"{rpm_max:.0f}"}
-        for pct in pct_steps:
-            row[f"{pct}%"] = f"{rpm_max * pct / 100:.0f}"
-        ref_rows.append(row)
-    state.vc_rpm_ref_df = pd.DataFrame(ref_rows)
+    t = ctables.summary_tables(env_df, agg_df, present)
+    state.vc_summary_df, state.vc_detail_df, state.vc_rpm_ref_df = t["summary"], t["detail"], t["rpm_ref"]
 
 
 def _build_env_fig(state):
@@ -526,14 +464,7 @@ def _build_heat_summary(state, env_df, reactor_info, ctx):
     if not ctx["incl_heat"]:
         state.vc_heat_df = pd.DataFrame()
         return
-    state.vc_heat_df = pd.DataFrame([{
-        "Reactor": h["reactor"], "Volume (L)": f"{h['V_L']:.1f}",
-        "U (W/m²·K)": f"{h['U']:.0f}",
-        "A (m²)": f"{h['A_ht']:.3f}",
-        "Q_gen (W)": f"{h['Q_gen']:.1f}", "Q_cool (W)": f"{h['Q_cool']:.1f}",
-        "Q_gen/Q_cool (%)": f"{h['ratio_pct']:.1f}%" if h["ratio_pct"] < 1e4 else "∞",
-        "Assessment": h["assessment"],
-    } for h in scale_up.heat_summary_data(env_df, reactor_info)])
+    state.vc_heat_df = ctables.heat_table(env_df, reactor_info)
 
 
 def _build_scaling(state, names, reactor_info, ctx):
@@ -552,43 +483,8 @@ def _build_scaling(state, names, reactor_info, ctx):
         names, reactor_info, ctx["inputs"], basis, param, _sf(state.vc_basis_rpm),
         _sf(state.vc_basis_vol), solve_rpm=state.vc_scale_solve_for.startswith("RPM"),
         known=known)
-    if match is None:
-        state.vc_scale_df = pd.DataFrame([{"Reactor": basis, "Status": "Basis geometry missing"}])
-        state.vc_scale_full_df = pd.DataFrame()
-        state.vc_scale_pct_df = pd.DataFrame()
-        return
-    results, full = match["results"], match["full"]
-
-    res_df = pd.DataFrame(results)
-    for c in res_df.columns:
-        if c not in ("Reactor", "Role", "Status"):
-            res_df[c] = res_df[c].map(lambda v: f"{v:.4g}" if isinstance(v, (int, float)) and np.isfinite(v) else v)
-    state.vc_scale_df = res_df
-
-    full_df = pd.DataFrame(full)
-    show_cols = [c for c in ["Reactor", "Role", "RPM", "Volume (L)", "Re", "P/V (W/L)",
-                             "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
-                             "Kolmogorov η (µm)", "kLa (1/s)", "Torque (N·m)",
-                             "EDCF (W/kg/s)", "Froude number"] if c in full_df.columns]
-    disp = full_df[show_cols].copy()
-    num_cols = [c for c in show_cols if c not in ("Reactor", "Role")]
-    for c in num_cols:
-        disp[c] = disp[c].map(lambda v: f"{v:.4g}" if pd.notna(v) and np.isfinite(v) else "—")
-    state.vc_scale_full_df = disp
-
-    # % difference vs basis
-    basis_row = full_df[full_df["Role"] == "Basis"].iloc[0]
-    pct_rows = []
-    for _, row in full_df.iterrows():
-        entry = {"Reactor": row["Reactor"], "Role": row["Role"]}
-        for c in num_cols:
-            b, t = basis_row.get(c, 0.0), row.get(c, 0.0)
-            if b and np.isfinite(b) and b != 0 and np.isfinite(t):
-                entry[c] = f"{(t - b) / abs(b) * 100:+.1f}%"
-            else:
-                entry[c] = "—"
-        pct_rows.append(entry)
-    state.vc_scale_pct_df = pd.DataFrame(pct_rows)
+    t = ctables.scaling_tables(match, basis)
+    state.vc_scale_df, state.vc_scale_full_df, state.vc_scale_pct_df = t["scale"], t["full"], t["pct"]
 
 
 def _build_impact(state, env_df, present, ctx):
@@ -643,24 +539,9 @@ def on_vc_save_results(state):
         notify(state, "W", "Compute the comparison before saving.")
         return
     cache = state._vc_cache
-    env_df = cache["env_df"]
-    rows = []
-    for name in env_df["Reactor"].drop_duplicates().tolist():
-        sub = env_df[(env_df["Reactor"] == name) & (env_df["Corner"] == CORNER_LABELS[1])]
-        if sub.empty:
-            continue
-        c = sub.iloc[0]
-        rows.append({
-            "reactor": name, "reaction": cache["rxn_name"], "fluid": cache["fluid_name"],
-            "fluid_T_C": cache["fluid_T_C"], "RPM": c["RPM"], "Volume (L)": c["V_L"],
-            "Re": c.get("Re", ""), "P/V (W/L)": c.get("P/V (W/L)", ""),
-            "Tip speed (m/s)": c.get("Tip speed (m/s)", ""),
-            "Blend time (s)": c.get("Blend time 95% (s)", ""),
-            "Kolmogorov η (µm)": c.get("Kolmogorov η (µm)", ""),
-            "t_rxn (s)": cache["t_rxn"], "Da_macro": c.get("Da_macro", ""),
-            "Da_micro": c.get("Da_micro", ""), "Da_GL": c.get("Da_GL", ""),
-            "Da_SL": c.get("Da_SL", ""), "Assessment": c.get("Assessment", ""),
-        })
+    rows = scale_up.recorded_rows(cache["env_df"], reaction=cache["rxn_name"],
+                                  fluid=cache["fluid_name"], T_C=cache["fluid_T_C"],
+                                  t_rxn=cache["t_rxn"])
     if not rows:
         notify(state, "W", "Nothing to save.")
         return

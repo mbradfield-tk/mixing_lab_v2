@@ -89,3 +89,36 @@ def vessel_media(reactor_id: str) -> dict | None:
     kind, path = media
     return {"kind": kind, "url": static_url(path), "mime": mime_type(path), "file": path.name,
             "caption": media_caption(reactor_id)}
+
+
+# ---------------------------------------------------------------------------
+# Icons (source PNGs are 0.5-1 MB; downscaled copies are cached next to them)
+# ---------------------------------------------------------------------------
+MENU_DIR = IMAGES_ROOT / "menu"
+THUMB_DIR = MENU_DIR / ".thumbs"
+LOGO = IMAGES_ROOT / "general" / "logo.png"
+ICON_SIZES = (48, 96, 192, 240, 360)
+
+
+def thumbnail(source: Path, px: int = 96) -> Path:
+    """Downscaled PNG copy of ``source`` (cached; regenerated when the source changes)."""
+    thumb = THUMB_DIR / f"{source.stem}_{px}.png"
+    if thumb.exists() and thumb.stat().st_mtime >= source.stat().st_mtime:
+        return thumb
+    from PIL import Image
+
+    THUMB_DIR.mkdir(exist_ok=True)
+    with Image.open(source) as img:
+        img.thumbnail((px, px), Image.LANCZOS)
+        img.save(thumb, "PNG", optimize=True)
+    return thumb
+
+
+def icon_source(name: str) -> Path | None:
+    """``images/menu/<name>.png`` for a page key, the app logo for ``logo``, else None."""
+    if name.lower() == "logo":
+        return LOGO if LOGO.is_file() else None
+    if ".." in name or not _SAFE_ID.match(name):
+        return None
+    path = MENU_DIR / f"{name.lower()}.png"
+    return path if path.is_file() else None

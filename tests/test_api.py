@@ -15,6 +15,7 @@ with warnings.catch_warnings():
     from fastapi.testclient import TestClient
 
 import api.main as api_main  # noqa: E402
+from api import cache as api_cache  # noqa: E402
 from core import auth, repositories as repos  # noqa: E402
 from core import schemas as s  # noqa: E402
 from core import services as sv  # noqa: E402
@@ -29,6 +30,7 @@ REACTOR = "TMA EasyMax-102"
 @pytest.fixture(autouse=True)
 def _no_usage_log(monkeypatch):
     monkeypatch.setattr(api_main, "log_access", lambda **_kw: None)
+    api_cache.clear()
 
 
 @pytest.fixture
@@ -180,6 +182,106 @@ def test_results_are_open_to_the_local_user(client, temp_tables):
     assert client.get(f"{V1}/results").json()["count"] == 0
 
 
+def test_created_vessels_get_an_id_and_search_name(client, temp_tables, token):
+    res = client.post(f"{V1}/vessels", json={"reactor_name": "API vessel", "owner": "QA",
+                                              "V_L_max": 2.5}, headers=token)
+    assert res.status_code == 201
+    row = client.get(f"{V1}/vessels/API vessel").json()
+    assert row["reactor_id"].startswith("RX-") and row["search_name"]
+    assert client.post(f"{V1}/vessels", json={"reactor_name": "API vessel"},
+                       headers=token).status_code == 422
+
+
+def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
+    from core.envelope import DEFAULT_ENVELOPE, ENVELOPE_PARAMETERS
+    from core.operating_point import evaluate_point
+    from reports.tables import assessment_tables
+
+    params = client.get(f"{V1}/assessment/parameters").json()
+    assert [p["label"] for p in params] == ENVELOPE_PARAMETERS
+    assert {p["label"] for p in params if p["default"]} == set(DEFAULT_ENVELOPE)
+
+    d = client.get(f"{V1}/assessment/vessel-defaults/{REACTOR}").json()
+    assert d["corr_sources"][0]["code"] == "Literature" and d["N_rpm"] > 0
+    assert client.get(f"{V1}/assessment/vessel-defaults/Nope").status_code == 404
+
+    fp = client.get(f"{V1}/fluids/properties", params={"name": "toluene", "T_C": 40}).json()
+    assert fp["name"] == "Toluene" and fp["found"] and fp["rho_kg_m3"] < 862
+    assert not client.get(f"{V1}/fluids/properties", params={"name": "no such"}).json()["found"]
+
+    body = {"reactor": REACTOR, "N_rpm": d["N_rpm"], "V_L": d["V_L"],
+            "reaction": {"order": "2", "k": 0.5, "C0_mol_L": 1.0, "dH_kJ_mol": -80},
+            "heat": {"T_process_C": 25, "T_coolant_C": 15}, "gas": {"present": True},
+            "solids": {"rho_p_kg_m3": 2500, "d50_um": 100}}
+    res = client.post(f"{V1}/assessment/tables", json=body).json()
+    inp, t_rxn, _row = sv.point_inputs(s.PointRequest.model_validate(body))
+    page = assessment_tables(evaluate_point(inp, d["N_rpm"] / 60, d["V_L"]), d["N_rpm"], t_rxn,
+                             solids_on=True, gas_on=True, fed_on=False)
+    for key in ("hydro", "damkohler", "mass_transfer", "solids", "heat"):
+        assert res[key] == page[key].to_dict("records"), key
+    assert res["assessment"] == page["assessment"] and res["t_rxn_s"] == t_rxn
+    assert res["applicability"].startswith("**Correlation applicability:**")
+
+    assert client.post(f"{V1}/assessment/save",
+                       json={"point": body, "reaction_name": "Grignard"}).status_code == 201
+    saved = client.get(f"{V1}/results").json()["records"][-1]
+    assert saved["reaction"] == "Grignard" and saved["Da_macro"] == res["point"]["Da_macro"]
+
+
+def test_comparison_page_endpoints_match_the_taipy_page(client, temp_tables, monkeypatch):
+    from types import SimpleNamespace
+
+    from core.serialize import jsonable
+    from pages import vessel_comparison as vc
+    from test_golden_outputs import _VC_FULL, _state
+
+    monkeypatch.setattr(vc, "notify", lambda *_a, **_k: None)
+    st = _state(vc, **_VC_FULL)
+    vc._build_targets(st)
+    vc.on_vc_compute(st)
+    assert isinstance(st, SimpleNamespace) and st._vc_cache
+
+    names = list(st.vc_reactors)
+    setup = client.post(f"{V1}/comparison/setup", json={"reactors": names}).json()
+    assert setup["feed_pipe_mm"] == {r["Reactor"]: r["Feed pipe ID (mm)"]
+                                     for r in st.vc_feed_pipe_df.to_dict("records")}
+    target_col = [c for c in st.vc_targets_df.columns if c != "Reactor"][0]
+    assert setup["fixed"] == {r["Reactor"]: r[target_col] for r in st.vc_targets_df.to_dict("records")}
+
+    kin = client.get(f"{V1}/kinetics/defaults", params={"reaction": st.vc_reaction}).json()
+    assert kin["order"] == st.vc_rxn_order and kin["k"] == st.vc_rxn_k
+
+    comparison = {
+        "reactors": names, "reaction_name": st.vc_reaction, "T_coolant_C": st.vc_T_cool,
+        "fluid": {"name": st.vc_fluid, "T_C": st.vc_T, "P_atm": st.vc_P},
+        "reaction": {"order": st.vc_rxn_order, "k": st.vc_rxn_k, "C0_mol_L": st.vc_rxn_c0,
+                     "t_rxn_s": st.vc_rxn_trxn, "dH_kJ_mol": st.vc_rxn_dh},
+        "gas": {"present": True, "v_s_m_s": st.vc_vs, "coalescing": True},
+        "solids": {"rho_p_kg_m3": st.vc_rho_p, "d50_um": st.vc_d50, "sphericity": st.vc_phi,
+                   "loading_g_per_100g": st.vc_x_wt, "zwietering_S": st.vc_szw,
+                   "gmb_z": st.vc_gmb_z, "clearance_ratio": st.vc_cd},
+        "feed": {"location": "near_impeller", "pipe_id_mm": setup["feed_pipe_mm"]},
+    }
+    body = {"comparison": comparison,
+            "scale_up": {"basis_reactor": st.vc_basis, "parameter": "P_V_W_L",
+                         "basis_N_rpm": st.vc_basis_rpm, "basis_V_L": st.vc_basis_vol,
+                         "solve_for": "N_rpm", "fixed": setup["fixed"]},
+            "feed_schedule": {"basis_reactor": st.vc_feed_basis,
+                              "volume_mL": st.vc_feed_volume_mL, "time_h": st.vc_feed_time_hr}}
+    res = client.post(f"{V1}/comparison/tables", json=body).json()
+    pairs = {"summary": st.vc_summary_df, "detail": st.vc_detail_df, "rpm_ref": st.vc_rpm_ref_df,
+             "heat": st.vc_heat_df, "scale": st.vc_scale_df, "scale_full": st.vc_scale_full_df,
+             "scale_pct": st.vc_scale_pct_df, "impact": st.vc_impact_df,
+             "feed_plan": st.vc_feed_plan_df}
+    for key, df in pairs.items():
+        assert res[key] == jsonable(df), key
+    assert res["status"] == st.vc_status and res["feed_ok"] is False  # the full scenario overflows
+    assert {p["label"] for p in res["parameters"]} == set(st.vc_env_params_options)
+
+    saved = client.post(f"{V1}/comparison/save", json=comparison)
+    assert saved.status_code == 201 and saved.json() == {"saved": len(names), "count": len(names)}
+
+
 def test_vessel_import_preview_and_apply(client, temp_tables, token):
     df = repos.reactors.load()
     csv = df.head(1).assign(owner="API test owner").to_csv(index=False).encode()
@@ -235,14 +337,71 @@ def test_vessel_media_schematic_and_static_files(client):
 
 
 def test_reference_endpoints(client):
-    assert client.get(f"{V1}/equations").status_code == 200
+    eq = client.get(f"{V1}/equations").json()
+    items = [i for sec in eq["sections"] for i in sec["items"]]
+    latex = [i for i in items if i["type"] == "latex"]
+    assert latex and all(i["latex"] for i in latex)
+    assert not any("img" in i for i in items)  # raw LaTeX for KaTeX, not pre-rendered PNGs
+    assert all(isinstance(i["level"], int) for i in items if i["type"] == "header")
     assert "Pressure" in client.get(f"{V1}/units").json()["properties"]
     o = client.get(f"{V1}/options").json()
     assert REACTOR in o["reactors"] and o["enums"]["CorrSource"]
     assert client.get(f"{V1}/health").json() == {"status": "ok"}
-    root = client.get("/", follow_redirects=False)
-    assert root.status_code == 307 and root.headers["location"] == f"{V1}/docs"
     assert client.get("/favicon.ico").headers["content-type"] == "image/png"
+
+
+def test_root_redirects_to_docs_until_the_web_app_is_built(monkeypatch, tmp_path):
+    monkeypatch.setattr(api_main, "WEB_DIST", tmp_path / "missing")
+    root = TestClient(api_main.create_app()).get("/", follow_redirects=False)
+    assert root.status_code == 307 and root.headers["location"] == f"{V1}/docs"
+
+
+def test_built_web_app_is_served_with_client_side_routes(monkeypatch, tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<div id=root></div>")
+    (tmp_path / "assets" / "app.js").write_text("console.log(1)")
+    monkeypatch.setattr(api_main, "WEB_DIST", tmp_path)
+    web = TestClient(api_main.create_app())
+    assert web.get("/", follow_redirects=False).headers["location"] == "/app/"
+    for path in ("/app", "/app/", "/app/unit-converter", "/app/equations-reference",
+                 "/app/particles", "/app/reactions", "/app/fluids", "/app/vessels",
+                 "/app/recorded-results", "/app/crystallization-sensitivity",
+                 "/app/vessel-assessment", "/app/vessel-comparison"):
+        res = web.get(path)
+        assert res.status_code == 200 and "<div id=root>" in res.text, path
+    assert web.get("/app/assets/app.js").text == "console.log(1)"
+    assert web.get("/app/assets/missing.js").status_code == 404
+
+
+def test_icons_are_small_pngs(client):
+    res = client.get(f"{V1}/media/icons/Unit_Converter", params={"px": 96})
+    assert res.status_code == 200 and res.content.startswith(b"\x89PNG")
+    assert len(res.content) < 50_000 and "max-age" in res.headers["cache-control"]
+    assert client.get(f"{V1}/media/icons/logo", params={"px": 48}).status_code == 200
+    assert client.get(f"{V1}/media/icons/Nope").status_code == 404
+    assert client.get(f"{V1}/media/icons/..%2F..%2Fapp").status_code == 404
+    assert client.get(f"{V1}/media/icons/logo", params={"px": 5000}).status_code == 422
+
+
+def test_slow_results_are_cached_until_the_data_changes(client, monkeypatch):
+    from reports import charts as charts_mod
+
+    calls = []
+    real = charts_mod.render_chart
+    monkeypatch.setattr(charts_mod, "render_chart",
+                        lambda kind, payload: calls.append(kind) or real(kind, payload))
+    version = {"v": 1}
+    monkeypatch.setattr(api_cache, "data_version", lambda: (version["v"],))
+    body = {"name": "Water", "T_C": 40}
+    first = client.post(f"{V1}/charts/solvent-properties", json=body).json()
+    assert client.post(f"{V1}/charts/solvent-properties", json=body).json() == first
+    assert calls == ["solvent-properties"]
+    version["v"] = 2
+    client.post(f"{V1}/charts/solvent-properties", json=body)
+    assert len(calls) == 2
+    assert client.post(f"{V1}/charts/solvent-properties", json={"name": "Nope"}).status_code == 404
+    assert client.post(f"{V1}/charts/solvent-properties", json={"name": "Nope"}).status_code == 404
+    assert len(calls) == 4, "errors must not be cached"
 
 
 # --- OpenAPI snapshot -------------------------------------------------------

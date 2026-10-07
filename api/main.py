@@ -29,6 +29,8 @@ from core.version import APP_VERSION, RELEASE_DATE
 from utils.usage import log_access
 
 API_PREFIX = "/api/v1"
+WEB_PREFIX = "/app"
+WEB_DIST = media.BASE_DIR / "web" / "dist"
 CORS_ENV = "MIXING_LAB_CORS_ORIGINS"
 STATIC_MAX_AGE_S = 86400
 
@@ -98,14 +100,29 @@ def _install_middleware(app: FastAPI) -> None:
         if path.startswith((media.IMAGES_URL_PREFIX + "/", media.ASSETS_URL_PREFIX + "/")):
             if response.status_code == 200:
                 response.headers["Cache-Control"] = f"public, max-age={STATIC_MAX_AGE_S}"
-        elif path.startswith(API_PREFIX) and not path.endswith(("/health", "/version")):
+        elif (path.startswith(API_PREFIX) and not path.endswith(("/health", "/version"))
+              or path == WEB_PREFIX or (path.startswith(WEB_PREFIX + "/")
+                                        and not path.startswith(WEB_PREFIX + "/assets/"))):
             xff = request.headers.get("X-Forwarded-For")
             ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client
                                                          else None)
+            page = (f"api:{request.method} {path[len(API_PREFIX):]}" if path.startswith(API_PREFIX)
+                    else f"app:{path[len(WEB_PREFIX):] or '/'}")
             log_access(client_ip=ip, forwarded_for=xff,
-                       user_agent=request.headers.get("User-Agent"),
-                       page=f"api:{request.method} {path[len(API_PREFIX):]}")
+                       user_agent=request.headers.get("User-Agent"), page=page)
         return response
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Serve the built React app (web/dist) at /app; unknown paths get index.html so
+    client-side routes survive a reload."""
+    app.mount(f"{WEB_PREFIX}/assets", StaticFiles(directory=WEB_DIST / "assets"), name="web-assets")
+    index = WEB_DIST / "index.html"
+
+    @app.get(WEB_PREFIX, include_in_schema=False)
+    @app.get(WEB_PREFIX + "/{path:path}", include_in_schema=False)
+    def web(path: str = "") -> FileResponse:
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 def create_app() -> FastAPI:
@@ -121,14 +138,17 @@ def create_app() -> FastAPI:
         app.include_router(router, prefix=API_PREFIX)
     app.mount(media.IMAGES_URL_PREFIX, StaticFiles(directory=media.IMAGES_ROOT), name="vimages")
     app.mount(media.ASSETS_URL_PREFIX, StaticFiles(directory=media.ASSETS_DIR), name="vassets")
+    web_built = (WEB_DIST / "index.html").is_file()
+    if web_built:
+        _mount_web(app)
 
     @app.get("/", include_in_schema=False)
     def root() -> RedirectResponse:
-        return RedirectResponse(f"{API_PREFIX}/docs")
+        return RedirectResponse(f"{WEB_PREFIX}/" if web_built else f"{API_PREFIX}/docs")
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:
-        return FileResponse(media.IMAGES_ROOT / "general" / "logo.png", media_type="image/png")
+        return FileResponse(media.thumbnail(media.LOGO, 48), media_type="image/png")
 
     return app
 

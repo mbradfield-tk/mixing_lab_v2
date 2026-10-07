@@ -5,15 +5,19 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+import pandas as pd
 import plotly.graph_objects as go
 
 from core import schemas as s
+from core import scale_up
 from core import sensitivity_rules as rules
 from core import services
 from core.envelope import envelope_data
 from core.operating_point import evaluate_point
 from core.options import Competing, CorrSource
+from core.serialize import jsonable
 from reports import snapshots
+from reports import comparison_tables as ctables
 from reports.tables import assessment_tables
 from reports import pdf as rb
 from viz import vessel as viz_vessel
@@ -44,6 +48,24 @@ def assessment_envelope(req: s.AssessmentReportRequest) -> tuple[go.Figure, str]
     return fig, viz_vessel.assessment_envelope_caption(d["v_min"], d["v_max"])
 
 
+def assessment_result(req: s.PointRequest) -> s.AssessmentTables:
+    """The Vessel Assessment result tables for one operating point (page / PDF formatting)."""
+    inp, t_rxn, row = services.point_inputs(req)
+    if t_rxn <= 0:
+        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
+                         "Damköhler numbers.")
+    hydro = evaluate_point(inp, req.N_rpm / 60.0, req.V_L)
+    solids_on, gas_on = req.solids is not None, req.gas.present
+    tables = assessment_tables(hydro, req.N_rpm, t_rxn, solids_on=solids_on, gas_on=gas_on,
+                               fed_on=req.feed is not None)
+    return s.AssessmentTables(
+        point=services.point_result(hydro), t_rxn_s=t_rxn,
+        **{k: jsonable(tables[k]) for k in ("hydro", "damkohler", "mass_transfer", "solids", "heat")},
+        assessment=tables["assessment"],
+        applicability=rules.correlation_applicability(hydro, inp.geometry, row, req.V_L,
+                                                      gas_on=gas_on, solids_on=solids_on))
+
+
 def assessment_snapshot(req: s.AssessmentReportRequest) -> dict:
     p = req.point
     inp, t_rxn, _row = services.point_inputs(p)
@@ -55,7 +77,7 @@ def assessment_snapshot(req: s.AssessmentReportRequest) -> dict:
                                gas_on=p.gas.present, fed_on=p.feed is not None)
     fig, caption = assessment_envelope(req)
     return snapshots.assessment_snapshot(
-        reactor=p.reactor, fluid=p.fluid.name, T_C=p.fluid.T_C, P_atm=1.0, N_rpm=p.N_rpm,
+        reactor=p.reactor, fluid=p.fluid.name, T_C=p.fluid.T_C, P_atm=p.fluid.P_atm, N_rpm=p.N_rpm,
         V_L=p.V_L, corr_label=CorrSource(p.corr_source).label, reaction=req.reaction_name,
         t_rxn=t_rxn, dH=p.reaction.dH_kJ_mol, tables=tables, env_fig=fig, env_caption=caption,
         env_params=[s.core_key(k) for k in req.envelope_parameters])
@@ -87,6 +109,57 @@ def protocol_report(req: s.ProtocolReportRequest) -> ReportFile:
 # ---------------------------------------------------------------------------
 # Vessel Comparison
 # ---------------------------------------------------------------------------
+def comparison_page(req: s.ComparisonPageRequest) -> s.ComparisonTables:
+    """Every Vessel Comparison result table (page formatting) for one request."""
+    c = req.comparison
+    names = list(c.reactors)
+    cmp = services.compare(c)
+    env_df, agg_df, present, info = cmp["env_df"], cmp["agg_df"], cmp["present"], cmp["reactor_info"]
+    tables = ctables.summary_tables(env_df, agg_df, present)
+    heat = ctables.heat_table(env_df, info) if cmp["incl_heat"] else pd.DataFrame()
+
+    scaling = {"scale": pd.DataFrame(), "full": pd.DataFrame(), "pct": pd.DataFrame()}
+    sc = req.scale_up
+    if sc is not None and len(names) >= 2:
+        if sc.basis_reactor not in names:
+            raise ValueError("scale_up.basis_reactor must be one of the compared vessels.")
+        solve_rpm = sc.solve_for == "N_rpm"
+        known = {**scale_up.target_defaults(names, sc.basis_reactor, solve_rpm), **sc.fixed}
+        match = scale_up.scale_up_match(names, info, cmp["inputs"], sc.basis_reactor,
+                                        s.core_key(sc.parameter), sc.basis_N_rpm, sc.basis_V_L,
+                                        solve_rpm=solve_rpm, known=known)
+        scaling = ctables.scaling_tables(match, sc.basis_reactor)
+
+    feed_rows, feed_ok, feed_warning = [], True, ""
+    if c.feed is not None and req.feed_schedule is not None and info:
+        fs = req.feed_schedule
+        feed_rows, exceeded, error = scale_up.feed_plan(info, fs.basis_reactor, fs.volume_mL,
+                                                        fs.time_h)
+        feed_ok = not error and not exceeded
+        if exceeded:
+            feed_warning = "Feed volume exceeds max volume for: " + "; ".join(exceeded)
+
+    if feed_ok:
+        status = (f"Compared {len(info)} vessel(s) across the 4-corner envelope "
+                  f"({CorrSource(c.corr_source).label}).")
+        if cmp["skipped"]:
+            status += f" Skipped (missing geometry): {', '.join(cmp['skipped'])}."
+    else:
+        status = ("Fed-batch feed volume exceeds max volume for one or more vessels — "
+                  "adjust the feed schedule and recompute.")
+    defaults = [p for p in scale_up.DEFAULT_PLOT_PARAMS if p in present] or present[:4]
+    return s.ComparisonTables(
+        status=status, feed_ok=feed_ok, feed_warning=feed_warning,
+        parameters=[s.ParameterOption(field=s.CORE_KEYS[k], label=k, default=k in defaults)
+                    for k in present if k in s.CORE_KEYS],
+        summary=jsonable(tables["summary"]), detail=jsonable(tables["detail"]),
+        rpm_ref=jsonable(tables["rpm_ref"]), heat=jsonable(heat),
+        scale=jsonable(scaling["scale"]), scale_full=jsonable(scaling["full"]),
+        scale_pct=jsonable(scaling["pct"]),
+        impact=jsonable(pd.DataFrame(scale_up.impact_ratios(env_df, present, cmp["incl_heat"]))),
+        feed_plan=jsonable(pd.DataFrame(feed_rows)), skipped=list(cmp["skipped"]))
+
+
 def comparison_snapshot(req: s.ComparisonRequest) -> dict:
     return snapshots.comparison_snapshot(services.compare(req), scale_param=req.scale_param,
                                          scale_basis_reactor=req.scale_basis_reactor)

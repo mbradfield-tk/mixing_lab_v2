@@ -373,3 +373,68 @@ The new FastAPI app (`api/`) adds routes and changes nothing in the Taipy pages'
 
 - Unused locals and an unused import were removed from `reports/pdf.py`.
 - The duplicate `"type"` key in `COLUMN_LABELS` was removed. Its later value ("Reaction Type") already applied, so labels are unchanged.
+
+---
+
+## 16. P2 start (2026-10-06): React front end and API cache
+
+The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` (the same `images/menu/.thumbs/` cache).
+
+**16a. The API serves the React app.**
+
+- When `web/dist` exists (run `npm run build` in `web/`), `uvicorn api.main:app` serves it at `/app`, and `/` redirects there instead of to `/api/v1/docs`.
+- Page loads under `/app` are written to `data/usage.db` as `app:<path>`.
+
+**16b. Slow API results are cached in memory.**
+
+- **Covered:** PDFs, charts, 3D surfaces, comparisons and scale-up results.
+- **Lifetime:** until any file in `data/` changes, the date changes, or the process restarts.
+- A second identical request returns the stored result instead of recomputing it.
+
+**16c. New route:** `GET /api/v1/media/icons/{key}?px=48|96|192|240|360` returns cached menu-icon / logo thumbnails (`key = logo` for the app logo). The favicon is now a 48 px thumbnail instead of the 0.8 MB logo.
+
+**16d. New tooling.**
+
+- `web/` holds the React app. Its `node_modules/` and `dist/` are git-ignored.
+- Node.js 22 is installed in a separate conda env, `mixing_lab_web`; the Python env is unchanged.
+
+**16e. Equations are real LaTeX in the React app (API contract change).**
+
+- `GET /api/v1/equations` now serves `data/equations_source.json` (raw LaTeX), typed as `EquationsResult` (`EquationSection` → `EquationItem{type, text, latex, level:int}`). It no longer returns the base64 PNGs, so the payload falls from about 258 kB to about 66 kB.
+- The React page renders display equations with KaTeX, and inline `$...$` in text, tables and headers with `remark-math` + `rehype-katex`. All 80 display and 287 inline fragments render with no errors. Search also matches the LaTeX source.
+- **Security:** raw HTML is sanitised *before* KaTeX runs, so only KaTeX's own markup is trusted. A KaTeX error shows as red source text instead of breaking the page (`throwOnError: false`).
+- The Taipy page is unchanged. It still reads the pre-rendered `data/equations_reference.json`, so keep running `scripts/build_equations.py` after editing the source until Taipy is retired. After that, the PNG JSON and the matplotlib build step can be deleted.
+
+**16f. React Particle, Reaction and Fluid database pages (no back-end behaviour change).**
+
+- New pages at `/app/particles`, `/app/reactions` and `/app/fluids`; the sidebar now opens them in the React app instead of Taipy. The Taipy pages remain available at their old URLs.
+- **Same write policy as Taipy:** all writes need the admin login. Credentials come from `MIXING_LAB_ADMIN_USER` / `MIXING_LAB_ADMIN_PW`, and tokens are signed with `MIXING_LAB_API_SECRET`.
+  - The browser keeps the token in memory only, so reloading the page locks editing again.
+  - Set `MIXING_LAB_API_SECRET` in deployment; otherwise tokens stop working whenever the server restarts.
+- **Difference from Taipy:** editing and deleting are allowed while a search is active, because the API addresses rows by name rather than row position.
+- **New web dependency:** `plotly.js-dist-min` **3.7.0**, pinned to match Python plotly 6.9's plotly.js. Upgrade the two together.
+
+**16g. React Vessel Database, Recorded Results and Crystallization Sensitivity pages.**
+
+- New pages at `/app/vessels`, `/app/recorded-results` and `/app/crystallization-sensitivity`; the sidebar links there now. The Taipy pages remain available.
+- **Back-end fix:** `POST /api/v1/vessels` (create) now assigns a `reactor_id` and `search_name`, as adding a blank row and importing already did. Previously, an API-created vessel had neither (`ReactorRepository.create`).
+- **Vessel import review in React:** the browser keeps the uploaded file and sends the accepted change IDs to `/import/apply`. The server recomputes the changes from the file, so the result is the same as Taipy's dialog.
+
+**16h. React Vessel Assessment page and its API support.**
+
+- New page at `/app/vessel-assessment`; the Taipy page remains.
+- **New endpoints:**
+  - `POST /assessment/tables` (formatted result tables);
+  - `GET /assessment/parameters`;
+  - `GET /assessment/vessel-defaults/{name}`;
+  - `POST /assessment/save`;
+  - `GET /fluids/properties`.
+- **Shared code moved out of the Taipy page (no behaviour change):** the envelope parameter list (`core.envelope.ENVELOPE_PARAMETERS` / `DEFAULT_ENVELOPE`) and the Recorded-Results row (`core.services.recorded_result_row`).
+- **Fix:** the assessment PDF from `POST /reports/assessment` printed the pressure as 1 atm regardless of the request. It now uses `point.fluid.P_atm`, as the Taipy page always did.
+
+**16i. React Vessel Comparison page and its API support.**
+
+- New page at `/app/vessel-comparison`; the Taipy page remains.
+- **New endpoints:** `POST /comparison/setup`, `POST /comparison/tables`, `POST /comparison/save` (returns `{saved, count}`) and `GET /kinetics/defaults`.
+- **Shared code moved out of the Taipy page (no behaviour change; golden outputs identical):** the table formatting (`reports/comparison_tables.py`) and the setup/save helpers (`core.scale_up`).
+- **Small UI difference:** the React page loads the basis vessel's mid-range RPM and volume as soon as scale-up is shown. Taipy started at 100 RPM / 1 L until the basis was changed.

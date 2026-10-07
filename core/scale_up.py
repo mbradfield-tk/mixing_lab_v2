@@ -9,7 +9,7 @@ import pandas as pd
 
 from core import operating_point as op
 from core.envelope import solve_root
-from core.records import VesselGeometry, reactor_row, sf
+from core.records import VesselGeometry, range_midpoint, reactor_row, sf
 from utils.calculations import heat_balance_assessment
 
 CORNER_LABELS = ["min RPM / max V", "max RPM / max V",
@@ -28,6 +28,70 @@ BASE_PLOT_PARAMS = [
 HEAT_PARAMS = ["Q_gen (W)", "Q_cool (W)", "U (W/m²·K)", "A_ht (m²)", "Q_gen/Q_cool (%)"]
 PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p",
                    "k_SL (m/s)", "kLa_SL (1/s)", "Da_SL"]
+DEFAULT_PLOT_PARAMS = ["Da_micro", "Da_macro", "Blend time 95% (s)", "P/V (W/L)"]
+# Parameters a scale-up match can hold constant.
+SCALABLE_PARAMS = [
+    "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
+    "Re", "kLa (1/s)", "kLa_surface (1/s)", "Avg shear rate (1/s)",
+    "Max shear rate (1/s)", "Kolmogorov η (µm)", "EDCF (W/kg/s)", "Froude number",
+]
+
+
+def _mid(row: pd.Series, lo_key: str, hi_key: str, fallback: float) -> float:
+    return range_midpoint(row, lo_key, hi_key, fallback)
+
+
+def feed_pipe_defaults(names: list[str]) -> dict[str, float]:
+    """Each vessel's recorded feed-pipe ID in mm (0 when not recorded)."""
+    out = {}
+    for name in names:
+        csv_m = sf(reactor_row(name).get("D_feed_pipe_m"))
+        out[name] = round(csv_m * 1000.0, 2) if csv_m > 0 else 0.0
+    return out
+
+
+def basis_defaults(name: str) -> tuple[float, float]:
+    """(RPM, volume) a scale-up basis vessel starts from: mid-range, rounded."""
+    row = reactor_row(name)
+    rpm = _mid(row, "N_rpm_min", "N_rpm_max", 100.0)
+    vol = _mid(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
+    return round(max(rpm, 0.1), 1), round(max(vol, 0.001), 2)
+
+
+def target_defaults(names: list[str], basis: str, solve_rpm: bool) -> dict[str, float]:
+    """Known value per target vessel: mid fill volume (solving RPM) or mid RPM (solving V)."""
+    out = {}
+    for name in names:
+        if name == basis:
+            continue
+        row = reactor_row(name)
+        val = (_mid(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0)) if solve_rpm
+               else _mid(row, "N_rpm_min", "N_rpm_max", 100.0))
+        out[name] = round(max(val, 0.001), 2)
+    return out
+
+
+def recorded_rows(env_df: pd.DataFrame, *, reaction: str, fluid: str, T_C: float,
+                  t_rxn: float) -> list[dict]:
+    """Recorded Results rows: each vessel at its max-RPM / max-volume corner."""
+    rows = []
+    for name in env_df["Reactor"].drop_duplicates().tolist():
+        sub = env_df[(env_df["Reactor"] == name) & (env_df["Corner"] == CORNER_LABELS[1])]
+        if sub.empty:
+            continue
+        c = sub.iloc[0]
+        rows.append({
+            "reactor": name, "reaction": reaction, "fluid": fluid, "fluid_T_C": T_C,
+            "RPM": c["RPM"], "Volume (L)": c["V_L"],
+            "Re": c.get("Re", ""), "P/V (W/L)": c.get("P/V (W/L)", ""),
+            "Tip speed (m/s)": c.get("Tip speed (m/s)", ""),
+            "Blend time (s)": c.get("Blend time 95% (s)", ""),
+            "Kolmogorov η (µm)": c.get("Kolmogorov η (µm)", ""),
+            "t_rxn (s)": t_rxn, "Da_macro": c.get("Da_macro", ""),
+            "Da_micro": c.get("Da_micro", ""), "Da_GL": c.get("Da_GL", ""),
+            "Da_SL": c.get("Da_SL", ""), "Assessment": c.get("Assessment", ""),
+        })
+    return rows
 
 
 def plot_params(fed: bool, incl_heat: bool, incl_particles: bool) -> list[str]:

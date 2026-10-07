@@ -5,16 +5,18 @@ import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import {
+  InsightCard, InsightGrid, StatGrid, TableDetails, statsFromRows, stripIcon, toneOf, type Stat,
+} from "../components/Insights";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
-import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
 import {
-  INITIAL, asOrder, autoTrxn, buildRequest, downloadBlob, kineticModel, solveMessage,
-  type Inputs, type PointRequest, type SolveResult,
+  HYDRO_FEATURED, INITIAL, asOrder, autoTrxn, buildRequest, downloadBlob, heatBalanceTone, kineticModel, solveMessage,
+  solveTiles, suspensionTone, transferTone, type Inputs, type PointRequest, type SolveResult,
 } from "./assessment/model";
 
 type Tables = Schemas["AssessmentTables"];
@@ -27,6 +29,87 @@ const num = (v: unknown, fallback: number) => {
   const x = v === null || v === undefined || v === "" ? Number.NaN : Number(v);
   return Number.isFinite(x) ? x : fallback;
 };
+
+/** Parameter/Value/Units rows as tiles, colouring the row named ``statusRow`` with ``tone``. */
+function toned(rows: Row[], statusRow: string, tone: (v: string) => Stat["tone"]): Stat[] {
+  return statsFromRows(rows).map((s, i) =>
+    rows[i].Parameter === statusRow ? { ...s, tone: tone(String(s.value)), wide: true } : s,
+  );
+}
+
+function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; stale: boolean }) {
+  const hydro = statsFromRows(t.hydro);
+  const featured = HYDRO_FEATURED.map((n) => hydro.find((s) => s.label === n)).filter((s): s is Stat => !!s);
+  const rest = hydro.filter((s) => !featured.includes(s));
+  return (
+    <>
+      <h3>Mixing sensitivity (Damköhler)</h3>
+      <InsightGrid>
+        {t.damkohler.map((r, i) => {
+          const regime = String(r.Regime ?? "");
+          return (
+            <InsightCard key={i} tone={toneOf(regime)} title={String(r.Type)} status={stripIcon(regime)}>
+              <div className="kpi-change">
+                {String(r["Damköhler"])} = {String(r.Value)}
+              </div>
+            </InsightCard>
+          );
+        })}
+      </InsightGrid>
+      <TableDetails rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />
+
+      <h3>Hydrodynamics</h3>
+      <StatGrid stats={featured} />
+      <StatGrid size="sm" stats={rest} />
+      {md(t.applicability)}
+      <TableDetails rows={t.hydro} csvName="vessel_assessment_hydrodynamics.csv" stale={stale} />
+
+      {t.mass_transfer.length > 0 && (
+        <>
+          <h3>Mass-transfer capacity versus kinetic demand</h3>
+          <p>
+            The capacity ratio is a preliminary screen using <strong>kLa / (1/t<sub>rxn</sub>)</strong>. Confirm the
+            result with solubility, phase composition, and concentration driving-force data.
+          </p>
+          <InsightGrid>
+            {t.mass_transfer.map((r, i) => {
+              const screening = String(r.Screening ?? "");
+              return (
+                <InsightCard key={i} tone={transferTone(screening)} title={String(r["Transfer path"])} status={screening}>
+                  <div className="kpi-change">{String(r["Capacity / demand"])}×</div>
+                  <div className="muted">
+                    capacity / demand · kLa {String(r["kLa (1/s)"])} 1/s vs 1/t_rxn {String(r["Demand 1/t_rxn (1/s)"])} 1/s
+                  </div>
+                </InsightCard>
+              );
+            })}
+          </InsightGrid>
+          <TableDetails rows={t.mass_transfer} csvName="vessel_assessment_mass_transfer.csv" stale={stale} />
+        </>
+      )}
+
+      {solids && (
+        <>
+          <h3>Solid suspension and dissolution</h3>
+          <StatGrid size="sm" stats={toned(t.solids, "Suspension state", suspensionTone)} />
+          <TableDetails rows={t.solids} csvName="vessel_assessment_solids.csv" stale={stale} />
+        </>
+      )}
+
+      <h3>Heat balance</h3>
+      {t.heat.length > 0 ? (
+        <>
+          <StatGrid size="sm" stats={toned(t.heat, "Balance", heatBalanceTone)} />
+          <TableDetails rows={t.heat} csvName="vessel_assessment_heat_balance.csv" stale={stale} />
+        </>
+      ) : (
+        <p className="muted">
+          No heat of reaction set (ΔH = 0) — enter ΔH<sub>rxn</sub> in Section 3 to run the heat-balance check.
+        </p>
+      )}
+    </>
+  );
+}
 
 function RateLaw({ order }: { order: string }) {
   const o = order.trim();
@@ -291,7 +374,13 @@ export function VesselAssessment() {
   const [solveFor, setSolveFor] = useState<"N_rpm" | "V_L">("N_rpm");
   const [solveParam, setSolveParam] = useState("P_V_W_L");
   const [solveTarget, setSolveTarget] = useState("0.5");
-  const [solved, setSolved] = useState<{ res: SolveResult; text: string; kind: string; applied: boolean } | null>(null);
+  const [solved, setSolved] = useState<{
+    res: SolveResult;
+    text: string;
+    kind: string;
+    applied: boolean;
+    fixed: { N_rpm: number; V_L: number };
+  } | null>(null);
   const solve = useMutation({
     mutationFn: async (vars: { request: PointRequest; parameter: string; target: number; solve_for: "N_rpm" | "V_L" }) =>
       unwrap(
@@ -320,7 +409,7 @@ export function VesselAssessment() {
           V_L: request.V_L,
           corrLabel: corrLabel(request.corr_source ?? "Literature"),
         });
-        setSolved({ res, ...msg, applied: false });
+        setSolved({ res, ...msg, applied: false, fixed: { N_rpm: request.N_rpm, V_L: request.V_L } });
         setNotice({
           kind: msg.kind,
           text:
@@ -578,40 +667,7 @@ export function VesselAssessment() {
       {t && last && (
         <>
           <Card title="Results">
-            <h3>Hydrodynamics</h3>
-            <ResultTable rows={t.hydro} csvName="vessel_assessment_hydrodynamics.csv" stale={stale} />
-            {md(t.applicability)}
-
-            <h3>Mixing sensitivity (Damköhler)</h3>
-            {md(t.assessment)}
-            <ResultTable rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />
-
-            {t.mass_transfer.length > 0 && (
-              <>
-                <h3>Mass-transfer capacity versus kinetic demand</h3>
-                <p>
-                  The capacity ratio is a preliminary screen using <strong>kLa / (1/t<sub>rxn</sub>)</strong>.
-                  Confirm the result with solubility, phase composition, and concentration driving-force data.
-                </p>
-                <ResultTable rows={t.mass_transfer} csvName="vessel_assessment_mass_transfer.csv" stale={stale} />
-              </>
-            )}
-
-            {last.request.solids && (
-              <>
-                <h3>Solid suspension and dissolution</h3>
-                <ResultTable rows={t.solids} csvName="vessel_assessment_solids.csv" stale={stale} />
-              </>
-            )}
-
-            <h3>Heat balance</h3>
-            {t.heat.length > 0 ? (
-              <ResultTable rows={t.heat} csvName="vessel_assessment_heat_balance.csv" stale={stale} />
-            ) : (
-              <p className="muted">
-                No heat of reaction set (ΔH = 0) — enter ΔH<sub>rxn</sub> in Section 3 to run the heat-balance check.
-              </p>
-            )}
+            <AssessmentInsights t={t} solids={!!last.request.solids} stale={stale} />
           </Card>
 
           <Card title="Operating Envelope">
@@ -725,11 +781,14 @@ export function VesselAssessment() {
         </button>
         {solved && (
           <>
+            <StatGrid
+              stats={solveTiles(solved.res, labelOf.get(solved.res.parameter) ?? solved.res.parameter, solved.fixed)}
+            />
             <p className={`status status-${solved.kind}`}>
               <strong>{solved.text.split(":")[0]}:</strong>
               {solved.text.slice(solved.text.indexOf(":") + 1)}
             </p>
-            {solved.res.solutions.length > 0 && (
+            {solved.res.solutions.length > 1 && (
               <table className="results">
                 <thead>
                   <tr>

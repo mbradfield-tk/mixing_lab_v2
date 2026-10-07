@@ -811,6 +811,12 @@ def bourne_test_verdict(test: int, res: dict, ratio: float = 100.0) -> tuple[str
 def bourne_summary_md(o: dict) -> str:
     """Decision-tree conclusion (Markdown) for a ``bourne_outcome``."""
     lines = ["### Decision-tree conclusion", ""] + bourne_test_lines(o) + [""]
+    return "\n".join(lines + bourne_conclusion_lines(o))
+
+
+def bourne_conclusion_lines(o: dict) -> list[str]:
+    """The conclusion paragraph(s) of :func:`bourne_summary_md` (after the per-test bullets)."""
+    lines: list[str] = []
     dom = o["dominant"]
     if dom in MECH_CONCLUSION:
         lines.append(MECH_CONCLUSION[dom])
@@ -832,7 +838,7 @@ def bourne_summary_md(o: dict) -> str:
                      "location) to distinguish **meso-** from **macro-mixing**.")
     else:
         lines.append("Continue with **Test 2** (feed rate) — and Test 3 if needed.")
-    return "\n".join(lines)
+    return lines
 
 
 def bourne_conclusions(o: dict, results: dict) -> list[tuple[str, str, str]]:

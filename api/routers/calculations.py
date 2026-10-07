@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Query, Response, UploadFile
 
 from api import cache
+from api.routers.databases import read_upload
 from core import fluids, units
 from core import schemas as s
 from core import services as sv
 from core.serialize import jsonable
+from reports import service as report_service
 from reports.service import assessment_result, comparison_page
 
 assessment = APIRouter(prefix="/assessment", tags=["Vessel Assessment"])
@@ -69,6 +71,29 @@ def assess(req: s.ProtocolRequest) -> s.ProtocolResult:
     return sv.assess(req)
 
 
+@sensitivity.post("/page", summary="Protocol results formatted as on the page (Markdown)")
+def sensitivity_page(req: s.ProtocolRequest) -> s.ProtocolPage:
+    return report_service.protocol_page(req)
+
+
+@sensitivity.get("/options", summary="Reaction orders, ΔH reference reactions, unit operations")
+def sensitivity_options() -> s.SensitivityOptions:
+    return sv.sensitivity_options()
+
+
+@sensitivity.get("/reaction-defaults", summary="Kinetics and solvent ρ·Cp of a reaction")
+def sensitivity_reaction_defaults(
+        reaction: str = Query(..., description="Reactions Database name (may contain '/')"),
+        T_C: float | None = Query(None, description="ρ·Cp temperature; default the "
+                                             "reaction's")) -> s.SensitivityReactionDefaults:
+    return sv.sensitivity_reaction_defaults(reaction, T_C)
+
+
+@sensitivity.post("/bourne-import", summary="Parse a Bourne Protocol results CSV")
+async def sensitivity_bourne_import(file: UploadFile = File(...)) -> s.BourneImport:
+    return sv.bourne_import(await read_upload(file))
+
+
 @comparison.post("", summary="Operating envelopes of several vessels (tables)")
 def compare(req: s.ComparisonRequest) -> s.ComparisonResult:
     return cache.cached("comparison", req, lambda: sv.comparison_summary(req))
@@ -110,6 +135,29 @@ def bourne_assess(req: s.BourneAssessRequest) -> s.BourneAssessResult:
     return sv.bourne_assess(req)
 
 
+@bourne.post("/plan/tables", summary="Test 1-3 conditions formatted as on the page")
+def bourne_plan_tables(req: s.BournePlanRequest) -> s.BournePlanTables:
+    return report_service.bourne_plan_tables(req)
+
+
+@bourne.get("/options", summary="KPI column names, suggested metrics and units")
+def bourne_options() -> s.BourneOptions:
+    return sv.bourne_options()
+
+
+@bourne.get("/defaults/{name}", summary="Working-volume and centre-RPM defaults for a vessel")
+def bourne_defaults(name: str) -> s.BourneDefaults:
+    return report_service.bourne_defaults(name)
+
+
+@bourne.post("/sensitivity-csv", summary="Outcome CSV for the Reaction Sensitivity Protocol",
+             responses={200: {"content": {"text/csv": {}}}})
+def bourne_sensitivity_csv(req: s.BourneReportRequest) -> Response:
+    f = report_service.bourne_sensitivity_csv(req)
+    return Response(f.content, media_type=f.media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{f.filename}"'})
+
+
 @heat.post("/heat-cool", summary="Batch heat-up / cool-down")
 def heat_cool(req: s.HeatCoolRequest) -> s.HeatCoolResult:
     return sv.heat_cool(req)
@@ -123,6 +171,26 @@ def reaction_profile(req: s.ReactionProfileRequest) -> s.ReactionProfileResult:
 @heat.post("/ua-surface", summary="U and UA over two swept inputs")
 def ua_surface(req: s.UaSurfaceRequest) -> s.UaSurfaceResult:
     return cache.cached("ua-surface", req, lambda: sv.ua_surface(req))
+
+
+@heat.get("/options", summary="Media, correlations, materials and sweep parameters")
+def heat_options() -> s.HeatTransferOptions:
+    return sv.heat_transfer_options()
+
+
+@heat.get("/defaults/{name:path}", summary="Inputs the Heat Transfer page loads for a vessel")
+def heat_defaults(name: str) -> s.HeatTransferDefaults:
+    return sv.heat_transfer_defaults(name)
+
+
+@heat.get("/area", summary="Wetted jacket area at a fill volume")
+def heat_area(reactor: str, D_tank_m: float = Query(gt=0), V_L: float = Query(gt=0)) -> dict[str, float]:
+    return {"A_ht_m2": sv.jacket_area(reactor, D_tank_m, V_L)}
+
+
+@fluid.get("/thermal", summary="rho, mu, Cp and k of a fluid at T (heat-transfer inputs)")
+def fluid_thermal(name: str, T_C: float = 25.0) -> s.ThermalProperties:
+    return sv.thermal_properties(name, T_C)
 
 
 @fluid.get("/library", summary="Built-in solvent library at 25 °C / 1 atm")

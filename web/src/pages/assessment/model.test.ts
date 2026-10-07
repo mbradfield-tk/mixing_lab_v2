@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL, autoTrxn, buildRequest, kineticModel, solveMessage, toCsv, type SolveResult } from "./model";
+import {
+  INITIAL, autoTrxn, buildRequest, heatBalanceTone, kineticModel, solveMessage, solveTiles, suspensionTone, toCsv,
+  transferTone, type SolveResult,
+} from "./model";
 
 describe("autoTrxn (damkohler.characteristic_reaction_time)", () => {
   it("uses the specified time, else the order-based initial-rate time", () => {
@@ -76,5 +79,45 @@ describe("text ports", () => {
 
   it("toCsv quotes like pandas", () => {
     expect(toCsv([{ Parameter: "Power", Value: "1,234", Units: "W" }])).toBe('Parameter,Value,Units\nPower,"1,234",W\n');
+  });
+});
+
+describe("result status tones", () => {
+  it("classifies the suspension, heat-balance and mass-transfer labels", () => {
+    expect(suspensionTone("Poorly suspended (N/Njs=0.45)")).toBe("critical");
+    expect(suspensionTone("Just suspended (N/Njs=1.02)")).toBe("warning");
+    expect(suspensionTone("Fully suspended (N/Njs=1.60)")).toBe("ok");
+    expect(heatBalanceTone("🔴 Insufficient cooling (Q_gen/Q_cool = 1.20)")).toBe("critical");
+    expect(heatBalanceTone("Moderate – monitor closely (Q_gen/Q_cool = 0.60)")).toBe("warning");
+    expect(heatBalanceTone("Comfortable margin (Q_gen/Q_cool = 0.30)")).toBe("ok");
+    expect(transferTone("Potentially transfer-limited")).toBe("critical");
+    expect(transferTone("Capacity comparable to demand")).toBe("warning");
+    expect(transferTone("Capacity exceeds kinetic demand")).toBe("ok");
+    expect(transferTone("Unknown — kLa unavailable")).toBe("unknown");
+  });
+
+  it("summarises a Solve-for outcome as tiles", () => {
+    const base: SolveResult = {
+      parameter: "P_V_W_L", target: 1, solve_for: "N_rpm", status: "solved", best: 760.42,
+      solutions: [{ value: 760.42, achieved: 1.0, in_vessel_range: true }],
+      search_range: [12.5, 2000], vessel_range: [50, 1000], achievable_span: null,
+    };
+    const tiles = solveTiles(base, "P/V (W/L)", { N_rpm: 400, V_L: 0.055 });
+    expect(tiles.map((t) => [t.label, t.value, t.unit, t.tone])).toEqual([
+      ["Agitation speed N", "760.4", "RPM", "ok"],
+      ["Target P/V (W/L)", "1", undefined, undefined],
+      ["Held: working volume V", "0.055", "L", undefined],
+      ["Vessel window", "50–1000", "RPM", undefined],
+    ]);
+    expect(tiles[0].hint).toBe("Solution found · gives 1");
+    const out = solveTiles({ ...base, status: "outside_vessel_range", best: null }, "P/V (W/L)", { N_rpm: 400, V_L: 0.055 });
+    expect([out[0].tone, out[0].hint]).toEqual(["warning", "Outside the vessel window · gives 1"]);
+    const none = solveTiles(
+      { ...base, solve_for: "V_L", status: "unreachable", best: null, solutions: [], achievable_span: [0.1, 0.4] },
+      "P/V (W/L)",
+      { N_rpm: 400, V_L: 0.055 },
+    );
+    expect(none.map((t) => t.value)).toEqual(["No solution", "1", "400", "50–1000"]);
+    expect([none[0].tone, none[0].hint, none[2].label]).toEqual(["critical", "Achievable P/V (W/L): 0.1–0.4", "Held: agitation speed N"]);
   });
 });

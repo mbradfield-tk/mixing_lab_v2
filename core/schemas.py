@@ -427,6 +427,56 @@ class ProtocolReportRequest(Contract):
     protocol: ProtocolRequest
     reaction_name: str = ""
     project: ProjectInfo = Field(default_factory=ProjectInfo)
+    bourne_meta: dict[str, str] = Field(
+        default_factory=dict, description="Metadata of an imported Bourne results CSV")
+
+
+class SensitivityOptions(Contract):
+    reaction_orders: list[str]
+    dh_references: dict[str, float] = Field(description="Reactions with a known ΔH (kJ/mol)")
+    unit_operations: list[str]
+
+
+class SensitivityReactionDefaults(Contract):
+    order: ReactionOrder
+    k: float
+    C0_mol_L: float
+    t_rxn_s: float
+    T_C: float
+    dH_kJ_mol: float
+    reaction_type: str
+    solvent: str = Field(description="Raw solvent name of the reaction row")
+    rho_cp_kJ_m3K: float | None = Field(
+        description="ρ·Cp of the solvent at the requested (else database) temperature; "
+        "None when the solvent is not in the library")
+
+
+class ProtocolPage(Contract):
+    """The Reaction Sensitivity Protocol results, formatted as on the page (Markdown)."""
+    ready: bool
+    show_dh_action: bool = Field(description="The reaction has no ΔH: ask how to proceed")
+    steps: list[str] = Field(description="Steps 0-5 assessment Markdown ('' = none)")
+    kinetics_md: str
+    dt_ad_caption: str
+    da_caption: str
+    trxn_caption: str
+    summary_note: str
+    verdict: str = Field(description="'' until ready")
+    verdict_kind: Kind
+    findings: list[Row]
+    next_steps: list[Row]
+    insights: list[FindingOut] = Field(description="Findings with their severity, for display")
+    actions: list[ActionOut]
+
+
+class BourneImport(Contract):
+    status: BourneStatus
+    mechanism: Mechanism | None
+    tests_done: list[Literal[1, 2, 3]]
+    findings: list[BourneTestRow]
+    meta: dict[str, str]
+    meta_caption: str
+    fields: dict[str, str] = Field(description="Raw field/value pairs of the export")
 
 
 # ---------------------------------------------------------------------------
@@ -764,12 +814,26 @@ class BourneAssessRequest(BournePlanRequest):
     test3: list[KpiResponse] | None = None
 
 
+class BourneKpiDetail(Contract):
+    name: str
+    unit: str
+    low: float
+    centre: float
+    high: float
+    max_change_pct: float
+    threshold_pct: float
+    sensitive: bool
+    noise_limited: bool = Field(description="Change within 2x the measurement noise")
+    critical: bool = Field(description="Quality-defining KPI (impurity / selectivity)")
+
+
 class BourneTestOut(Contract):
     test: Literal[1, 2, 3]
     status: Literal["sensitive", "not_sensitive", "inconclusive"]
     verdict: str = Field(description="Markdown")
     run_next_test: bool
     kpis: list[Row]
+    kpi_details: list[BourneKpiDetail]
 
 
 class BourneAssessResult(Contract):
@@ -779,10 +843,40 @@ class BourneAssessResult(Contract):
     tentative: bool
     next_test: int = Field(description="0 = none")
     summary: str = Field(description="Decision-tree conclusion (Markdown)")
+    test_lines: list[str] = Field(description="Per-test findings of the summary (Markdown)")
+    conclusion: str = Field(description="Conclusion paragraph(s) of the summary (Markdown)")
+    pm_span: float = Field(description="Achieved Test 1 high/low P/m ratio (100 intended)")
 
 
 class BourneReportRequest(BourneAssessRequest):
     project: ProjectInfo = Field(default_factory=ProjectInfo)
+
+
+class BournePlanTables(Contract):
+    """The Bourne condition tables, formatted as on the page."""
+    centre_pm_W_kg: float
+    centre_info: str = Field(description="Markdown")
+    test1_pm_span: float
+    has_speed_plan: bool = Field(description="False for a vessel with a single working volume")
+    reactor_limits: list[Row]
+    test1: list[Row]
+    setpoints: list[Row]
+    setpoints_caption: str
+    test2: list[Row]
+    test3: list[Row]
+
+
+class BourneOptions(Contract):
+    kpi_columns: dict[str, list[str]] = Field(description="Test -> low / centre / high column names")
+    response_metrics: list[str]
+    units: list[str]
+    unit_operations: list[str]
+
+
+class BourneDefaults(Contract):
+    V_L: float = Field(description="Mid fill range working volume")
+    centre_rpm: float = Field(description="Mid speed range (Custom RPM centre default)")
+    reactor_limits: list[Row] = Field(description="Volume / speed limits table (page formatting)")
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +904,14 @@ class HeatTransferRequest(Contract):
     fouling_m2K_W: float = Field(0.0002, ge=0)
     include_agitator: bool = True
     mu_wall_Pa_s: float = Field(0.0, ge=0, description="0 = no wall-viscosity correction")
+    rho_kg_m3: float | None = Field(None, gt=0, description="Overrides the fluid's density")
+    mu_Pa_s: float | None = Field(None, gt=0, description="Overrides the fluid's viscosity")
+    cp_J_kgK: float | None = Field(None, gt=0, description="Overrides the fluid's heat capacity")
+    k_W_mK: float | None = Field(None, gt=0, description="Overrides the fluid's conductivity")
+    cp_jacket_J_kgK: float | None = Field(None, gt=0, description="Overrides the medium's Cp")
+    wall_k_W_mK: float | None = Field(None, gt=0, description="Overrides the wall material's k")
+    lining_k_W_mK: float | None = Field(None, ge=0, description="Overrides the lining's k")
+    lining_thickness_mm: float | None = Field(None, ge=0, description="Overrides the lining's thickness")
     time_unit: Literal["Seconds", "Minutes", "Hours"] = "Minutes"
     project: ProjectInfo = Field(default_factory=ProjectInfo)
 
@@ -898,6 +1000,8 @@ class UaSurfaceRequest(HeatTransferRequest):
     y_range: tuple[float, float] | None = None
     n_points: int = Field(30, ge=2, le=100)
     color_theme: Literal["Turbo", "Viridis", "Cool/Warm", "X-ray"] = "Turbo"
+    U_color_range: tuple[float, float] | None = Field(None, description="Default: data min/max")
+    UA_color_range: tuple[float, float] | None = None
 
     @model_validator(mode="after")
     def _distinct(self):
@@ -906,6 +1010,9 @@ class UaSurfaceRequest(HeatTransferRequest):
         for rng in (self.x_range, self.y_range):
             if rng is not None and not rng[1] > rng[0]:
                 raise ValueError("Each sweep maximum must be greater than its minimum.")
+        for rng in (self.U_color_range, self.UA_color_range):
+            if rng is not None and not rng[1] > rng[0]:
+                raise ValueError("Each custom color maximum must be greater than its minimum.")
         return self
 
 
@@ -918,6 +1025,42 @@ class UaSurfaceResult(Contract):
     UA_W_K: list[Series]
     U_limits: tuple[Num, Num]
     UA_limits: tuple[Num, Num]
+
+
+class HeatTransferOptions(Contract):
+    media: dict[str, float] = Field(description="Heat-transfer medium -> Cp (J/kg·K)")
+    nusselt_correlations: list[str]
+    wall_materials: dict[str, float] = Field(description="Wall material -> k (W/m·K)")
+    linings: dict[str, tuple[float, float]] = Field(description="Lining -> (k W/m·K, thickness mm)")
+    sweep_parameters: list[ParameterOption] = Field(description="field = SweepKey")
+    sweep_zero_max: dict[str, float] = Field(description="Sweep upper bound when the value is 0")
+    unit_operations: list[str]
+    fouling_default: float
+
+
+class HeatTransferDefaults(Contract):
+    """Inputs the Heat Transfer page loads for a vessel."""
+    D_tank_m: float
+    D_imp_m: float
+    N_rpm: float
+    Np: float
+    V_L: float
+    A_ht_m2: float
+    wall_material: str
+    wall_k_W_mK: float
+    wall_thickness_mm: float
+    lining_material: str
+    lining_k_W_mK: float
+    lining_thickness_mm: float
+    N_rpm_range: tuple[float, float] | None = Field(description="Recorded speed range, if any")
+    V_L_range: tuple[float, float] | None
+
+
+class ThermalProperties(Contract):
+    rho_kg_m3: float
+    mu_Pa_s: float
+    cp_J_kgK: float
+    k_W_mK: float
 
 
 # ---------------------------------------------------------------------------

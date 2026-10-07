@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
 export interface Notice {
-  kind: "success" | "error" | "info";
+  kind: "success" | "error" | "info" | "warning";
   text: string;
 }
 

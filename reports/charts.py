@@ -89,9 +89,11 @@ def ua_surface_charts(req: s.UaSurfaceRequest) -> s.ChartResult:
     scale = viz_ht.sweep_colorscale(req.color_theme)
     x_name, y_name = _SWEEP_LABELS[req.x_parameter], _SWEEP_LABELS[req.y_parameter]
     figs = {
-        "U": viz_ht.sweep_surface(res.x, res.y, res.U_W_m2K, x_name, y_name, res.U_limits, scale,
+        "U": viz_ht.sweep_surface(res.x, res.y, res.U_W_m2K, x_name, y_name,
+                                  req.U_color_range or res.U_limits, scale,
                                   "Overall Heat-Transfer Coefficient U", "U (W/m2.K)"),
-        "UA": viz_ht.sweep_surface(res.x, res.y, res.UA_W_K, x_name, y_name, res.UA_limits,
+        "UA": viz_ht.sweep_surface(res.x, res.y, res.UA_W_K, x_name, y_name,
+                                   req.UA_color_range or res.UA_limits,
                                    scale, "Overall Heat-Transfer Capacity UA", "UA (W/K)"),
     }
     return s.ChartResult(figures={k: figure_json(v) for k, v in figs.items()})

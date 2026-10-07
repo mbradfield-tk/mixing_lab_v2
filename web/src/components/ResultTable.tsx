@@ -1,5 +1,12 @@
 import type { Row } from "../api/tables";
 import { downloadBlob, toCsv } from "../pages/assessment/model";
+import { Pill, STATUS_ICON, stripIcon, toneOf } from "./Tone";
+
+function Cell({ value }: { value: unknown }) {
+  if (value === null || value === undefined) return <>—</>;
+  const text = String(value);
+  return STATUS_ICON.test(text) ? <Pill tone={toneOf(text)}>{stripIcon(text)}</Pill> : <>{text}</>;
+}
 
 /** Pre-formatted result rows (server strings) with an optional CSV download. */
 export function ResultTable({ rows, csvName, stale = false }: { rows: Row[]; csvName?: string; stale?: boolean }) {
@@ -19,7 +26,9 @@ export function ResultTable({ rows, csvName, stale = false }: { rows: Row[]; csv
             {rows.map((r, i) => (
               <tr key={i}>
                 {cols.map((c) => (
-                  <td key={c}>{r[c] === null || r[c] === undefined ? "—" : String(r[c])}</td>
+                  <td key={c}>
+                    <Cell value={r[c]} />
+                  </td>
                 ))}
               </tr>
             ))}

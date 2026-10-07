@@ -174,6 +174,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bourne/defaults/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Working-volume and centre-RPM defaults for a vessel */
+        get: operations["bourne_defaults_api_v1_bourne_defaults__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bourne/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** KPI column names, suggested metrics and units */
+        get: operations["bourne_options_api_v1_bourne_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bourne/plan": {
         parameters: {
             query?: never;
@@ -185,6 +219,40 @@ export interface paths {
         put?: never;
         /** Test 1-3 operating conditions */
         post: operations["bourne_plan_api_v1_bourne_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bourne/plan/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test 1-3 conditions formatted as on the page */
+        post: operations["bourne_plan_tables_api_v1_bourne_plan_tables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bourne/sensitivity-csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Outcome CSV for the Reaction Sensitivity Protocol */
+        post: operations["bourne_sensitivity_csv_api_v1_bourne_sensitivity_csv_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -486,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fluids/thermal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** rho, mu, Cp and k of a fluid at T (heat-transfer inputs) */
+        get: operations["fluid_thermal_api_v1_fluids_thermal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -495,6 +580,40 @@ export interface paths {
         };
         /** Liveness check */
         get: operations["health_api_v1_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/heat-transfer/area": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wetted jacket area at a fill volume */
+        get: operations["heat_area_api_v1_heat_transfer_area_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/heat-transfer/defaults/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inputs the Heat Transfer page loads for a vessel */
+        get: operations["heat_defaults_api_v1_heat_transfer_defaults__name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -514,6 +633,23 @@ export interface paths {
         put?: never;
         /** Batch heat-up / cool-down */
         post: operations["heat_cool_api_v1_heat_transfer_heat_cool_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/heat-transfer/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Media, correlations, materials and sweep parameters */
+        get: operations["heat_options_api_v1_heat_transfer_options_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -939,6 +1075,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sensitivity/bourne-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parse a Bourne Protocol results CSV */
+        post: operations["sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sensitivity/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reaction orders, ΔH reference reactions, unit operations */
+        get: operations["sensitivity_options_api_v1_sensitivity_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sensitivity/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Protocol results formatted as on the page (Markdown) */
+        post: operations["sensitivity_page_api_v1_sensitivity_page_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sensitivity/reaction-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Kinetics and solvent ρ·Cp of a reaction */
+        get: operations["sensitivity_reaction_defaults_api_v1_sensitivity_reaction_defaults_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/units": {
         parameters: {
             query?: never;
@@ -1302,6 +1506,11 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post */
+        Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post: {
+            /** File */
+            file: string;
+        };
         /** BourneAssessRequest */
         BourneAssessRequest: {
             /** D Imp M */
@@ -1391,6 +1600,11 @@ export interface components {
         /** BourneAssessResult */
         BourneAssessResult: {
             /**
+             * Conclusion
+             * @description Conclusion paragraph(s) of the summary (Markdown)
+             */
+            conclusion: string;
+            /**
              * Dominant
              * @description Mixing-insensitive | Micromixing | Mesomixing | Macromixing | Inconclusive | Incomplete
              */
@@ -1401,14 +1615,111 @@ export interface components {
              */
             next_test: number;
             /**
+             * Pm Span
+             * @description Achieved Test 1 high/low P/m ratio (100 intended)
+             */
+            pm_span: number;
+            /**
              * Summary
              * @description Decision-tree conclusion (Markdown)
              */
             summary: string;
             /** Tentative */
             tentative: boolean;
+            /**
+             * Test Lines
+             * @description Per-test findings of the summary (Markdown)
+             */
+            test_lines: string[];
             /** Tests */
             tests: components["schemas"]["BourneTestOut"][];
+        };
+        /** BourneDefaults */
+        BourneDefaults: {
+            /**
+             * V L
+             * @description Mid fill range working volume
+             */
+            V_L: number;
+            /**
+             * Centre Rpm
+             * @description Mid speed range (Custom RPM centre default)
+             */
+            centre_rpm: number;
+            /**
+             * Reactor Limits
+             * @description Volume / speed limits table (page formatting)
+             */
+            reactor_limits: {
+                [key: string]: number | string | null;
+            }[];
+        };
+        /** BourneImport */
+        BourneImport: {
+            /**
+             * Fields
+             * @description Raw field/value pairs of the export
+             */
+            fields: {
+                [key: string]: string;
+            };
+            /** Findings */
+            findings: components["schemas"]["BourneTestRow"][];
+            mechanism: components["schemas"]["Mechanism"] | null;
+            /** Meta */
+            meta: {
+                [key: string]: string;
+            };
+            /** Meta Caption */
+            meta_caption: string;
+            status: components["schemas"]["BourneStatus"];
+            /** Tests Done */
+            tests_done: (1 | 2 | 3)[];
+        };
+        /** BourneKpiDetail */
+        BourneKpiDetail: {
+            /** Centre */
+            centre: number;
+            /**
+             * Critical
+             * @description Quality-defining KPI (impurity / selectivity)
+             */
+            critical: boolean;
+            /** High */
+            high: number;
+            /** Low */
+            low: number;
+            /** Max Change Pct */
+            max_change_pct: number;
+            /** Name */
+            name: string;
+            /**
+             * Noise Limited
+             * @description Change within 2x the measurement noise
+             */
+            noise_limited: boolean;
+            /** Sensitive */
+            sensitive: boolean;
+            /** Threshold Pct */
+            threshold_pct: number;
+            /** Unit */
+            unit: string;
+        };
+        /** BourneOptions */
+        BourneOptions: {
+            /**
+             * Kpi Columns
+             * @description Test -> low / centre / high column names
+             */
+            kpi_columns: {
+                [key: string]: string[];
+            };
+            /** Response Metrics */
+            response_metrics: string[];
+            /** Unit Operations */
+            unit_operations: string[];
+            /** Units */
+            units: string[];
         };
         /** BournePlanRequest */
         BournePlanRequest: {
@@ -1534,12 +1845,143 @@ export interface components {
             }[];
         };
         /**
+         * BournePlanTables
+         * @description The Bourne condition tables, formatted as on the page.
+         */
+        BournePlanTables: {
+            /**
+             * Centre Info
+             * @description Markdown
+             */
+            centre_info: string;
+            /** Centre Pm W Kg */
+            centre_pm_W_kg: number;
+            /**
+             * Has Speed Plan
+             * @description False for a vessel with a single working volume
+             */
+            has_speed_plan: boolean;
+            /** Reactor Limits */
+            reactor_limits: {
+                [key: string]: number | string | null;
+            }[];
+            /** Setpoints */
+            setpoints: {
+                [key: string]: number | string | null;
+            }[];
+            /** Setpoints Caption */
+            setpoints_caption: string;
+            /** Test1 */
+            test1: {
+                [key: string]: number | string | null;
+            }[];
+            /** Test1 Pm Span */
+            test1_pm_span: number;
+            /** Test2 */
+            test2: {
+                [key: string]: number | string | null;
+            }[];
+            /** Test3 */
+            test3: {
+                [key: string]: number | string | null;
+            }[];
+        };
+        /** BourneReportRequest */
+        BourneReportRequest: {
+            /** D Imp M */
+            D_imp_m?: number | null;
+            /** Np */
+            Np?: number | null;
+            /**
+             * P Atm
+             * @default 1
+             */
+            P_atm: number;
+            /**
+             * T C
+             * @default 25
+             */
+            T_C: number;
+            /**
+             * V L
+             * @description Working volume; default mid fill range
+             */
+            V_L?: number | null;
+            /** @default default */
+            centre: components["schemas"]["CenterMode"];
+            /**
+             * Centre Pm W Kg
+             * @description Used when centre = custom_pm
+             * @default 0.2
+             */
+            centre_pm_W_kg: number;
+            /**
+             * Centre Rpm
+             * @description Used when centre = custom_rpm
+             */
+            centre_rpm?: number | null;
+            /**
+             * Fed Batch Volumes L
+             * @description Fill volumes at which Test 1 speeds are re-set
+             */
+            fed_batch_volumes_L?: number[];
+            /** @default rate */
+            feed_basis: components["schemas"]["FeedBasis"];
+            /**
+             * Feed Rate Ml Min
+             * @default 5
+             */
+            feed_rate_mL_min: number;
+            /**
+             * Feed Time Min
+             * @default 20
+             */
+            feed_time_min: number;
+            /**
+             * Feed Volume Ml
+             * @default 100
+             */
+            feed_volume_mL: number;
+            /**
+             * Fluid
+             * @default Water
+             */
+            fluid: string;
+            /**
+             * Impeller Ratio
+             * @default 3
+             */
+            impeller_ratio: number;
+            /**
+             * Mid Ratio
+             * @default 1
+             */
+            mid_ratio: number;
+            project?: components["schemas"]["ProjectInfo"];
+            /** Reactor */
+            reactor: string;
+            /**
+             * Surface Ratio
+             * @description ε_loc/ε_avg at the surface feed
+             * @default 0.1
+             */
+            surface_ratio: number;
+            /** Test1 */
+            test1: components["schemas"]["KpiResponse"][];
+            /** Test2 */
+            test2?: components["schemas"]["KpiResponse"][] | null;
+            /** Test3 */
+            test3?: components["schemas"]["KpiResponse"][] | null;
+        };
+        /**
          * BourneStatus
          * @enum {string}
          */
         BourneStatus: "skip" | "confirmed" | "insensitive" | "inconclusive";
         /** BourneTestOut */
         BourneTestOut: {
+            /** Kpi Details */
+            kpi_details: components["schemas"]["BourneKpiDetail"][];
             /** Kpis */
             kpis: {
                 [key: string]: number | string | null;
@@ -2082,6 +2524,16 @@ export interface components {
              */
             V_L?: number | null;
             /**
+             * Cp J Kgk
+             * @description Overrides the fluid's heat capacity
+             */
+            cp_J_kgK?: number | null;
+            /**
+             * Cp Jacket J Kgk
+             * @description Overrides the medium's Cp
+             */
+            cp_jacket_J_kgK?: number | null;
+            /**
              * D Hyd Jacket M
              * @default 0.05
              */
@@ -2107,15 +2559,35 @@ export interface components {
              */
             include_agitator: boolean;
             /**
+             * K W Mk
+             * @description Overrides the fluid's conductivity
+             */
+            k_W_mK?: number | null;
+            /**
+             * Lining K W Mk
+             * @description Overrides the lining's k
+             */
+            lining_k_W_mK?: number | null;
+            /**
              * Lining Material
              * @description 'None' for unlined; default: vessel record
              */
             lining_material?: string | null;
             /**
+             * Lining Thickness Mm
+             * @description Overrides the lining's thickness
+             */
+            lining_thickness_mm?: number | null;
+            /**
              * M Dot Jacket Kg S
              * @default 1
              */
             m_dot_jacket_kg_s: number;
+            /**
+             * Mu Pa S
+             * @description Overrides the fluid's viscosity
+             */
+            mu_Pa_s?: number | null;
             /**
              * Mu Wall Pa S
              * @description 0 = no wall-viscosity correction
@@ -2134,6 +2606,11 @@ export interface components {
             /** Reactor */
             reactor: string;
             /**
+             * Rho Kg M3
+             * @description Overrides the fluid's density
+             */
+            rho_kg_m3?: number | null;
+            /**
              * Time Unit
              * @default Minutes
              * @enum {string}
@@ -2144,6 +2621,11 @@ export interface components {
              * @default 1
              */
             v_jacket_m_s: number;
+            /**
+             * Wall K W Mk
+             * @description Overrides the wall material's k
+             */
+            wall_k_W_mK?: number | null;
             /**
              * Wall Material
              * @description Default: the vessel's shell material
@@ -2236,6 +2718,94 @@ export interface components {
             T_coolant_C: number;
             /** T Process C */
             T_process_C: number;
+        };
+        /**
+         * HeatTransferDefaults
+         * @description Inputs the Heat Transfer page loads for a vessel.
+         */
+        HeatTransferDefaults: {
+            /** A Ht M2 */
+            A_ht_m2: number;
+            /** D Imp M */
+            D_imp_m: number;
+            /** D Tank M */
+            D_tank_m: number;
+            /** N Rpm */
+            N_rpm: number;
+            /**
+             * N Rpm Range
+             * @description Recorded speed range, if any
+             */
+            N_rpm_range: [
+                number,
+                number
+            ] | null;
+            /** Np */
+            Np: number;
+            /** V L */
+            V_L: number;
+            /** V L Range */
+            V_L_range: [
+                number,
+                number
+            ] | null;
+            /** Lining K W Mk */
+            lining_k_W_mK: number;
+            /** Lining Material */
+            lining_material: string;
+            /** Lining Thickness Mm */
+            lining_thickness_mm: number;
+            /** Wall K W Mk */
+            wall_k_W_mK: number;
+            /** Wall Material */
+            wall_material: string;
+            /** Wall Thickness Mm */
+            wall_thickness_mm: number;
+        };
+        /** HeatTransferOptions */
+        HeatTransferOptions: {
+            /** Fouling Default */
+            fouling_default: number;
+            /**
+             * Linings
+             * @description Lining -> (k W/m·K, thickness mm)
+             */
+            linings: {
+                [key: string]: [
+                    number,
+                    number
+                ];
+            };
+            /**
+             * Media
+             * @description Heat-transfer medium -> Cp (J/kg·K)
+             */
+            media: {
+                [key: string]: number;
+            };
+            /** Nusselt Correlations */
+            nusselt_correlations: string[];
+            /**
+             * Sweep Parameters
+             * @description field = SweepKey
+             */
+            sweep_parameters: components["schemas"]["ParameterOption"][];
+            /**
+             * Sweep Zero Max
+             * @description Sweep upper bound when the value is 0
+             */
+            sweep_zero_max: {
+                [key: string]: number;
+            };
+            /** Unit Operations */
+            unit_operations: string[];
+            /**
+             * Wall Materials
+             * @description Wall material -> k (W/m·K)
+             */
+            wall_materials: {
+                [key: string]: number;
+            };
         };
         /**
          * HeatTransferResolved
@@ -2690,6 +3260,59 @@ export interface components {
              */
             unit_operation: string;
         };
+        /**
+         * ProtocolPage
+         * @description The Reaction Sensitivity Protocol results, formatted as on the page (Markdown).
+         */
+        ProtocolPage: {
+            /** Actions */
+            actions: components["schemas"]["ActionOut"][];
+            /** Da Caption */
+            da_caption: string;
+            /** Dt Ad Caption */
+            dt_ad_caption: string;
+            /** Findings */
+            findings: {
+                [key: string]: number | string | null;
+            }[];
+            /**
+             * Insights
+             * @description Findings with their severity, for display
+             */
+            insights: components["schemas"]["FindingOut"][];
+            /** Kinetics Md */
+            kinetics_md: string;
+            /** Next Steps */
+            next_steps: {
+                [key: string]: number | string | null;
+            }[];
+            /** Ready */
+            ready: boolean;
+            /**
+             * Show Dh Action
+             * @description The reaction has no ΔH: ask how to proceed
+             */
+            show_dh_action: boolean;
+            /**
+             * Steps
+             * @description Steps 0-5 assessment Markdown ('' = none)
+             */
+            steps: string[];
+            /** Summary Note */
+            summary_note: string;
+            /** Trxn Caption */
+            trxn_caption: string;
+            /**
+             * Verdict
+             * @description '' until ready
+             */
+            verdict: string;
+            /**
+             * Verdict Kind
+             * @enum {string}
+             */
+            verdict_kind: "critical" | "warning" | "caution" | "ok" | "unknown";
+        };
         /** ProtocolRequest */
         ProtocolRequest: {
             /** @default skip */
@@ -2809,6 +3432,16 @@ export interface components {
              */
             V_L?: number | null;
             /**
+             * Cp J Kgk
+             * @description Overrides the fluid's heat capacity
+             */
+            cp_J_kgK?: number | null;
+            /**
+             * Cp Jacket J Kgk
+             * @description Overrides the medium's Cp
+             */
+            cp_jacket_J_kgK?: number | null;
+            /**
              * D Hyd Jacket M
              * @default 0.05
              */
@@ -2834,15 +3467,35 @@ export interface components {
              */
             include_agitator: boolean;
             /**
+             * K W Mk
+             * @description Overrides the fluid's conductivity
+             */
+            k_W_mK?: number | null;
+            /**
+             * Lining K W Mk
+             * @description Overrides the lining's k
+             */
+            lining_k_W_mK?: number | null;
+            /**
              * Lining Material
              * @description 'None' for unlined; default: vessel record
              */
             lining_material?: string | null;
             /**
+             * Lining Thickness Mm
+             * @description Overrides the lining's thickness
+             */
+            lining_thickness_mm?: number | null;
+            /**
              * M Dot Jacket Kg S
              * @default 1
              */
             m_dot_jacket_kg_s: number;
+            /**
+             * Mu Pa S
+             * @description Overrides the fluid's viscosity
+             */
+            mu_Pa_s?: number | null;
             /**
              * Mu Wall Pa S
              * @description 0 = no wall-viscosity correction
@@ -2856,6 +3509,11 @@ export interface components {
             /** Reactor */
             reactor: string;
             /**
+             * Rho Kg M3
+             * @description Overrides the fluid's density
+             */
+            rho_kg_m3?: number | null;
+            /**
              * Time Unit
              * @default Minutes
              * @enum {string}
@@ -2866,6 +3524,11 @@ export interface components {
              * @default 1
              */
             v_jacket_m_s: number;
+            /**
+             * Wall K W Mk
+             * @description Overrides the wall material's k
+             */
+            wall_k_W_mK?: number | null;
             /**
              * Wall Material
              * @description Default: the vessel's shell material
@@ -3078,6 +3741,50 @@ export interface components {
              */
             solvent: string;
         };
+        /** SensitivityOptions */
+        SensitivityOptions: {
+            /**
+             * Dh References
+             * @description Reactions with a known ΔH (kJ/mol)
+             */
+            dh_references: {
+                [key: string]: number;
+            };
+            /** Reaction Orders */
+            reaction_orders: string[];
+            /** Unit Operations */
+            unit_operations: string[];
+        };
+        /** SensitivityReactionDefaults */
+        SensitivityReactionDefaults: {
+            /** C0 Mol L */
+            C0_mol_L: number;
+            /** T C */
+            T_C: number;
+            /** Dh Kj Mol */
+            dH_kJ_mol: number;
+            /** K */
+            k: number;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "0" | "1" | "2" | "pseudo-1" | "pseudo-2";
+            /** Reaction Type */
+            reaction_type: string;
+            /**
+             * Rho Cp Kj M3K
+             * @description ρ·Cp of the solvent at the requested (else database) temperature; None when the solvent is not in the library
+             */
+            rho_cp_kJ_m3K: number | null;
+            /**
+             * Solvent
+             * @description Raw solvent name of the reaction row
+             */
+            solvent: string;
+            /** T Rxn S */
+            t_rxn_s: number;
+        };
         /** SolidsSpec */
         SolidsSpec: {
             /**
@@ -3283,6 +3990,17 @@ export interface components {
                 number
             ];
         };
+        /** ThermalProperties */
+        ThermalProperties: {
+            /** Cp J Kgk */
+            cp_J_kgK: number;
+            /** K W Mk */
+            k_W_mK: number;
+            /** Mu Pa S */
+            mu_Pa_s: number;
+            /** Rho Kg M3 */
+            rho_kg_m3: number;
+        };
         /** TokenResult */
         TokenResult: {
             /** Access Token */
@@ -3324,6 +4042,19 @@ export interface components {
              * @default 25
              */
             T_start_C: number;
+            /** Ua Color Range */
+            UA_color_range?: [
+                number,
+                number
+            ] | null;
+            /**
+             * U Color Range
+             * @description Default: data min/max
+             */
+            U_color_range?: [
+                number,
+                number
+            ] | null;
             /**
              * V L
              * @description Default: mid fill range
@@ -3335,6 +4066,16 @@ export interface components {
              * @enum {string}
              */
             color_theme: "Turbo" | "Viridis" | "Cool/Warm" | "X-ray";
+            /**
+             * Cp J Kgk
+             * @description Overrides the fluid's heat capacity
+             */
+            cp_J_kgK?: number | null;
+            /**
+             * Cp Jacket J Kgk
+             * @description Overrides the medium's Cp
+             */
+            cp_jacket_J_kgK?: number | null;
             /**
              * D Hyd Jacket M
              * @default 0.05
@@ -3361,15 +4102,35 @@ export interface components {
              */
             include_agitator: boolean;
             /**
+             * K W Mk
+             * @description Overrides the fluid's conductivity
+             */
+            k_W_mK?: number | null;
+            /**
+             * Lining K W Mk
+             * @description Overrides the lining's k
+             */
+            lining_k_W_mK?: number | null;
+            /**
              * Lining Material
              * @description 'None' for unlined; default: vessel record
              */
             lining_material?: string | null;
             /**
+             * Lining Thickness Mm
+             * @description Overrides the lining's thickness
+             */
+            lining_thickness_mm?: number | null;
+            /**
              * M Dot Jacket Kg S
              * @default 1
              */
             m_dot_jacket_kg_s: number;
+            /**
+             * Mu Pa S
+             * @description Overrides the fluid's viscosity
+             */
+            mu_Pa_s?: number | null;
             /**
              * Mu Wall Pa S
              * @description 0 = no wall-viscosity correction
@@ -3387,6 +4148,11 @@ export interface components {
             /** Reactor */
             reactor: string;
             /**
+             * Rho Kg M3
+             * @description Overrides the fluid's density
+             */
+            rho_kg_m3?: number | null;
+            /**
              * Time Unit
              * @default Minutes
              * @enum {string}
@@ -3397,6 +4163,11 @@ export interface components {
              * @default 1
              */
             v_jacket_m_s: number;
+            /**
+             * Wall K W Mk
+             * @description Overrides the wall material's k
+             */
+            wall_k_W_mK?: number | null;
             /**
              * Wall Material
              * @description Default: the vessel's shell material
@@ -3855,6 +4626,57 @@ export interface operations {
             };
         };
     };
+    bourne_defaults_api_v1_bourne_defaults__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BourneDefaults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bourne_options_api_v1_bourne_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BourneOptions"];
+                };
+            };
+        };
+    };
     bourne_plan_api_v1_bourne_plan_post: {
         parameters: {
             query?: never;
@@ -3875,6 +4697,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BournePlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bourne_plan_tables_api_v1_bourne_plan_tables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BournePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BournePlanTables"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bourne_sensitivity_csv_api_v1_bourne_sensitivity_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BourneReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "text/csv": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4513,6 +5402,38 @@ export interface operations {
             };
         };
     };
+    fluid_thermal_api_v1_fluids_thermal_get: {
+        parameters: {
+            query: {
+                name: string;
+                T_C?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThermalProperties"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -4531,6 +5452,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    heat_area_api_v1_heat_transfer_area_get: {
+        parameters: {
+            query: {
+                reactor: string;
+                D_tank_m: number;
+                V_L: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heat_defaults_api_v1_heat_transfer_defaults__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatTransferDefaults"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4564,6 +5551,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heat_options_api_v1_heat_transfer_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeatTransferOptions"];
                 };
             };
         };
@@ -5571,6 +6578,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProtocolResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BourneImport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sensitivity_options_api_v1_sensitivity_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SensitivityOptions"];
+                };
+            };
+        };
+    };
+    sensitivity_page_api_v1_sensitivity_page_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sensitivity_reaction_defaults_api_v1_sensitivity_reaction_defaults_get: {
+        parameters: {
+            query: {
+                /** @description Reactions Database name (may contain '/') */
+                reaction: string;
+                /** @description ρ·Cp temperature; default the reaction's */
+                T_C?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SensitivityReactionDefaults"];
                 };
             };
             /** @description Validation Error */

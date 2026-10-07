@@ -29,6 +29,10 @@ KPI_COLUMNS = {
     3: ("Surface", "Mid", "Impeller"),
 }
 NOISE_COLUMNS = ("Std dev", "Replicates")
+# Suggested KPI names and units for the response tables (free text is also allowed).
+RESPONSE_METRICS = ["Yield", "Purity", "Conversion", "Selectivity",
+                    "Impurity level", "Particle size (D50)", "Other"]
+KPI_UNITS = ["%", "ppm", "area%", "wt%", "mol%", "µm", "g/L", "AU"]
 
 STATUS_LABEL = {
     "sensitive": "Sensitive",

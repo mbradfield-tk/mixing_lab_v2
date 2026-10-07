@@ -42,6 +42,7 @@ from core.catalog import is_known_solvent
 from core.options import CenterMode, FeedBasis, Toggle, is_on
 from viz import bourne as viz_bourne
 from viz.common import empty as empty_fig
+from reports import bourne_tables as btables
 from reports import snapshots
 from core.records import (
     VesselGeometry,
@@ -61,12 +62,11 @@ VIEWER_H = 360
 UNIT_OPERATION_OPTIONS = ["- select -", "Reaction", "Quench", "Crystallization",
                           "Liquid-Liquid Extraction", "Distillation", "Filtration",
                           "Drying", "Other"]
-RESPONSE_METRICS = ["Yield", "Purity", "Conversion", "Selectivity",
-                    "Impurity level", "Particle size (D50)", "Other"]
+RESPONSE_METRICS = kpi.RESPONSE_METRICS
 # Per-column dropdown options for the editable KPI tables. A trailing ``None``
 # keeps the cell "free" (a custom value can still be typed in).
 KPI_METRIC_OPTIONS = RESPONSE_METRICS + [None]
-UNIT_OPTIONS = ["%", "ppm", "area%", "wt%", "mol%", "µm", "g/L", "AU", None]
+UNIT_OPTIONS = kpi.KPI_UNITS + [None]
 _SENS_THRESHOLD = kpi.SENS_THRESHOLD
 
 
@@ -113,27 +113,7 @@ def _system(state) -> plan.BourneSystem:
 
 def _reactor_summary_df(row: pd.Series) -> pd.DataFrame:
     """Small Property/Value/Units table of a reactor's volume & speed limits."""
-    vmin = _sf(row.get("V_L_min"))
-    vmax = _sf(row.get("V_L_max"), _sf(row.get("V_L")))
-    nmin = _sf(row.get("N_rpm_min"))
-    nmax = _sf(row.get("N_rpm_max"))
-    dimp = _sf(row.get("D_imp_m"))
-    Np = _sf(row.get("Np"))
-
-    def _rng(a, b):
-        if a <= 0 and b <= 0:
-            return "—"
-        if a > 0 and b > 0:
-            return f"{a:g} – {b:g}"
-        return f"{(a or b):g}"
-
-    rows = [
-        {"Property": "Working volume", "Value": _rng(vmin, vmax), "Units": "L"},
-        {"Property": "Impeller speed", "Value": _rng(nmin, nmax), "Units": "RPM"},
-        {"Property": "Impeller diameter", "Value": f"{dimp:g}" if dimp > 0 else "—", "Units": "m"},
-        {"Property": "Power number Np", "Value": f"{Np:g}" if Np > 0 else "—", "Units": "–"},
-    ]
-    return pd.DataFrame(rows)
+    return btables.reactor_limits(row)
 
 
 # Per-test KPI response column names (low / centre / high condition).
@@ -480,22 +460,7 @@ def _build_t1(state):
     pm_c, info = _resolve_center_pm(state)
     state.bp_t1_pm_eff = pm_c
     state.bp_t1_ctr_info = info
-    rows = []
-    for r in _t1_condition_rows(state):
-        rows.append({
-            "Condition": r["Condition"] + r["note"],
-            "N (RPM)": f"{r['N (RPM)']:,.1f}",
-            "P/V (W/L)": f"{r['P/V (W/L)']:.4g}",
-            "P/m (W/kg)": f"{r['P/m (W/kg)']:.4g}",
-            "Blend time (s)": f"{r['Blend time (s)']:.3g}",
-            "Avg shear rate (1/s)": f"{r['Avg shear rate (1/s)']:.3g}",
-            "Tip speed (m/s)": f"{r['Tip speed (m/s)']:.3g}",
-            "Re": f"{r['Re']:,.0f}",
-            "kLa_surface (1/s)": f"{r['kLa_surface (1/s)']:.3g}",
-            "t_E micro (s)": f"{r['t_E micro (s)']:.3g}",
-            "η (µm)": f"{r['η (µm)']:.3g}",
-        })
-    state.bp_t1_hydro_df = pd.DataFrame(rows)
+    state.bp_t1_hydro_df = btables.test1_table(_t1_condition_rows(state))
     if is_on(state.bp_t1_adj_mode):
         _build_t1_adj(state)
     _build_t1_plot(state)
@@ -520,20 +485,7 @@ def _build_t1_adj(state):
         if v > 0:
             steps.append((f"Adj. {i + 1}", v))
     setpoints, clamped = plan.speed_setpoints(_system(state), state.bp_t1_pm_eff, steps)
-    rows = []
-    for sp in setpoints:
-        row = {"Step": sp["Step"], "Volume (L)": f"{sp['Volume (L)']:.3g}"}
-        for col in ("Low (RPM)", "Centre (RPM)", "High (RPM)"):
-            n_rpm, was_clamped = sp[col]
-            row[col] = f"{n_rpm:.1f}{' ⚠' if was_clamped else ''}"
-        rows.append(row)
-    state.bp_t1_adj_result_df = pd.DataFrame(rows)
-    cap = ("Speeds hold each condition's P/m constant as the working volume grows — "
-           "set as discrete setpoints when the volume reaches each milestone.")
-    if clamped:
-        cap += (" ⚠ Some values were clamped to the reactor RPM range; the target "
-                "P/m cannot be held at those steps.")
-    state.bp_t1_adj_caption = cap
+    state.bp_t1_adj_result_df, state.bp_t1_adj_caption = btables.setpoints_table(setpoints, clamped)
     _refresh_table_csv_exports(state)
 
 
@@ -691,10 +643,7 @@ def _build_t2(state):
     rows = plan.test2_conditions(_sf(state.bp_t2_feed_vol),
                                  FeedBasis.from_label(state.bp_t2_mode) is FeedBasis.RATE,
                                  _sf(state.bp_t2_rate), _sf(state.bp_t2_time))
-    state.bp_t2_cond_df = pd.DataFrame([
-        {"Condition": r["Condition"], "Feed time (min)": f"{r['Feed time (min)']:.3g}",
-         "Flow rate (mL/min)": f"{r['Flow rate (mL/min)']:.3g}", "Note": r["Note"]}
-        for r in rows])
+    state.bp_t2_cond_df = btables.test2_table(rows)
     _refresh_table_csv_exports(state)
 
 
@@ -731,11 +680,7 @@ def _build_t3(state):
         ("Impeller zone", _sf(state.bp_t3_impeller_ratio, 3.0)),
     ]
     rows = plan.test3_conditions(_system(state), state.bp_t1_pm_eff, ratios)
-    state.bp_t3_cond_df = pd.DataFrame([
-        {"Feed location": r["Feed location"], "ε_loc/ε_avg": f"{r['ε_loc/ε_avg']:.1f}",
-         "ε_loc (W/kg)": f"{r['ε_loc (W/kg)']:.4g}",
-         "t_E micro (s)": f"{r['t_E micro (s)']:.3g}"}
-        for r in rows])
+    state.bp_t3_cond_df = btables.test3_table(rows)
     _refresh_table_csv_exports(state)
 
 

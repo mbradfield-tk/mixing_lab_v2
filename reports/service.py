@@ -9,6 +9,8 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from core import schemas as s
+from core import bourne_io
+from core.records import range_midpoint, sf
 from core import scale_up
 from core import sensitivity_rules as rules
 from core import services
@@ -17,6 +19,7 @@ from core.operating_point import evaluate_point
 from core.options import Competing, CorrSource
 from core.serialize import jsonable
 from reports import snapshots
+from reports import bourne_tables as btables
 from reports import comparison_tables as ctables
 from reports.tables import assessment_tables
 from reports import pdf as rb
@@ -89,12 +92,31 @@ def assessment_report(req: s.AssessmentReportRequest) -> ReportFile:
                       rb.build_vessel_assessment_pdf(snap))
 
 
+def protocol_page(req: s.ProtocolRequest) -> s.ProtocolPage:
+    """Reaction Sensitivity Protocol results as the page shows them."""
+    res = services.run_protocol(req)
+    md = rules.protocol_md(res)
+    return s.ProtocolPage(
+        ready=res["ready"], show_dh_action=res["show_dh_action"],
+        steps=[md[f"step{n}"] for n in range(6)], kinetics_md=md["kinetics_md"],
+        dt_ad_caption=md["dt_ad_caption"], da_caption=md["da_caption"],
+        trxn_caption=md["trxn_caption"], summary_note=md["summary_note"],
+        verdict=md["verdict"] if res["ready"] else "",
+        verdict_kind=res["verdict"].kind,
+        findings=[{"Sensitivity Type": m, "Finding": f"{st} - {d}"} for m, st, d in md["findings"]],
+        next_steps=jsonable(pd.DataFrame(md["next_steps"])),
+        insights=[s.FindingOut(area=f.area, kind=f.kind, status=f.status, detail=f.detail, code=f.code)
+                  for f in res["findings"]],
+        actions=[s.ActionOut(area=a.area, action=a.action, code=a.code) for a in res["next_steps"]])
+
+
 def protocol_snapshot(req: s.ProtocolReportRequest) -> dict:
     res = services.run_protocol(req.protocol)
     competing = req.protocol.competing
     snap = snapshots.protocol_snapshot(
         res, rules.protocol_md(res), reaction=req.reaction_name,
-        competing_label=Competing(competing).label if competing else "")
+        competing_label=Competing(competing).label if competing else "",
+        bourne_meta=dict(req.bourne_meta))
     snap.update(snapshots.project_meta(**req.project.model_dump()))
     return snap
 
@@ -185,6 +207,46 @@ def comparison_report(req: s.ComparisonRequest) -> ReportFile:
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
+def bourne_defaults(name: str) -> s.BourneDefaults:
+    """Working-volume / centre-RPM defaults and the reactor-limits table for a vessel."""
+    row = services.bourne_reactor(name)
+    return s.BourneDefaults(
+        V_L=range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0)),
+        centre_rpm=range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0),
+        reactor_limits=jsonable(btables.reactor_limits(row)))
+
+
+def bourne_plan_tables(req: s.BournePlanRequest) -> s.BournePlanTables:
+    """Formatted Test 1-3 condition tables, setpoints and reactor limits (page formatting)."""
+    p = services.bourne_plan(req)
+    setpoints = [{"Step": sp.step, "Volume (L)": sp.V_L,
+                  "Low (RPM)": (sp.low_rpm, "low" in sp.clamped),
+                  "Centre (RPM)": (sp.centre_rpm, "centre" in sp.clamped),
+                  "High (RPM)": (sp.high_rpm, "high" in sp.clamped)} for sp in p.setpoints]
+    sp_df, caption = btables.setpoints_table(setpoints, any(sp.clamped for sp in p.setpoints))
+    return s.BournePlanTables(
+        centre_pm_W_kg=p.centre_pm_W_kg, centre_info=p.centre_info,
+        test1_pm_span=p.test1_pm_span, has_speed_plan=p.speed_plan is not None,
+        reactor_limits=jsonable(btables.reactor_limits(services.bourne_reactor(req.reactor))),
+        test1=jsonable(btables.test1_table(p.test1)), setpoints=jsonable(sp_df),
+        setpoints_caption=caption, test2=jsonable(btables.test2_table(p.test2)),
+        test3=jsonable(btables.test3_table(
+            [{**r, "Feed location": btables.T3_PAGE_LABELS.get(r["Feed location"], r["Feed location"])}
+             for r in p.test3])))
+
+
+def bourne_sensitivity_csv(req: s.BourneReportRequest) -> ReportFile:
+    """The field/value CSV the Reaction Sensitivity Protocol imports (Step 0 pre-screen)."""
+    ev = services.bourne_evaluation(req)
+    meta = req.project.model_dump()
+    kpis = {n: (ev["results"][n] or {}).get("sensitive_names", "") for n in (1, 2, 3)}
+    rows = bourne_io.export_rows(
+        ev["outcome"], {**meta, "reactor": req.reactor, "fluid": req.fluid,
+                        "working_volume_L": ev["system"].V_L}, kpis)
+    name = rb.report_filename(rb.report_header_label(meta) or req.reactor).replace(".pdf", ".csv")
+    return ReportFile(name, bourne_io.write_csv(rows), "text/csv")
+
+
 def bourne_snapshot(req: s.BourneReportRequest) -> dict:
     ev = services.bourne_evaluation(req)
     return snapshots.bourne_snapshot(

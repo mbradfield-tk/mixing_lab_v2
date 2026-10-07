@@ -25,6 +25,11 @@ const VesselAssessment = lazy(() =>
 const VesselComparison = lazy(() =>
   import("./pages/VesselComparison").then((m) => ({ default: m.VesselComparison })),
 );
+const HeatTransfer = lazy(() => import("./pages/HeatTransfer").then((m) => ({ default: m.HeatTransfer })));
+const BourneProtocol = lazy(() => import("./pages/BourneProtocol").then((m) => ({ default: m.BourneProtocol })));
+const MixingSensitivity = lazy(() =>
+  import("./pages/MixingSensitivity").then((m) => ({ default: m.MixingSensitivity })),
+);
 
 const deferred = (page: ReactNode) => <Suspense fallback={<p>Loading…</p>}>{page}</Suspense>;
 
@@ -41,6 +46,9 @@ export function App() {
         <Route path="crystallization-sensitivity" element={<CrystallizationSensitivity />} />
         <Route path="vessel-assessment" element={deferred(<VesselAssessment />)} />
         <Route path="vessel-comparison" element={deferred(<VesselComparison />)} />
+        <Route path="heat-transfer" element={deferred(<HeatTransfer />)} />
+        <Route path="bourne-protocol" element={deferred(<BourneProtocol />)} />
+        <Route path="reaction-sensitivity" element={deferred(<MixingSensitivity />)} />
         <Route path="unit-converter" element={<UnitConverter />} />
         <Route path="equations-reference" element={deferred(<EquationsReference />)} />
         <Route path="*" element={<NotFound />} />

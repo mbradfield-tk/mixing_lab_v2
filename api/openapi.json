@@ -547,6 +547,20 @@
         "title": "Body_import_replace_api_v1_reactions_import_put",
         "type": "object"
       },
+      "Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post",
+        "type": "object"
+      },
       "BourneAssessRequest": {
         "additionalProperties": false,
         "properties": {
@@ -728,6 +742,11 @@
       "BourneAssessResult": {
         "additionalProperties": false,
         "properties": {
+          "conclusion": {
+            "description": "Conclusion paragraph(s) of the summary (Markdown)",
+            "title": "Conclusion",
+            "type": "string"
+          },
           "dominant": {
             "description": "Mixing-insensitive | Micromixing | Mesomixing | Macromixing | Inconclusive | Incomplete",
             "title": "Dominant",
@@ -738,6 +757,11 @@
             "title": "Next Test",
             "type": "integer"
           },
+          "pm_span": {
+            "description": "Achieved Test 1 high/low P/m ratio (100 intended)",
+            "title": "Pm Span",
+            "type": "number"
+          },
           "summary": {
             "description": "Decision-tree conclusion (Markdown)",
             "title": "Summary",
@@ -746,6 +770,14 @@
           "tentative": {
             "title": "Tentative",
             "type": "boolean"
+          },
+          "test_lines": {
+            "description": "Per-test findings of the summary (Markdown)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Test Lines",
+            "type": "array"
           },
           "tests": {
             "items": {
@@ -760,9 +792,231 @@
           "dominant",
           "tentative",
           "next_test",
-          "summary"
+          "summary",
+          "test_lines",
+          "conclusion",
+          "pm_span"
         ],
         "title": "BourneAssessResult",
+        "type": "object"
+      },
+      "BourneDefaults": {
+        "additionalProperties": false,
+        "properties": {
+          "V_L": {
+            "description": "Mid fill range working volume",
+            "title": "V L",
+            "type": "number"
+          },
+          "centre_rpm": {
+            "description": "Mid speed range (Custom RPM centre default)",
+            "title": "Centre Rpm",
+            "type": "number"
+          },
+          "reactor_limits": {
+            "description": "Volume / speed limits table (page formatting)",
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Reactor Limits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "V_L",
+          "centre_rpm",
+          "reactor_limits"
+        ],
+        "title": "BourneDefaults",
+        "type": "object"
+      },
+      "BourneImport": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Raw field/value pairs of the export",
+            "title": "Fields",
+            "type": "object"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/BourneTestRow"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "mechanism": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Mechanism"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Meta",
+            "type": "object"
+          },
+          "meta_caption": {
+            "title": "Meta Caption",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BourneStatus"
+          },
+          "tests_done": {
+            "items": {
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "type": "integer"
+            },
+            "title": "Tests Done",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "mechanism",
+          "tests_done",
+          "findings",
+          "meta",
+          "meta_caption",
+          "fields"
+        ],
+        "title": "BourneImport",
+        "type": "object"
+      },
+      "BourneKpiDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "centre": {
+            "title": "Centre",
+            "type": "number"
+          },
+          "critical": {
+            "description": "Quality-defining KPI (impurity / selectivity)",
+            "title": "Critical",
+            "type": "boolean"
+          },
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "max_change_pct": {
+            "title": "Max Change Pct",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "noise_limited": {
+            "description": "Change within 2x the measurement noise",
+            "title": "Noise Limited",
+            "type": "boolean"
+          },
+          "sensitive": {
+            "title": "Sensitive",
+            "type": "boolean"
+          },
+          "threshold_pct": {
+            "title": "Threshold Pct",
+            "type": "number"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit",
+          "low",
+          "centre",
+          "high",
+          "max_change_pct",
+          "threshold_pct",
+          "sensitive",
+          "noise_limited",
+          "critical"
+        ],
+        "title": "BourneKpiDetail",
+        "type": "object"
+      },
+      "BourneOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "kpi_columns": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Test -> low / centre / high column names",
+            "title": "Kpi Columns",
+            "type": "object"
+          },
+          "response_metrics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Response Metrics",
+            "type": "array"
+          },
+          "unit_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Operations",
+            "type": "array"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kpi_columns",
+          "response_metrics",
+          "units",
+          "unit_operations"
+        ],
+        "title": "BourneOptions",
         "type": "object"
       },
       "BournePlanRequest": {
@@ -1048,6 +1302,344 @@
         "title": "BournePlanResult",
         "type": "object"
       },
+      "BournePlanTables": {
+        "additionalProperties": false,
+        "description": "The Bourne condition tables, formatted as on the page.",
+        "properties": {
+          "centre_info": {
+            "description": "Markdown",
+            "title": "Centre Info",
+            "type": "string"
+          },
+          "centre_pm_W_kg": {
+            "title": "Centre Pm W Kg",
+            "type": "number"
+          },
+          "has_speed_plan": {
+            "description": "False for a vessel with a single working volume",
+            "title": "Has Speed Plan",
+            "type": "boolean"
+          },
+          "reactor_limits": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Reactor Limits",
+            "type": "array"
+          },
+          "setpoints": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Setpoints",
+            "type": "array"
+          },
+          "setpoints_caption": {
+            "title": "Setpoints Caption",
+            "type": "string"
+          },
+          "test1": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Test1",
+            "type": "array"
+          },
+          "test1_pm_span": {
+            "title": "Test1 Pm Span",
+            "type": "number"
+          },
+          "test2": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Test2",
+            "type": "array"
+          },
+          "test3": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Test3",
+            "type": "array"
+          }
+        },
+        "required": [
+          "centre_pm_W_kg",
+          "centre_info",
+          "test1_pm_span",
+          "has_speed_plan",
+          "reactor_limits",
+          "test1",
+          "setpoints",
+          "setpoints_caption",
+          "test2",
+          "test3"
+        ],
+        "title": "BournePlanTables",
+        "type": "object"
+      },
+      "BourneReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "D_imp_m": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "D Imp M"
+          },
+          "Np": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Np"
+          },
+          "P_atm": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "P Atm",
+            "type": "number"
+          },
+          "T_C": {
+            "default": 25.0,
+            "title": "T C",
+            "type": "number"
+          },
+          "V_L": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Working volume; default mid fill range",
+            "title": "V L"
+          },
+          "centre": {
+            "$ref": "#/components/schemas/CenterMode",
+            "default": "default"
+          },
+          "centre_pm_W_kg": {
+            "default": 0.2,
+            "description": "Used when centre = custom_pm",
+            "exclusiveMinimum": 0.0,
+            "title": "Centre Pm W Kg",
+            "type": "number"
+          },
+          "centre_rpm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Used when centre = custom_rpm",
+            "title": "Centre Rpm"
+          },
+          "fed_batch_volumes_L": {
+            "description": "Fill volumes at which Test 1 speeds are re-set",
+            "items": {
+              "type": "number"
+            },
+            "title": "Fed Batch Volumes L",
+            "type": "array"
+          },
+          "feed_basis": {
+            "$ref": "#/components/schemas/FeedBasis",
+            "default": "rate"
+          },
+          "feed_rate_mL_min": {
+            "default": 5.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Feed Rate Ml Min",
+            "type": "number"
+          },
+          "feed_time_min": {
+            "default": 20.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Feed Time Min",
+            "type": "number"
+          },
+          "feed_volume_mL": {
+            "default": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Feed Volume Ml",
+            "type": "number"
+          },
+          "fluid": {
+            "default": "Water",
+            "title": "Fluid",
+            "type": "string"
+          },
+          "impeller_ratio": {
+            "default": 3.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Impeller Ratio",
+            "type": "number"
+          },
+          "mid_ratio": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Mid Ratio",
+            "type": "number"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectInfo"
+          },
+          "reactor": {
+            "minLength": 1,
+            "title": "Reactor",
+            "type": "string"
+          },
+          "surface_ratio": {
+            "default": 0.1,
+            "description": "ε_loc/ε_avg at the surface feed",
+            "exclusiveMinimum": 0.0,
+            "title": "Surface Ratio",
+            "type": "number"
+          },
+          "test1": {
+            "items": {
+              "$ref": "#/components/schemas/KpiResponse"
+            },
+            "minItems": 1,
+            "title": "Test1",
+            "type": "array"
+          },
+          "test2": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KpiResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test2"
+          },
+          "test3": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KpiResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test3"
+          }
+        },
+        "required": [
+          "reactor",
+          "test1"
+        ],
+        "title": "BourneReportRequest",
+        "type": "object"
+      },
       "BourneStatus": {
         "enum": [
           "skip",
@@ -1061,6 +1653,13 @@
       "BourneTestOut": {
         "additionalProperties": false,
         "properties": {
+          "kpi_details": {
+            "items": {
+              "$ref": "#/components/schemas/BourneKpiDetail"
+            },
+            "title": "Kpi Details",
+            "type": "array"
+          },
           "kpis": {
             "items": {
               "additionalProperties": {
@@ -1117,7 +1716,8 @@
           "status",
           "verdict",
           "run_next_test",
-          "kpis"
+          "kpis",
+          "kpi_details"
         ],
         "title": "BourneTestOut",
         "type": "object"
@@ -2457,6 +3057,32 @@
             "description": "Default: mid fill range",
             "title": "V L"
           },
+          "cp_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's heat capacity",
+            "title": "Cp J Kgk"
+          },
+          "cp_jacket_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the medium's Cp",
+            "title": "Cp Jacket J Kgk"
+          },
           "d_hyd_jacket_m": {
             "default": 0.05,
             "exclusiveMinimum": 0.0,
@@ -2491,6 +3117,32 @@
             "title": "Include Agitator",
             "type": "boolean"
           },
+          "k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's conductivity",
+            "title": "K W Mk"
+          },
+          "lining_k_W_mK": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's k",
+            "title": "Lining K W Mk"
+          },
           "lining_material": {
             "anyOf": [
               {
@@ -2503,11 +3155,37 @@
             "description": "'None' for unlined; default: vessel record",
             "title": "Lining Material"
           },
+          "lining_thickness_mm": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's thickness",
+            "title": "Lining Thickness Mm"
+          },
           "m_dot_jacket_kg_s": {
             "default": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "M Dot Jacket Kg S",
             "type": "number"
+          },
+          "mu_Pa_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's viscosity",
+            "title": "Mu Pa S"
           },
           "mu_wall_Pa_s": {
             "default": 0.0,
@@ -2541,6 +3219,19 @@
             "title": "Reactor",
             "type": "string"
           },
+          "rho_kg_m3": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's density",
+            "title": "Rho Kg M3"
+          },
           "time_unit": {
             "default": "Minutes",
             "enum": [
@@ -2556,6 +3247,19 @@
             "exclusiveMinimum": 0.0,
             "title": "V Jacket M S",
             "type": "number"
+          },
+          "wall_k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the wall material's k",
+            "title": "Wall K W Mk"
           },
           "wall_material": {
             "anyOf": [
@@ -2902,6 +3606,206 @@
           "T_coolant_C"
         ],
         "title": "HeatSpec",
+        "type": "object"
+      },
+      "HeatTransferDefaults": {
+        "additionalProperties": false,
+        "description": "Inputs the Heat Transfer page loads for a vessel.",
+        "properties": {
+          "A_ht_m2": {
+            "title": "A Ht M2",
+            "type": "number"
+          },
+          "D_imp_m": {
+            "title": "D Imp M",
+            "type": "number"
+          },
+          "D_tank_m": {
+            "title": "D Tank M",
+            "type": "number"
+          },
+          "N_rpm": {
+            "title": "N Rpm",
+            "type": "number"
+          },
+          "N_rpm_range": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded speed range, if any",
+            "title": "N Rpm Range"
+          },
+          "Np": {
+            "title": "Np",
+            "type": "number"
+          },
+          "V_L": {
+            "title": "V L",
+            "type": "number"
+          },
+          "V_L_range": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "V L Range"
+          },
+          "lining_k_W_mK": {
+            "title": "Lining K W Mk",
+            "type": "number"
+          },
+          "lining_material": {
+            "title": "Lining Material",
+            "type": "string"
+          },
+          "lining_thickness_mm": {
+            "title": "Lining Thickness Mm",
+            "type": "number"
+          },
+          "wall_k_W_mK": {
+            "title": "Wall K W Mk",
+            "type": "number"
+          },
+          "wall_material": {
+            "title": "Wall Material",
+            "type": "string"
+          },
+          "wall_thickness_mm": {
+            "title": "Wall Thickness Mm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "D_tank_m",
+          "D_imp_m",
+          "N_rpm",
+          "Np",
+          "V_L",
+          "A_ht_m2",
+          "wall_material",
+          "wall_k_W_mK",
+          "wall_thickness_mm",
+          "lining_material",
+          "lining_k_W_mK",
+          "lining_thickness_mm",
+          "N_rpm_range",
+          "V_L_range"
+        ],
+        "title": "HeatTransferDefaults",
+        "type": "object"
+      },
+      "HeatTransferOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "fouling_default": {
+            "title": "Fouling Default",
+            "type": "number"
+          },
+          "linings": {
+            "additionalProperties": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "description": "Lining -> (k W/m·K, thickness mm)",
+            "title": "Linings",
+            "type": "object"
+          },
+          "media": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Heat-transfer medium -> Cp (J/kg·K)",
+            "title": "Media",
+            "type": "object"
+          },
+          "nusselt_correlations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Nusselt Correlations",
+            "type": "array"
+          },
+          "sweep_parameters": {
+            "description": "field = SweepKey",
+            "items": {
+              "$ref": "#/components/schemas/ParameterOption"
+            },
+            "title": "Sweep Parameters",
+            "type": "array"
+          },
+          "sweep_zero_max": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Sweep upper bound when the value is 0",
+            "title": "Sweep Zero Max",
+            "type": "object"
+          },
+          "unit_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Operations",
+            "type": "array"
+          },
+          "wall_materials": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Wall material -> k (W/m·K)",
+            "title": "Wall Materials",
+            "type": "object"
+          }
+        },
+        "required": [
+          "media",
+          "nusselt_correlations",
+          "wall_materials",
+          "linings",
+          "sweep_parameters",
+          "sweep_zero_max",
+          "unit_operations",
+          "fouling_default"
+        ],
+        "title": "HeatTransferOptions",
         "type": "object"
       },
       "HeatTransferResolved": {
@@ -3988,6 +4892,144 @@
         "title": "ProjectInfo",
         "type": "object"
       },
+      "ProtocolPage": {
+        "additionalProperties": false,
+        "description": "The Reaction Sensitivity Protocol results, formatted as on the page (Markdown).",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionOut"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "da_caption": {
+            "title": "Da Caption",
+            "type": "string"
+          },
+          "dt_ad_caption": {
+            "title": "Dt Ad Caption",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "insights": {
+            "description": "Findings with their severity, for display",
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "title": "Insights",
+            "type": "array"
+          },
+          "kinetics_md": {
+            "title": "Kinetics Md",
+            "type": "string"
+          },
+          "next_steps": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Next Steps",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "show_dh_action": {
+            "description": "The reaction has no ΔH: ask how to proceed",
+            "title": "Show Dh Action",
+            "type": "boolean"
+          },
+          "steps": {
+            "description": "Steps 0-5 assessment Markdown ('' = none)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "summary_note": {
+            "title": "Summary Note",
+            "type": "string"
+          },
+          "trxn_caption": {
+            "title": "Trxn Caption",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "'' until ready",
+            "title": "Verdict",
+            "type": "string"
+          },
+          "verdict_kind": {
+            "enum": [
+              "critical",
+              "warning",
+              "caution",
+              "ok",
+              "unknown"
+            ],
+            "title": "Verdict Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready",
+          "show_dh_action",
+          "steps",
+          "kinetics_md",
+          "dt_ad_caption",
+          "da_caption",
+          "trxn_caption",
+          "summary_note",
+          "verdict",
+          "verdict_kind",
+          "findings",
+          "next_steps",
+          "insights",
+          "actions"
+        ],
+        "title": "ProtocolPage",
+        "type": "object"
+      },
       "ProtocolRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4297,6 +5339,32 @@
             "description": "Default: mid fill range",
             "title": "V L"
           },
+          "cp_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's heat capacity",
+            "title": "Cp J Kgk"
+          },
+          "cp_jacket_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the medium's Cp",
+            "title": "Cp Jacket J Kgk"
+          },
           "d_hyd_jacket_m": {
             "default": 0.05,
             "exclusiveMinimum": 0.0,
@@ -4331,6 +5399,32 @@
             "title": "Include Agitator",
             "type": "boolean"
           },
+          "k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's conductivity",
+            "title": "K W Mk"
+          },
+          "lining_k_W_mK": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's k",
+            "title": "Lining K W Mk"
+          },
           "lining_material": {
             "anyOf": [
               {
@@ -4343,11 +5437,37 @@
             "description": "'None' for unlined; default: vessel record",
             "title": "Lining Material"
           },
+          "lining_thickness_mm": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's thickness",
+            "title": "Lining Thickness Mm"
+          },
           "m_dot_jacket_kg_s": {
             "default": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "M Dot Jacket Kg S",
             "type": "number"
+          },
+          "mu_Pa_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's viscosity",
+            "title": "Mu Pa S"
           },
           "mu_wall_Pa_s": {
             "default": 0.0,
@@ -4378,6 +5498,19 @@
             "title": "Reactor",
             "type": "string"
           },
+          "rho_kg_m3": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's density",
+            "title": "Rho Kg M3"
+          },
           "time_unit": {
             "default": "Minutes",
             "enum": [
@@ -4393,6 +5526,19 @@
             "exclusiveMinimum": 0.0,
             "title": "V Jacket M S",
             "type": "number"
+          },
+          "wall_k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the wall material's k",
+            "title": "Wall K W Mk"
           },
           "wall_material": {
             "anyOf": [
@@ -5006,6 +6152,110 @@
         "title": "ScreeningVessel",
         "type": "object"
       },
+      "SensitivityOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "dh_references": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Reactions with a known ΔH (kJ/mol)",
+            "title": "Dh References",
+            "type": "object"
+          },
+          "reaction_orders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reaction Orders",
+            "type": "array"
+          },
+          "unit_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reaction_orders",
+          "dh_references",
+          "unit_operations"
+        ],
+        "title": "SensitivityOptions",
+        "type": "object"
+      },
+      "SensitivityReactionDefaults": {
+        "additionalProperties": false,
+        "properties": {
+          "C0_mol_L": {
+            "title": "C0 Mol L",
+            "type": "number"
+          },
+          "T_C": {
+            "title": "T C",
+            "type": "number"
+          },
+          "dH_kJ_mol": {
+            "title": "Dh Kj Mol",
+            "type": "number"
+          },
+          "k": {
+            "title": "K",
+            "type": "number"
+          },
+          "order": {
+            "enum": [
+              "0",
+              "1",
+              "2",
+              "pseudo-1",
+              "pseudo-2"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "reaction_type": {
+            "title": "Reaction Type",
+            "type": "string"
+          },
+          "rho_cp_kJ_m3K": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ρ·Cp of the solvent at the requested (else database) temperature; None when the solvent is not in the library",
+            "title": "Rho Cp Kj M3K"
+          },
+          "solvent": {
+            "description": "Raw solvent name of the reaction row",
+            "title": "Solvent",
+            "type": "string"
+          },
+          "t_rxn_s": {
+            "title": "T Rxn S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "order",
+          "k",
+          "C0_mol_L",
+          "t_rxn_s",
+          "T_C",
+          "dH_kJ_mol",
+          "reaction_type",
+          "solvent",
+          "rho_cp_kJ_m3K"
+        ],
+        "title": "SensitivityReactionDefaults",
+        "type": "object"
+      },
       "SolidsSpec": {
         "additionalProperties": false,
         "properties": {
@@ -5521,6 +6771,35 @@
         "title": "SweepResult",
         "type": "object"
       },
+      "ThermalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "cp_J_kgK": {
+            "title": "Cp J Kgk",
+            "type": "number"
+          },
+          "k_W_mK": {
+            "title": "K W Mk",
+            "type": "number"
+          },
+          "mu_Pa_s": {
+            "title": "Mu Pa S",
+            "type": "number"
+          },
+          "rho_kg_m3": {
+            "title": "Rho Kg M3",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rho_kg_m3",
+          "mu_Pa_s",
+          "cp_J_kgK",
+          "k_W_mK"
+        ],
+        "title": "ThermalProperties",
+        "type": "object"
+      },
       "TokenResult": {
         "additionalProperties": false,
         "properties": {
@@ -5621,6 +6900,49 @@
             "title": "T Start C",
             "type": "number"
           },
+          "UA_color_range": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ua Color Range"
+          },
+          "U_color_range": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: data min/max",
+            "title": "U Color Range"
+          },
           "V_L": {
             "anyOf": [
               {
@@ -5644,6 +6966,32 @@
             ],
             "title": "Color Theme",
             "type": "string"
+          },
+          "cp_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's heat capacity",
+            "title": "Cp J Kgk"
+          },
+          "cp_jacket_J_kgK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the medium's Cp",
+            "title": "Cp Jacket J Kgk"
           },
           "d_hyd_jacket_m": {
             "default": 0.05,
@@ -5679,6 +7027,32 @@
             "title": "Include Agitator",
             "type": "boolean"
           },
+          "k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's conductivity",
+            "title": "K W Mk"
+          },
+          "lining_k_W_mK": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's k",
+            "title": "Lining K W Mk"
+          },
           "lining_material": {
             "anyOf": [
               {
@@ -5691,11 +7065,37 @@
             "description": "'None' for unlined; default: vessel record",
             "title": "Lining Material"
           },
+          "lining_thickness_mm": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the lining's thickness",
+            "title": "Lining Thickness Mm"
+          },
           "m_dot_jacket_kg_s": {
             "default": 1.0,
             "exclusiveMinimum": 0.0,
             "title": "M Dot Jacket Kg S",
             "type": "number"
+          },
+          "mu_Pa_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's viscosity",
+            "title": "Mu Pa S"
           },
           "mu_wall_Pa_s": {
             "default": 0.0,
@@ -5730,6 +7130,19 @@
             "title": "Reactor",
             "type": "string"
           },
+          "rho_kg_m3": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the fluid's density",
+            "title": "Rho Kg M3"
+          },
           "time_unit": {
             "default": "Minutes",
             "enum": [
@@ -5745,6 +7158,19 @@
             "exclusiveMinimum": 0.0,
             "title": "V Jacket M S",
             "type": "number"
+          },
+          "wall_k_W_mK": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the wall material's k",
+            "title": "Wall K W Mk"
           },
           "wall_material": {
             "anyOf": [
@@ -6595,6 +8021,69 @@
         ]
       }
     },
+    "/api/v1/bourne/defaults/{name}": {
+      "get": {
+        "operationId": "bourne_defaults_api_v1_bourne_defaults__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BourneDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Working-volume and centre-RPM defaults for a vessel",
+        "tags": [
+          "Bourne Protocol"
+        ]
+      }
+    },
+    "/api/v1/bourne/options": {
+      "get": {
+        "operationId": "bourne_options_api_v1_bourne_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BourneOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "KPI column names, suggested metrics and units",
+        "tags": [
+          "Bourne Protocol"
+        ]
+      }
+    },
     "/api/v1/bourne/plan": {
       "post": {
         "operationId": "bourne_plan_api_v1_bourne_plan_post",
@@ -6631,6 +8120,87 @@
           }
         },
         "summary": "Test 1-3 operating conditions",
+        "tags": [
+          "Bourne Protocol"
+        ]
+      }
+    },
+    "/api/v1/bourne/plan/tables": {
+      "post": {
+        "operationId": "bourne_plan_tables_api_v1_bourne_plan_tables_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BournePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BournePlanTables"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test 1-3 conditions formatted as on the page",
+        "tags": [
+          "Bourne Protocol"
+        ]
+      }
+    },
+    "/api/v1/bourne/sensitivity-csv": {
+      "post": {
+        "operationId": "bourne_sensitivity_csv_api_v1_bourne_sensitivity_csv_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BourneReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/csv": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Outcome CSV for the Reaction Sensitivity Protocol",
         "tags": [
           "Bourne Protocol"
         ]
@@ -7522,6 +9092,58 @@
         ]
       }
     },
+    "/api/v1/fluids/thermal": {
+      "get": {
+        "operationId": "fluid_thermal_api_v1_fluids_thermal_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "T_C",
+            "required": false,
+            "schema": {
+              "default": 25.0,
+              "title": "T C",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThermalProperties"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "rho, mu, Cp and k of a fluid at T (heat-transfer inputs)",
+        "tags": [
+          "Fluids"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -7544,6 +9166,114 @@
         "summary": "Liveness check",
         "tags": [
           "Meta"
+        ]
+      }
+    },
+    "/api/v1/heat-transfer/area": {
+      "get": {
+        "operationId": "heat_area_api_v1_heat_transfer_area_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "reactor",
+            "required": true,
+            "schema": {
+              "title": "Reactor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "D_tank_m",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "D Tank M",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "V_L",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "V L",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "title": "Response Heat Area Api V1 Heat Transfer Area Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wetted jacket area at a fill volume",
+        "tags": [
+          "Heat Transfer"
+        ]
+      }
+    },
+    "/api/v1/heat-transfer/defaults/{name}": {
+      "get": {
+        "operationId": "heat_defaults_api_v1_heat_transfer_defaults__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeatTransferDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inputs the Heat Transfer page loads for a vessel",
+        "tags": [
+          "Heat Transfer"
         ]
       }
     },
@@ -7583,6 +9313,27 @@
           }
         },
         "summary": "Batch heat-up / cool-down",
+        "tags": [
+          "Heat Transfer"
+        ]
+      }
+    },
+    "/api/v1/heat-transfer/options": {
+      "get": {
+        "operationId": "heat_options_api_v1_heat_transfer_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeatTransferOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Media, correlations, materials and sweep parameters",
         "tags": [
           "Heat Transfer"
         ]
@@ -9180,6 +10931,171 @@
           }
         },
         "summary": "Reaction Sensitivity Protocol verdict and findings",
+        "tags": [
+          "Reaction Sensitivity"
+        ]
+      }
+    },
+    "/api/v1/sensitivity/bourne-import": {
+      "post": {
+        "operationId": "sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_sensitivity_bourne_import_api_v1_sensitivity_bourne_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BourneImport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Parse a Bourne Protocol results CSV",
+        "tags": [
+          "Reaction Sensitivity"
+        ]
+      }
+    },
+    "/api/v1/sensitivity/options": {
+      "get": {
+        "operationId": "sensitivity_options_api_v1_sensitivity_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensitivityOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reaction orders, ΔH reference reactions, unit operations",
+        "tags": [
+          "Reaction Sensitivity"
+        ]
+      }
+    },
+    "/api/v1/sensitivity/page": {
+      "post": {
+        "operationId": "sensitivity_page_api_v1_sensitivity_page_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProtocolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Protocol results formatted as on the page (Markdown)",
+        "tags": [
+          "Reaction Sensitivity"
+        ]
+      }
+    },
+    "/api/v1/sensitivity/reaction-defaults": {
+      "get": {
+        "operationId": "sensitivity_reaction_defaults_api_v1_sensitivity_reaction_defaults_get",
+        "parameters": [
+          {
+            "description": "Reactions Database name (may contain '/')",
+            "in": "query",
+            "name": "reaction",
+            "required": true,
+            "schema": {
+              "description": "Reactions Database name (may contain '/')",
+              "title": "Reaction",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ρ·Cp temperature; default the reaction's",
+            "in": "query",
+            "name": "T_C",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ρ·Cp temperature; default the reaction's",
+              "title": "T C"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensitivityReactionDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kinetics and solvent ρ·Cp of a reaction",
         "tags": [
           "Reaction Sensitivity"
         ]

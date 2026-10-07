@@ -8,8 +8,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from core import bourne_io
 from core import bourne_plan as plan
-from core import catalog, envelope, fluids, kinetics, scale_up, units
+from core import catalog, envelope, fluids, kinetics, scale_up, tables, units
 from core import operating_point as op
 from core import repositories as repos
 from core import schemas as s
@@ -22,11 +23,12 @@ from core.options import (
 )
 from core.records import (
     DATA_DIR, VesselGeometry, bottom_dish_height, fluid_props, fluid_row, range_midpoint,
-    reaction_row, reactor_row, sf, thermal_props,
+    reaction_row, reactor_row, sf, solvent_props, thermal_props,
 )
 from core.serialize import jsonable
 from core.heat_transfer import (
-    LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS, WALL_CONDUCTIVITY,
+    FOULING_DEFAULT, LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS,
+    SWEEP_PARAMETERS, SWEEP_ZERO_VALUE_MAX, WALL_CONDUCTIVITY,
     compute_batch, compute_reaction_profile, find_best_material_key, heat_cool_setup_error,
     load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
     sweep_range_defaults, u_ua_surface, ua_sweep_series,
@@ -349,6 +351,42 @@ def comparison_setup(req: s.ComparisonSetupRequest) -> s.ComparisonSetup:
                   for k in scale_up.SCALABLE_PARAMS])
 
 
+def sensitivity_options() -> s.SensitivityOptions:
+    return s.SensitivityOptions(
+        reaction_orders=list(kinetics.ORDER_OPTIONS),
+        dh_references={n: sf(reaction_row(n).get("delta_H_kJ_mol"))
+                       for n in catalog.reactions_with_enthalpy()},
+        unit_operations=UNIT_OPERATIONS)
+
+
+def sensitivity_reaction_defaults(reaction: str, T_C: float | None = None
+                                  ) -> s.SensitivityReactionDefaults:
+    """Database kinetics of a reaction plus its solvent's ρ·Cp (Taipy auto-fill)."""
+    row = reaction_row(reaction)
+    if row.empty:
+        raise LookupError(f"Unknown reaction '{reaction}'.")
+    kd = kinetics.kinetics_defaults(reaction)
+    solvent = str(row.get("solvent", "") or "")
+    p = solvent_props(solvent, kd["T"] if T_C is None else T_C)
+    return s.SensitivityReactionDefaults(
+        order=kd["order"], k=kd["k"], C0_mol_L=kd["C0"], t_rxn_s=kd["t_rxn"], T_C=kd["T"],
+        dH_kJ_mol=kd["dH"], reaction_type=str(row.get("type", "") or ""), solvent=solvent,
+        rho_cp_kJ_m3K=round(p["rho_kg_m3"] * p["Cp_J_per_kgK"] / 1000.0, 1) if p else None)
+
+
+def bourne_import(raw: bytes) -> s.BourneImport:
+    """Parse a Bourne Protocol results export (the Sensitivity CSV)."""
+    try:
+        df = tables.read_upload_csv(raw, dtype=str, keep_default_na=False)
+    except Exception as exc:  # noqa: BLE001 - any parse failure is a bad upload
+        raise ValueError(f"Could not read the file: {exc}") from None
+    imp = bourne_io.parse(df)
+    return s.BourneImport(
+        status=imp["status"], mechanism=imp["mechanism"] or None, tests_done=imp["tests_done"],
+        findings=[s.BourneTestRow(**r) for r in imp["findings"]], meta=imp["meta"],
+        meta_caption=imp["meta_caption"], fields=imp["fields"])
+
+
 def kinetics_defaults(reaction: str) -> s.KineticsDefaults:
     """Database kinetics for a reaction, plus its solvent when that is a known fluid."""
     if reaction_row(reaction).empty:
@@ -386,6 +424,17 @@ def comparison_summary(req: s.ComparisonRequest) -> s.ComparisonResult:
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
+def bourne_reactor(name: str) -> pd.Series:
+    return _reactor(name)
+
+
+def bourne_options() -> s.BourneOptions:
+    return s.BourneOptions(
+        kpi_columns={str(n): list(cols) for n, cols in bourne_kpi.KPI_COLUMNS.items()},
+        response_metrics=list(bourne_kpi.RESPONSE_METRICS), units=list(bourne_kpi.KPI_UNITS),
+        unit_operations=UNIT_OPERATIONS)
+
+
 def bourne_system(req: s.BournePlanRequest) -> plan.BourneSystem:
     row = _reactor(req.reactor)
     v_l = req.V_L or range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
@@ -460,11 +509,20 @@ def bourne_assess(req: s.BourneAssessRequest) -> s.BourneAssessResult:
         if res is None:
             continue
         verdict, run_next = rules.bourne_test_verdict(n, res, ratio)
-        tests.append(s.BourneTestOut(test=n, status=res["status"], verdict=verdict,
-                                     run_next_test=run_next, kpis=jsonable(res["table"])))
+        tests.append(s.BourneTestOut(
+            test=n, status=res["status"], verdict=verdict, run_next_test=run_next,
+            kpis=jsonable(res["table"]),
+            kpi_details=[s.BourneKpiDetail(
+                name=r["name"], unit=r["unit"], low=r["low"], centre=r["ctr"], high=r["high"],
+                max_change_pct=r["max_pct"], threshold_pct=r["threshold"],
+                sensitive=r["sensitive"], noise_limited=r["noise_limited"],
+                critical=r["criticality"] == "critical") for r in res["results"]]))
     o = ev["outcome"]
     return s.BourneAssessResult(tests=tests, dominant=o["dominant"], tentative=o["tentative"],
-                                next_test=o["next_test"], summary=rules.bourne_summary_md(o))
+                                next_test=o["next_test"], summary=rules.bourne_summary_md(o),
+                                test_lines=[ln.removeprefix("- ") for ln in rules.bourne_test_lines(o)],
+                                conclusion="\n".join(rules.bourne_conclusion_lines(o)),
+                                pm_span=jsonable(ratio))
 
 
 def bourne_evaluation(req: s.BourneAssessRequest) -> dict:
@@ -523,26 +581,76 @@ def heat_transfer_inputs(req: s.HeatTransferRequest) -> tuple[dict, dict, pd.Ser
     d_tank = req.D_tank_m or sf(row.get("D_tank_m"), 0.1)
     v_l = req.V_L or range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
     props = thermal_props(req.fluid, req.T_start_C)
+    lining_k = 0.0 if lining == "None" else LINING_CONDUCTIVITY.get(lining, 0.0)
+    lining_mm = 0.0 if lining == "None" else LINING_THICKNESS_DEFAULT.get(lining, 0.002) * 1000.0
+
+    def pick(override, default):
+        return default if override is None else override
+
     data = {
-        "rho": props["rho"], "mu": props["mu"], "cp": props["cp"], "k_fluid": props["k"],
+        "rho": pick(req.rho_kg_m3, props["rho"]), "mu": pick(req.mu_Pa_s, props["mu"]),
+        "cp": pick(req.cp_J_kgK, props["cp"]), "k_fluid": pick(req.k_W_mK, props["k"]),
         "d_tank": d_tank, "d_imp": req.D_imp_m or sf(row.get("D_imp_m"), 0.05),
         "n_rpm": req.N_rpm or range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0),
         "np_in": req.Np or sf(row.get("Np"), 1.27), "v_l": v_l,
         "mu_wall": req.mu_wall_Pa_s, "nusselt_correlation": nu_corr, "htm_name": htm,
         "v_jacket": req.v_jacket_m_s, "d_hyd_jacket": req.d_hyd_jacket_m,
         "m_dot_jacket": req.m_dot_jacket_kg_s,
-        "cp_jacket": sf(htm_db[htm].get("Cp_J_kgK"), 3500.0),
+        "cp_jacket": pick(req.cp_jacket_J_kgK, sf(htm_db[htm].get("Cp_J_kgK"), 3500.0)),
         "include_agitator": req.include_agitator,
-        "wall_k": WALL_CONDUCTIVITY.get(wall, 16.0),
+        "wall_k": pick(req.wall_k_W_mK, WALL_CONDUCTIVITY.get(wall, 16.0)),
         "wall_thickness_mm": req.wall_thickness_mm or sf(row.get("wall_thickness_mm"), 5.0),
-        "lining_k": 0.0 if lining == "None" else LINING_CONDUCTIVITY.get(lining, 0.0),
-        "lining_thickness_mm": (0.0 if lining == "None"
-                                else LINING_THICKNESS_DEFAULT.get(lining, 0.002) * 1000.0),
+        "lining_k": pick(req.lining_k_W_mK, lining_k),
+        "lining_thickness_mm": pick(req.lining_thickness_mm, lining_mm),
         "fouling": req.fouling_m2K_W,
         "a_ht": req.A_ht_m2 or reactor_jacket_area(row, d_tank, v_l),
         "t_start": req.T_start_C, "t_jacket": req.T_jacket_C,
     }
     return data, htm_db, row, {"wall_material": wall, "lining_material": lining}
+
+
+UNIT_OPERATIONS = ["Reaction", "Quench", "Crystallization", "Liquid-Liquid Extraction",
+                   "Distillation", "Filtration", "Drying", "Other"]
+
+
+def heat_transfer_options() -> s.HeatTransferOptions:
+    _reactors, _fluids, htm_db = load_csvs(DATA_DIR)
+    return s.HeatTransferOptions(
+        media={name: sf(entry.get("Cp_J_kgK"), 3500.0) for name, entry in htm_db.items()},
+        nusselt_correlations=list(NUSSELT_CORRELATIONS), wall_materials=dict(WALL_CONDUCTIVITY),
+        linings={name: (LINING_CONDUCTIVITY[name], LINING_THICKNESS_DEFAULT.get(name, 0.002) * 1000.0)
+                 for name in LINING_CONDUCTIVITY},
+        sweep_parameters=[s.ParameterOption(field=key, label=label)
+                          for label, key in SWEEP_PARAMETERS.items()],
+        sweep_zero_max=dict(SWEEP_ZERO_VALUE_MAX), unit_operations=UNIT_OPERATIONS,
+        fouling_default=FOULING_DEFAULT)
+
+
+def heat_transfer_defaults(reactor: str) -> s.HeatTransferDefaults:
+    """Vessel geometry, operating point and materials the Heat Transfer page loads."""
+    data, _htm_db, row, labels = heat_transfer_inputs(
+        s.HeatTransferRequest(reactor=reactor, T_jacket_C=0.0))
+
+    def rng(lo_key: str, hi_key: str):
+        lo, hi = sf(row.get(lo_key)), sf(row.get(hi_key))
+        return (lo, hi) if hi > lo >= 0 else None
+
+    return s.HeatTransferDefaults(
+        D_tank_m=data["d_tank"], D_imp_m=data["d_imp"], N_rpm=data["n_rpm"], Np=data["np_in"],
+        V_L=data["v_l"], A_ht_m2=data["a_ht"], wall_material=labels["wall_material"],
+        wall_k_W_mK=data["wall_k"], wall_thickness_mm=data["wall_thickness_mm"],
+        lining_material=labels["lining_material"], lining_k_W_mK=data["lining_k"],
+        lining_thickness_mm=data["lining_thickness_mm"],
+        N_rpm_range=rng("N_rpm_min", "N_rpm_max"), V_L_range=rng("V_L_min", "V_L_max"))
+
+
+def jacket_area(reactor: str, D_tank_m: float, V_L: float) -> float:
+    return reactor_jacket_area(_reactor(reactor), D_tank_m, V_L)
+
+
+def thermal_properties(name: str, T_C: float) -> s.ThermalProperties:
+    p = thermal_props(name, T_C)
+    return s.ThermalProperties(rho_kg_m3=p["rho"], mu_Pa_s=p["mu"], cp_J_kgK=p["cp"], k_W_mK=p["k"])
 
 
 def heat_cool_inputs(req: s.HeatCoolRequest) -> tuple[dict, dict, pd.Series, dict]:

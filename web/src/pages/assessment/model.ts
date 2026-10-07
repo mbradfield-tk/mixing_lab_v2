@@ -237,3 +237,76 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+type Tone = "critical" | "warning" | "ok" | "unknown" | "info";
+
+export interface SolveTile {
+  label: string;
+  value: string;
+  unit?: string;
+  tone?: Tone;
+  hint?: string;
+}
+
+/** Solve-for outcome tiles: the solved variable, the target, the held input and the vessel window. */
+export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: number; V_L: number }): SolveTile[] {
+  const solveN = res.solve_for === "N_rpm";
+  const unit = solveN ? "RPM" : "L";
+  const g4 = (x: number) => formatG(x, 4);
+  const [wlo, whi] = res.vessel_range;
+  const achieved = res.solutions[0]?.achieved;
+  const gives = achieved === null || achieved === undefined ? "" : ` · gives ${g4(achieved)}`;
+  const headline: SolveTile =
+    res.status === "solved"
+      ? { label: solveN ? "Agitation speed N" : "Working volume V", value: g4(res.best as number), unit, tone: "ok",
+          hint: res.solutions.length > 1 ? `${res.solutions.length} solutions (see table)` : `Solution found${gives}` }
+      : res.status === "outside_vessel_range"
+        ? { label: solveN ? "Agitation speed N" : "Working volume V", value: g4(res.solutions[0].value), unit,
+            tone: "warning", hint: `Outside the vessel window${gives}` }
+        : { label: solveN ? "Agitation speed N" : "Working volume V", value: "No solution", tone: "critical",
+            hint: res.achievable_span && res.achievable_span[0] !== null && res.achievable_span[1] !== null
+              ? `Achievable ${label}: ${g4(res.achievable_span[0])}–${g4(res.achievable_span[1])}`
+              : "Target not reachable" };
+  return [
+    headline,
+    { label: `Target ${label}`, value: formatG(res.target) },
+    solveN
+      ? { label: "Held: working volume V", value: formatG(fixed.V_L, 3), unit: "L" }
+      : { label: "Held: agitation speed N", value: fixed.N_rpm.toFixed(0), unit: "RPM" },
+    { label: "Vessel window", value: `${g4(wlo)}–${g4(whi)}`, unit },
+  ];
+}
+
+/** Severity of a ``particle_suspension_criterion`` label. */
+export function suspensionTone(state: string): Tone {
+  if (/^poorly/i.test(state)) return "critical";
+  if (/^(partially|just)/i.test(state)) return "warning";
+  if (/^fully/i.test(state)) return "ok";
+  return "info";
+}
+
+/** Severity of a ``heat_balance_assessment`` label. */
+export function heatBalanceTone(balance: string): Tone {
+  if (balance.includes("🔴")) return "critical";
+  if (balance.includes("⚠️") || /^moderate/i.test(balance)) return "warning";
+  if (/^(easily|comfortable)/i.test(balance)) return "ok";
+  return "info";
+}
+
+/** Severity of a mass-transfer screening label (``MT_SCREENING_LABELS``). */
+export function transferTone(screening: string): Tone {
+  if (/transfer-limited/i.test(screening)) return "critical";
+  if (/comparable/i.test(screening)) return "warning";
+  if (/exceeds/i.test(screening)) return "ok";
+  return "unknown";
+}
+
+/** Headline parameters shown as large tiles; the rest are listed smaller. */
+export const HYDRO_FEATURED = [
+  "Reynolds number",
+  "Power per volume",
+  "Tip speed",
+  "Blend time (95%)",
+  "Micromixing time t_E",
+  "Kolmogorov length η",
+];

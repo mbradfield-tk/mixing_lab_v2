@@ -1,6 +1,6 @@
 # Modularization roadmap: FastAPI back end + React front end
 
-Status date: 2026-10-06. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 and P1 are complete. P2 has started:** the React app (`web/`) is live at `/app` with Home, Equations Reference, Unit Converter, all four databases (Vessel, Particle, Reaction, Fluid), Recorded Results and the Crystallization Sensitivity placeholder, and slow API results are cached. See the P2 section.
+Status date: 2026-10-07. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 and P1 are complete. P2 page migration is complete:** the React app (`web/`) at `/app` covers every page: Home, Equations Reference, Unit Converter, all four databases, Recorded Results, Vessel Assessment, Vessel Comparison, Heat Transfer, Bourne Protocol, Reaction Sensitivity Protocol and the Crystallization Sensitivity placeholder. Slow API results are cached. Remaining: user sign-off, then retire Taipy (step 11). See the P2 section.
 
 ## Where we are
 
@@ -323,7 +323,7 @@ Make each move with `git mv` plus import updates, and require the golden tests t
   - **Keyed on:** the endpoint, the canonical request JSON, and a data version (every `data/*.csv|json` modification time plus today's date, because PDFs print it). Editing any database invalidates all cached results.
   - **Never cached:** errors.
   - **Cached endpoints:** `POST /reports/{kind}`, `POST /charts/{kind}`, `/assessment/surface`, `/comparison`, `/comparison/scale-up` and `/heat-transfer/ua-surface`. A repeated PDF request returns instantly instead of taking about 11 s.
-- **Not yet:** background jobs (submit, then poll) for first-time slow requests, and the Bourne CSV upload endpoint. Do these with the Vessel Assessment and Bourne pages.
+- **Not yet:** background jobs (submit, then poll) for first-time slow requests. *(The Bourne CSV upload endpoint now exists: `POST /sensitivity/bourne-import`, row 9.)*
 
 **10. Build React pages one at a time, starting with the lowest risk.**
 
@@ -344,7 +344,7 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 - **Front-end stack:** Vite + React + TypeScript, generated API types, TanStack Query for data fetching and caching, react-plotly.js, `@google/model-viewer`, and a table component that supports inline editing (for example AG Grid or TanStack Table).
 - **Acceptance per page:** same numbers as the golden scenarios (the API parity tests already guarantee this), PDF parity, and side-by-side UX review.
 
-*Delivered so far: rows 1–6 (Home, Equations Reference, Unit Converter; Particle, Reaction, Fluid and Vessel databases; Recorded Results; Vessel Assessment; Vessel Comparison) and the Crystallization Sensitivity placeholder. Next: row 7, Heat Transfer.*
+*Delivered: every row (1–9) and the Crystallization Sensitivity placeholder. Every Taipy page now has a React counterpart; next is user sign-off, then step 11 (retire Taipy).*
 
 - **App:** [web/](../web) uses Vite 8, React 19, TypeScript 5.9 and React Router 7 (base path `/app`). Data comes from TanStack Query 5 through `openapi-fetch`, typed from `api/openapi.json`.
 - **Pages:**
@@ -405,7 +405,45 @@ Make each move with `git mv` plus import updates, and require the golden tests t
       - `GET /kinetics/defaults?reaction=`.
     - A test drives the Taipy page through its full scenario (solids, sparging, fed-batch, heat, scale-up) and asserts that the HTTP tables equal the page tables.
     - When a scaled feed would overflow a vessel, the page shows the status line, the warning and the feed-plan table, but not the other results (Taipy hid the feed plan too).
-- **Navigation:** the sidebar follows the Taipy menu order. Pages not migrated yet show ↗ and open in the Taipy app (`VITE_TAIPY_URL`, default `http://127.0.0.1:5000`).
+  - **Heat Transfer (row 7)** at `/app/heat-transfer`. It has all three modes (heat/cool vessel, reaction temperature profile, U/UA parameter sweep), project information, every geometry, material, fluid, jacket and temperature input, the tables, all 8 charts and the PDF.
+    - **API additions:**
+      - **Overrides:** `HeatTransferRequest` now accepts optional overrides for every value the page lets users edit: fluid ρ/μ/Cp/k, jacket Cp, wall k, lining k and thickness. Without them the results are unchanged.
+      - **Surface colour range:** `UaSurfaceRequest` accepts custom `U_color_range` / `UA_color_range`.
+      - **New endpoints:**
+        - `GET /heat-transfer/options`: media with Cp, correlations, materials, linings, sweep parameters, unit operations.
+        - `GET /heat-transfer/defaults/{vessel}`;
+        - `GET /heat-transfer/area`;
+        - `GET /fluids/thermal`.
+    - **Front end:** the tables come from `/heat-transfer/heat-cool` and `/reaction-profile`, and the figures from `/charts/{heat-cool, reaction-profile, ua-surface}`; each mode's two calls run in parallel. The status, adiabatic, agitator and KPI text are ports of the Taipy strings, unit-tested in `pages/heat/model.test.ts`.
+    - A test drives the Taipy page in all three modes, with edited ρ, wall k and jacket Cp and a custom colour range, and asserts the HTTP tables and surface equal the page.
+  - **Bourne Protocol (row 8)** at `/app/bourne-protocol`. It has both tabs (Protocol and Plan), project information, the system card with reactor limits and the 3D viewer, the decision-tree image, all three gated tests with editable KPI tables, the summary, the PDF and the Sensitivity CSV.
+    - **API additions:**
+      - `POST /bourne/plan/tables`: formatted conditions, setpoints and captions, from the new [reports/bourne_tables.py](../reports/bourne_tables.py), which the Taipy page now uses too.
+      - `GET /bourne/options`;
+      - `GET /bourne/defaults/{vessel}`;
+      - `POST /bourne/sensitivity-csv`.
+    - **Front end (`pages/bourne/model.ts`, unit-tested):**
+      - the request builder;
+      - per-test validity keys, matching the Taipy invalidation scopes;
+      - KPI completeness, with the Taipy "Skipped incomplete…" and "Enter the low, centre and high…" wording;
+      - KPI mirroring to the next test;
+      - the fed-batch milestone default (2 × V, then max + V).
+    - **Behaviour:** the speed-plan chart is drawn when the vessel has a fill range; otherwise the page shows the single-volume note.
+    - **Parity test:** drives the Taipy page through Tests 1–3 with fed-batch volumes and custom feed and ratio inputs. It asserts that the HTTP tables, verdicts, KPI table, summary, CSV bytes and vessel defaults equal the page.
+  - **Reaction Sensitivity Protocol (row 9)** at `/app/reaction-sensitivity`. It has Steps 0–7: the Bourne pre-screen with CSV import, kinetics, phases, competing reactions, heat (including the ΔH-source prompt), the optional vessel Damköhler screen, the summary and recommendations, and the PDF. Start, Update and Reset behave as in Taipy.
+    - **API additions:**
+      - `POST /sensitivity/page`;
+      - `GET /sensitivity/options`;
+      - `GET /sensitivity/reaction-defaults`;
+      - `POST /sensitivity/bourne-import`;
+      - `ProtocolReportRequest.bourne_meta`.
+    - **Front end (`pages/sensitivity/model.ts`, unit-tested):**
+      - the request builder (Taipy's `_sf` semantics);
+      - the reaction list for each kinetics answer;
+      - reaction auto-fill (C₀ for heat, ρ·Cp);
+      - the import patch, which prefills only blank project fields.
+    - **Parity test:** imports a real Bourne export into the Taipy page, adds gas, competing reactions, semi-batch and a vessel screen. It asserts that the import, every step's Markdown, the captions, verdict, findings and next steps equal the page, and that the PDF builds with `bourne_meta`.
+- **Navigation:** the sidebar follows the Taipy menu order. Every entry now opens a React page. The ↗ fallback to the Taipy app (`VITE_TAIPY_URL`, default `http://127.0.0.1:5000`) remains for any entry without a `path`.
 - **Styling:** `web/src/styles.css` reproduces the Takeda look: red `#E1251B` / grey `#5C6670`, white cards with a red left accent, and the centred page logo.
 - **Icons:** they come from a new `GET /api/v1/media/icons/{key}?px=` route (cached 96 px thumbnails). The source PNGs are 0.5–1 MB each. The thumbnail cache moved from `pages/_menu_icons.py` to `core/media.thumbnail`.
 - **Serving:** FastAPI serves the built app from `web/dist` at `/app`. Any `/app/...` path returns `index.html`, so deep links and reloads work. `/` redirects to `/app/` once the app is built, otherwise to the API docs. `/app` page loads are written to the usage log as `app:<path>`.
@@ -441,6 +479,25 @@ Make each move with `git mv` plus import updates, and require the golden tests t
     - Over-feeding shows the overflow warning per vessel.
     - Selecting Grignard switches the fluid to THF. No console errors.
   - Front-end tests: 58. Back-end tests: 845.
+  - Row 7 was tested the same way:
+    - Heat/cool: vessel defaults (glass wall, k = 1.2), KPIs, 5 charts and the agitator line; a volume change updates the jacket area.
+    - Reaction mode: the adiabatic line, the profile chart and the summary.
+    - Sweep: vessel bounds load, choosing the same axis swaps the other as in Taipy, and both surfaces render. The custom colour range starts from the automatic limits and rejects max < min.
+    - The PDF is returned with the project-name filename. No console errors.
+  - Front-end tests: 66. Back-end tests: 846.
+  - Row 8 was tested the same way (isolated copy, real data untouched):
+    - Start Protocol shows Test 1 and the iso-P/m chart.
+    - Fed-batch: a milestone outside the fill range is dropped, as in Taipy; 0.08 L gives "Adj. 1" with the clamped ⚠ marker.
+    - Tests 1 and 2 were sensitive and Test 3 was not, giving MACROMIXING. An incomplete KPI row triggers the "Skipped incomplete…" warning, and the Test 2 KPIs were mirrored from Test 1.
+    - The PDF and Sensitivity CSV come back with the project-name filenames.
+    - A temperature change shows the invalidation status and hides Tests 2–3; restoring it brings the results back.
+    - The Plan tab recomputes the conditions.
+  - Row 9 was tested the same way:
+    - The defaults match Taipy: the first measured reaction, k, C₀ for heat and the solvent ρ·Cp.
+    - Importing the Bourne CSV produced by row 8 sets the status to Confirmed and fills the blank project fields and the findings table.
+    - Run assessment shows the per-step boxes. Competing = Yes plus the vessel screen gives the Da_micro / Da_macro findings and the "Mixing sensitivity confirmed" verdict.
+    - The PDF downloads as `RxnSens_E2E_step3_Reaction_….pdf`, and Reset restores the pre-start state.
+  - Front-end tests: 75. Back-end tests: 848.
 - **Run it:**
 
 ```zsh

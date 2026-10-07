@@ -438,3 +438,82 @@ The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` 
 - **New endpoints:** `POST /comparison/setup`, `POST /comparison/tables`, `POST /comparison/save` (returns `{saved, count}`) and `GET /kinetics/defaults`.
 - **Shared code moved out of the Taipy page (no behaviour change; golden outputs identical):** the table formatting (`reports/comparison_tables.py`) and the setup/save helpers (`core.scale_up`).
 - **Small UI difference:** the React page loads the basis vessel's mid-range RPM and volume as soon as scale-up is shown. Taipy started at 100 RPM / 1 L until the basis was changed.
+
+**16j. React Heat Transfer page and its API support.**
+
+- New page at `/app/heat-transfer`; the Taipy page remains.
+- **API (additive, no change to existing results):**
+  - `HeatTransferRequest` gained optional overrides (`rho_kg_m3`, `mu_Pa_s`, `cp_J_kgK`, `k_W_mK`, `cp_jacket_J_kgK`, `wall_k_W_mK`, `lining_k_W_mK`, `lining_thickness_mm`). The API can now reproduce any edited Taipy input; previously these were always looked up.
+  - `UaSurfaceRequest` gained `U_color_range` / `UA_color_range`.
+  - New: `GET /heat-transfer/options`, `GET /heat-transfer/defaults/{vessel}`, `GET /heat-transfer/area`, `GET /fluids/thermal`.
+
+**16k. React Bourne Protocol page and its API support.**
+
+- New page at `/app/bourne-protocol`; the Taipy page remains.
+- **Shared code moved out of the Taipy page (no behaviour change; golden outputs identical):**
+  - table formatting → [reports/bourne_tables.py](../reports/bourne_tables.py);
+  - the suggested KPI names and units → `utils.bourne_kpi.RESPONSE_METRICS` / `KPI_UNITS`.
+- **New endpoints (additive):**
+  - `POST /bourne/plan/tables`: the formatted Test 1–3 condition tables, the fed-batch setpoints and their caption, and the centre-point caption.
+    - Test 3 uses the page label "Sub-surface (mid)"; the PDF keeps "Sub-surface (mid-tank)".
+  - `GET /bourne/options`: KPI column names, suggested metrics and units, unit operations.
+  - `GET /bourne/defaults/{vessel}`: mid-range working volume and centre RPM, plus the reactor-limits table.
+  - `POST /bourne/sensitivity-csv`: the hand-off CSV for the Reaction Sensitivity Protocol. It is byte-identical to the Taipy export.
+- **UI differences:**
+  - **Downloads:** the PDF and the Sensitivity CSV download directly. Taipy had a Generate step, then a Download step.
+  - **Assessment validity:** each test's result is tied to the inputs it depends on, plus the KPI tables of Tests 1..N:
+    - Test 1: the system and centre point;
+    - Test 2: adds the feed inputs;
+    - Test 3: adds the location ratios.
+    
+    Editing an input hides that test's verdict and every later one, as Taipy's invalidation did. Restoring the exact earlier values brings the result back.
+  - **New notice type:** a `warning` notice (amber).
+
+**16l. React Reaction Sensitivity Protocol page and its API support.**
+
+- New page at `/app/reaction-sensitivity`; the Taipy page remains.
+- **New endpoints (additive):**
+  - `POST /sensitivity/page`: Steps 0–5 Markdown, the kinetics / ΔT_ad / Da / t_rxn captions, the summary note, the verdict, findings and next steps, built from the same `rules.protocol_md` as the Taipy page.
+  - `GET /sensitivity/options`: reaction orders, ΔH reference reactions with their values, unit operations.
+  - `GET /sensitivity/reaction-defaults?reaction=&T_C=`: database kinetics, reaction type, raw solvent and the solvent ρ·Cp.
+    - The reaction is a query parameter because names can contain `/`.
+  - `POST /sensitivity/bourne-import` (multipart): parses a Bourne results CSV with `core.bourne_io.parse`, with the same error messages as Taipy. Uploads are capped at the database-import size limit.
+- **Contract change:** `ProtocolReportRequest` gained `bourne_meta`, so the PDF can carry the imported Bourne metadata as the Taipy PDF does.
+- **UI differences:**
+  - **Live results:** once started, the results update live from a debounced request. "Update assessment" forces a refresh.
+  - **PDF:** downloads directly.
+
+**16m. Results shown as dashboards instead of tables (React only; Taipy and PDFs unchanged).**
+
+- **Shared components:** `web/src/components/Insights.tsx`, with severity colours taken from the server's traffic-light icons or status codes:
+  - a verdict banner;
+  - finding cards;
+  - stat tiles;
+  - a numbered action list;
+  - a stage tracker;
+  - a change-vs-threshold bar.
+
+  Each source table is still available under "Show as table", with its CSV download.
+- **Result tables:** any cell that starts with 🔴 / 🟡 / 🟢 / ⚪ / ⚠️ / ✅ now renders as a coloured pill. This includes the Vessel Comparison and scale-up status columns.
+- **Bourne Protocol:**
+  - **Each test:** a verdict banner, plus one card per KPI with its max change, a bar against the threshold, the three responses, and a "critical KPI" or "Within noise" marker.
+  - **Summary:** a dominant-regime banner, a Test 1–3 tracker, and tiles for tests assessed, P/m span, sensitive KPIs and the next step.
+- **Reaction Sensitivity:**
+  - **Summary:** a verdict headline banner, severity-count tiles, finding cards ordered most severe first, Bourne finding cards and numbered next steps.
+  - **Step result boxes:** coloured by severity.
+- **Vessel Assessment:** Damköhler regime cards come first. Hydrodynamics are shown as tiles, with six headline values. Mass-transfer screening uses cards. Solids and heat balance use tiles, with the suspension state and the balance colour-coded.
+  - **Solve-for:** the outcome is shown as four tiles:
+    - the solved N or V, coloured green (solved), amber (outside the vessel window) or red (no solution, with the achievable range);
+    - the target;
+    - the input held fixed;
+    - the vessel window.
+    
+    The roots table now appears only when there is more than one solution.
+- **Heat Transfer:** core KPIs and both summaries are shown as tiles.
+- **Not converted (still tables):** comparative or multi-row data, such as the Vessel Comparison tables, the correlation / heat-transfer-medium comparisons, Bourne condition tables and Recorded Results.
+- **API (additive):**
+  - `BourneTestOut.kpi_details`;
+  - `BourneAssessResult.test_lines` / `conclusion` / `pm_span`;
+  - `ProtocolPage.verdict_kind` / `insights` / `actions`.
+  
+  `rules.bourne_summary_md` is now built from the new `rules.bourne_conclusion_lines`, and its output is unchanged. Tests assert that the structured fields reproduce the existing Markdown and tables.

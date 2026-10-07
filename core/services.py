@@ -262,9 +262,19 @@ def run_protocol(req: s.ProtocolRequest) -> dict:
     return rules.assess_protocol(protocol_inputs(req), damkohler_for)
 
 
+def screening_damkohler_out(da: dict | None) -> s.ScreeningDamkohler | None:
+    if not da:
+        return None
+    return s.ScreeningDamkohler(
+        reactor=da["reactor"], N_rpm=da["N_rpm"], V_L=da["V_L"], fluid=da["fluid"],
+        t_blend_s=jsonable(da["t_blend"]), t_E_s=jsonable(da["t_E"]), Re=jsonable(da["Re"]),
+        P_V_W_L=jsonable(da["P_V_W_L"]), Da_macro=jsonable(da["Da_macro"]),
+        Da_micro=jsonable(da["Da_micro"]))
+
+
 def assess(req: s.ProtocolRequest) -> s.ProtocolResult:
     res = run_protocol(req)
-    kin, da = res["kinetics"], res["da"]
+    kin = res["kinetics"]
     return s.ProtocolResult(
         ready=res["ready"], verdict=_message(res["verdict"]),
         steps=[_message(m) if m else None for m in res["steps"]],
@@ -278,11 +288,7 @@ def assess(req: s.ProtocolRequest) -> s.ProtocolResult:
         heat=s.HeatOut(has_enthalpy=res["has_enthalpy"], resolved=res["heat_resolved"],
                        dH_eff_kJ_mol=jsonable(res["dH_eff"]), dT_ad_K=jsonable(res["dt_ad"]),
                        estimated=res["dh_estimated"], summary=res["heat_summary"]),
-        damkohler=(s.ScreeningDamkohler(
-            reactor=da["reactor"], N_rpm=da["N_rpm"], V_L=da["V_L"], fluid=da["fluid"],
-            t_blend_s=jsonable(da["t_blend"]), t_E_s=jsonable(da["t_E"]), Re=jsonable(da["Re"]),
-            P_V_W_L=jsonable(da["P_V_W_L"]), Da_macro=jsonable(da["Da_macro"]),
-            Da_micro=jsonable(da["Da_micro"])) if da else None),
+        damkohler=screening_damkohler_out(res["da"]),
         bourne_sensitive=res["b_sensitive"], bourne_mechanisms=list(res["b_mechs"]),
     )
 

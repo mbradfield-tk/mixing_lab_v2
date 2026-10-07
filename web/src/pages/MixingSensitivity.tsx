@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, postForFile, unwrap, uploadFile, type Schemas } from "../api/client";
 import { NumberField, SelectField, Switch } from "../components/Form";
 import {
-  ActionList, InsightCard, InsightGrid, StatGrid, TableDetails, VerdictBanner, toneOf, type Tone,
+  ActionList, InsightCard, InsightGrid, LogScale, StatGrid, TableDetails, VerdictBanner, toneOf, type Tone,
 } from "../components/Insights";
 import { Markdown } from "../components/Markdown";
 import { MultiSelect } from "../components/MultiSelect";
@@ -13,8 +13,9 @@ import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
 import { downloadBlob } from "./assessment/model";
 import {
-  BLANK_PROJECT, INITIAL, SUMMARY_PRE_START, buildProtocol, bySeverity, findingRows, importPatch, reactionList,
-  reactionPatch, severityCounts, sf, splitHeadline, type BourneImport, type Inputs, type Project,
+  BLANK_PROJECT, DA_ZONES, INITIAL, SPEED_ZONES, SUMMARY_PENDING, SUMMARY_PRE_START, buildProtocol, bySeverity, daContext,
+  findingRows, importPatch, reactionList, reactionPatch, severityCounts, sf, splitHeadline, timescaleTiles,
+  type BourneImport, type Inputs, type Project,
 } from "./sensitivity/model";
 
 const NOT_RESOLVED = { code: "", label: "Not resolved" };
@@ -27,7 +28,7 @@ function ResultBox({ children, tone }: { children: ReactNode; tone?: Tone }) {
 
 const bourneTone = (sensitiveKpis: string): Tone => (/^none\b/i.test(sensitiveKpis.trim()) ? "ok" : "critical");
 
-/** Step 6: verdict banner, severity tiles, finding cards (most severe first) and next steps. */
+/** Step 8: verdict banner, severity tiles, finding cards (most severe first) and next steps. */
 function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourne: Schemas["BourneTestRow"][] }) {
   const [headline, rest] = splitHeadline(res.verdict);
   const counts = severityCounts(res.insights);
@@ -158,7 +159,7 @@ export function MixingSensitivity() {
 
   const pdf = useMutation({
     mutationFn: () => {
-      if (!res?.ready || !body) throw new Error("Complete the assessment (Steps 1–4) before exporting.");
+      if (!res?.ready || !body) throw new Error("Complete the assessment (Steps 2, 3, 5 and 6) before exporting.");
       return postForFile("/api/v1/reports/sensitivity", {
         protocol: body,
         reaction_name: inputs.reaction,
@@ -251,7 +252,7 @@ export function MixingSensitivity() {
       {"error" in built && <p className="stale-note">{built.error}</p>}
       {page.isError && started && <ErrorNote error={page.error} />}
 
-      <Card title="Step 0 - Bourne Protocol Pre-Screen">
+      <Card title="Step 1 - Bourne Protocol Pre-Screen">
         <p>
           Independent experimental evidence of whether a mixing sensitivity exists. If you have run the Bourne Protocol, enter the
           outcome (or import its results CSV).
@@ -302,7 +303,7 @@ export function MixingSensitivity() {
         {res && step(0) && <ResultBox tone={stepTone(0)}>{step(0)}</ResultBox>}
       </Card>
 
-      <Card title="Step 1 - Reaction Kinetics">
+      <Card title="Step 2 - Reaction Kinetics">
         <p>
           The characteristic reaction time <strong>t<sub>rxn</sub></strong> is the Damköhler reference timescale for every
           mechanism below. When derived from k and C₀, the protocol uses a conservative 90% conversion process-window estimate
@@ -345,7 +346,6 @@ export function MixingSensitivity() {
           />
           <NumberField label="ΔH (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
         </div>
-        <Switch label="Semi-batch (fed-batch) process" checked={inputs.semiBatch} onChange={(semiBatch) => set({ semiBatch })} />
         {res && (
           <ResultBox tone={stepTone(1)}>
             {res.kinetics_md && <Markdown>{res.kinetics_md}</Markdown>}
@@ -354,7 +354,7 @@ export function MixingSensitivity() {
         )}
       </Card>
 
-      <Card title="Step 2 - Phase Assessment">
+      <Card title="Step 3 - Phase Assessment">
         <p>
           Multi-phase systems can be limited by <strong>interphase mass transfer</strong> before mixing even matters. This includes
           gas–liquid (k<sub>L</sub>a) transport and solid–liquid (k<sub>SL</sub>) transport such as solid dissolution, adsorption,
@@ -370,7 +370,31 @@ export function MixingSensitivity() {
         {res && step(2) && <ResultBox tone={stepTone(2)}>{step(2)}</ResultBox>}
       </Card>
 
-      <Card title="Step 3 - Competing Reactions">
+      <Card title="Step 4 - Feed Mode (Mesomixing)">
+        <p>
+          <strong>Mesomixing</strong> is how quickly a fed reagent&apos;s plume disperses into the bulk. In a{" "}
+          <strong>semi-batch (fed-batch)</strong> process the concentration near the feed point depends on the feed rate and the
+          local turbulence: if the plume reacts faster than it disperses, selectivity can shift. A batch process with no feed
+          stream has no feed-zone risk.
+        </p>
+        <Switch label="Semi-batch (fed-batch) process" checked={inputs.semiBatch} onChange={(semiBatch) => set({ semiBatch })} />
+        {res && (
+          <ResultBox tone={inputs.semiBatch ? "warning" : "ok"}>
+            {inputs.semiBatch ? (
+              <p>
+                <strong>Semi-batch</strong> - feed rate/time and feed location matter; they are assessed with competing reactions
+                (Step 5) and in the recommendations.
+              </p>
+            ) : (
+              <p>
+                <strong>Batch</strong> - no feed stream, so no feed-zone (mesomixing) risk from the feed mode.
+              </p>
+            )}
+          </ResultBox>
+        )}
+      </Card>
+
+      <Card title="Step 5 - Competing Reactions">
         <p>
           When parallel/consecutive reactions compete for a reagent, incomplete <strong>micromixing</strong> (molecular scale) and{" "}
           <strong>mesomixing</strong> (feed-plume scale) can shift selectivity.
@@ -384,7 +408,7 @@ export function MixingSensitivity() {
         {res && step(3) && <ResultBox tone={stepTone(3)}>{step(3)}</ResultBox>}
       </Card>
 
-      <Card title="Step 4 - Heat Transfer Screening">
+      <Card title="Step 6 - Heat Transfer Screening">
         <p>
           The thermal load is set by the enthalpy of reaction (ΔH) and the limiting-reagent concentration (C₀), and is assessed by
           the <strong>adiabatic temperature rise</strong> (ΔT<sub>ad</sub> = |ΔH|·C₀·1000/(ρ·Cp)) - the temperature increase at
@@ -419,7 +443,7 @@ export function MixingSensitivity() {
           was measured experimentally. With proxy kinetics, the ΔH is treated as estimated unless a measured override is entered.
         </p>
         <div className="form-row">
-          <NumberField label="ΔH override (kJ/mol, 0 = use Step 1 value)" value={inputs.dhOverride} onChange={(dhOverride) => set({ dhOverride })} />
+          <NumberField label="ΔH override (kJ/mol, 0 = use Step 2 value)" value={inputs.dhOverride} onChange={(dhOverride) => set({ dhOverride })} />
           <SelectField
             label="Override ΔH measured?"
             value={inputs.dhMeasured}
@@ -439,34 +463,11 @@ export function MixingSensitivity() {
         )}
       </Card>
 
-      <Card title="Step 5 - Mixing Time vs Reaction Time">
+      <Card title="Step 7 - Mixing Time vs Reaction Time">
         <p>
-          The Damköhler number compares <strong>how long mixing takes</strong> with <strong>how long the reaction takes</strong>:{" "}
-          <strong>Da = mixing time / reaction time</strong>. When <strong>Da &lt; 1</strong>, mixing is faster than the reaction and
-          is less likely to limit the result. When <strong>Da &gt; 1</strong>, the reaction can proceed before the vessel is fully
-          mixed, so mixing may affect conversion, selectivity, or temperature.
-        </p>
-        <p>
-          As vessels get larger, bulk mixing usually takes longer. For geometrically similar reactors scaled at{" "}
-          <strong>constant power per unit volume (P/V)</strong>, the blend time increases roughly with vessel diameter as{" "}
-          <strong>T^(2/3)</strong>. A larger reactor therefore needs a scale-up check even when the small vessel mixed well.
-          Micromixing is controlled by local turbulence near the impeller and feed point, while macromixing describes the time
-          needed to homogenize the whole vessel.
-        </p>
-        <p>
-          The estimates below compare micromixing time <strong>t<sub>E</sub> ≈ 17.3·√(ν/ε)</strong> and bulk blend time{" "}
-          <strong>
-            θ<sub>95</sub> = 5.2·T^1.5·H^0.5/(N<sub>p</sub>^(1/3)·N·D²)
-          </strong>{" "}
-          with the reaction time. Without a vessel, the screen uses fixed reaction-time bands; select a vessel to compute the actual{" "}
-          <strong>
-            Da<sub>macro</sub>
-          </strong>{" "}
-          and{" "}
-          <strong>
-            Da<sub>micro</sub>
-          </strong>{" "}
-          for a chosen operating point.
+          <strong>Da = mixing time / reaction time.</strong> Below 0.1 mixing is not limiting; above 1 the reaction outruns mixing.
+          Without a vessel the screen uses reaction-time bands; select a vessel for the actual Da<sub>macro</sub> and
+          Da<sub>micro</sub>.
         </p>
         <Switch label="Compute Damköhler numbers for a vessel" checked={inputs.daOn} onChange={(daOn) => set({ daOn })} />
         {inputs.daOn && (
@@ -478,11 +479,34 @@ export function MixingSensitivity() {
         )}
         {res && step(5) && (
           <ResultBox tone={stepTone(5)}>
-            {res.trxn_caption && <Markdown>{res.trxn_caption}</Markdown>}
-            {res.da_caption && <Markdown>{res.da_caption}</Markdown>}
+            <StatGrid size="sm" stats={timescaleTiles(res.t_rxn_s, res.damkohler)} />
+            {res.damkohler ? (
+              <>
+                <LogScale
+                  min={1e-4}
+                  max={100}
+                  zones={DA_ZONES}
+                  markers={[
+                    { label: "Da micro", value: res.damkohler.Da_micro ?? 0 },
+                    { label: "Da macro", value: res.damkohler.Da_macro ?? 0 },
+                  ]}
+                />
+                <p className="muted">{daContext(res.damkohler)}</p>
+              </>
+            ) : res.t_rxn_s ? (
+              <LogScale min={1e-4} max={1000} zones={SPEED_ZONES} markers={[{ label: "t_rxn", value: res.t_rxn_s }]} unit=" s" />
+            ) : null}
             {step(5)}
           </ResultBox>
         )}
+        <details>
+          <summary>How it&apos;s calculated</summary>
+          <Markdown>
+            {"Micromixing time $t_E \\approx 17.3\\sqrt{\\nu/\\varepsilon}$; bulk blend time $\\theta_{95} = 5.2\\,T^{1.5}H^{0.5}/(N_p^{1/3} N D^2)$. " +
+              "For geometrically similar vessels at constant P/V the blend time grows roughly as $T^{2/3}$, so a vessel that mixes well " +
+              "at small scale still needs a check at the next scale."}
+          </Markdown>
+        </details>
       </Card>
 
       {!started && (
@@ -501,16 +525,16 @@ export function MixingSensitivity() {
         </Card>
       )}
 
-      <Card title="Step 6 - Summary & Recommendations">
+      <Card title="Step 8 - Summary & Recommendations">
         {stale && <p className="stale-note">Updating…</p>}
-        <Markdown>{res ? res.summary_note : SUMMARY_PRE_START}</Markdown>
+        <Markdown>{res ? (res.ready ? "" : SUMMARY_PENDING) : SUMMARY_PRE_START}</Markdown>
         {res?.ready && (
           <SummaryDashboard res={res} bourne={inputs.bourneFindings} />
         )}
       </Card>
 
       {res?.ready && (
-        <Card title="Step 7 - Export Report">
+        <Card title="Step 9 - Export Report">
           <p>Generate a PDF capturing the inputs, findings, overall verdict, and next steps.</p>
           <button type="button" className="primary" disabled={pdf.isPending || stale} onClick={() => pdf.mutate()}>
             Download PDF report

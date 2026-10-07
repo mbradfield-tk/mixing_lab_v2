@@ -462,6 +462,9 @@ def test_sensitivity_page_endpoints_match_the_taipy_page(client, monkeypatch, tm
             for f in page["insights"]] == page["findings"]
     assert [{"Area": a["area"], "Recommended action": a["action"]} for a in page["actions"]] == page["next_steps"]
     assert page["verdict"].startswith(icon(page["verdict_kind"]))
+    full = client.post(f"{V1}/sensitivity/assess", json=req).json()
+    assert page["damkohler"] == full["damkohler"] and page["damkohler"]["Da_macro"] > 0
+    assert page["t_rxn_s"] == pytest.approx(full["kinetics"]["t_rxn_s"])
 
     opts = client.get(f"{V1}/sensitivity/options").json()
     assert sorted(opts["dh_references"]) == sorted(ms.dh_ref_options)

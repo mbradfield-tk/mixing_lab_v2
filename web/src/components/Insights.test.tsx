@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { statsFromRows, splitUnit, stripIcon, toneOf } from "./Insights";
+import { LogScale, logPosition, statsFromRows, splitUnit, stripIcon, toneOf } from "./Insights";
 import { ResultTable } from "./ResultTable";
 
 describe("insight helpers", () => {
@@ -31,5 +31,27 @@ describe("insight helpers", () => {
     const pill = screen.getByText("Mixing-limited");
     expect(pill.className).toContain("tone-critical");
     expect(screen.getByText("22.7").className).not.toContain("pill");
+  });
+
+  it("places log-scale positions and zone widths on the Da axis", () => {
+    expect(logPosition(0.1, 1e-3, 100)).toBeCloseTo(40);
+    expect(logPosition(1, 1e-3, 100)).toBeCloseTo(60);
+    expect(logPosition(1e-6, 1e-3, 100)).toBe(0);
+    expect(logPosition(1e6, 1e-3, 100)).toBe(100);
+    const { container } = render(
+      <LogScale
+        min={1e-3}
+        max={100}
+        zones={[
+          { to: 0.1, label: "A", tone: "ok" },
+          { to: 1, label: "B", tone: "warning" },
+          { to: 100, label: "C", tone: "critical" },
+        ]}
+        markers={[{ label: "Da micro", value: 1.5 }]}
+      />,
+    );
+    const widths = [...container.querySelectorAll<HTMLElement>(".log-zone")].map((z) => parseFloat(z.style.width));
+    expect(widths.map((w) => Math.round(w))).toEqual([40, 20, 40]);
+    expect(container.querySelector(".log-marker")?.textContent).toBe("Da micro 1.5");
   });
 });

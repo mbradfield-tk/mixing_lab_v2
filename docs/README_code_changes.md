@@ -501,6 +501,17 @@ The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` 
 - **Reaction Sensitivity:**
   - **Summary:** a verdict headline banner, severity-count tiles, finding cards ordered most severe first, Bourne finding cards and numbered next steps.
   - **Step result boxes:** coloured by severity.
+  - **Steps renumbered 1–9 (React only):** the Bourne pre-screen is now Step 1. The semi-batch switch moved out of Kinetics into a new **Step 4 – Feed Mode (Mesomixing)**, which has a short explanation and a batch or semi-batch result box. Competing Reactions, Heat, Mixing Time, Summary and Export follow as Steps 5–9.
+    - The API keeps `steps[0..5]`, so the Taipy page and PDF are unchanged.
+    - The page uses its own pending note and export message ("Steps 2, 3, 5 and 6"), because the server's `SUMMARY_PENDING` text is shared with Taipy and its golden snapshots.
+  - **Step 7, Mixing Time vs Reaction Time:**
+    - The introduction is cut to two sentences, and the formulas and scale-up note sit in a collapsed "How it's calculated" (KaTeX).
+    - The results show as tiles: t_rxn, plus θ₉₅, t_E, Da_macro and Da_micro (coloured by band) when a vessel is selected.
+    - A log scale shows Da_micro and Da_macro against the 0.1 / 1 thresholds, or t_rxn against the reaction-speed bands when no vessel is selected.
+    - The vessel and operating point appear on one line.
+    - The new `LogScale` component is in `components/Insights.tsx`.
+  - **API (additive):** `ProtocolPage.t_rxn_s` and `ProtocolPage.damkohler` (the same values as `/sensitivity/assess`, via the new `services.screening_damkohler_out`).
+  - The Bourne page's export text now refers to "Step 1 pre-screen".
 - **Vessel Assessment:** Damköhler regime cards come first. Hydrodynamics are shown as tiles, with six headline values. Mass-transfer screening uses cards. Solids and heat balance use tiles, with the suspension state and the balance colour-coded.
   - **Solve-for:** the outcome is shown as four tiles:
     - the solved N or V, coloured green (solved), amber (outside the vessel window) or red (no solution, with the achievable range);

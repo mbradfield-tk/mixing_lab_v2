@@ -4907,6 +4907,16 @@
             "title": "Da Caption",
             "type": "string"
           },
+          "damkohler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreeningDamkohler"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "dt_ad_caption": {
             "title": "Dt Ad Caption",
             "type": "string"
@@ -4990,6 +5000,18 @@
             "title": "Summary Note",
             "type": "string"
           },
+          "t_rxn_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reaction time used for Da (None when kinetics unknown)",
+            "title": "T Rxn S"
+          },
           "trxn_caption": {
             "title": "Trxn Caption",
             "type": "string"
@@ -5025,7 +5047,9 @@
           "findings",
           "next_steps",
           "insights",
-          "actions"
+          "actions",
+          "t_rxn_s",
+          "damkohler"
         ],
         "title": "ProtocolPage",
         "type": "object"
@@ -5213,7 +5237,7 @@
             "type": "array"
           },
           "ready": {
-            "description": "False until Steps 1–4 are answered; verdict is provisional",
+            "description": "False until kinetics, phases, competing and heat are answered; verdict is provisional",
             "title": "Ready",
             "type": "boolean"
           },

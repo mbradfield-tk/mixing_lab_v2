@@ -3269,6 +3269,7 @@ export interface components {
             actions: components["schemas"]["ActionOut"][];
             /** Da Caption */
             da_caption: string;
+            damkohler: components["schemas"]["ScreeningDamkohler"] | null;
             /** Dt Ad Caption */
             dt_ad_caption: string;
             /** Findings */
@@ -3300,6 +3301,11 @@ export interface components {
             steps: string[];
             /** Summary Note */
             summary_note: string;
+            /**
+             * T Rxn S
+             * @description Reaction time used for Da (None when kinetics unknown)
+             */
+            t_rxn_s: number | null;
             /** Trxn Caption */
             trxn_caption: string;
             /**
@@ -3388,7 +3394,7 @@ export interface components {
             next_steps: components["schemas"]["ActionOut"][];
             /**
              * Ready
-             * @description False until Steps 1–4 are answered; verdict is provisional
+             * @description False until kinetics, phases, competing and heat are answered; verdict is provisional
              */
             ready: boolean;
             /**

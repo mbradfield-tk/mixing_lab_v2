@@ -713,6 +713,88 @@ label.narrow {
   margin: 6px 0 10px;
 }
 
+.log-scale {
+  margin: 10px 4px 6px;
+}
+
+.log-markers {
+  position: relative;
+}
+
+.log-marker {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.8rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff;
+}
+
+.log-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--text);
+}
+
+.log-marker.edge-start {
+  transform: translateX(-8px);
+}
+
+.log-marker.edge-start::after {
+  left: 8px;
+}
+
+.log-marker.edge-end {
+  transform: translateX(calc(-100% + 8px));
+}
+
+.log-marker.edge-end::after {
+  left: calc(100% - 8px);
+}
+
+.log-markers + .log-track {
+  margin-top: 8px;
+}
+
+.log-track {
+  display: flex;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.log-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--tone);
+  background: var(--tone-bg);
+  border-right: 1px solid #fff;
+}
+
+.log-ticks {
+  position: relative;
+  height: 18px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.log-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
 .table-details summary {
   font-size: 0.88rem;
   color: var(--secondary);

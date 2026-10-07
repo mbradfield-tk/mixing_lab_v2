@@ -661,7 +661,7 @@ export function BourneProtocol() {
               </button>
               <h3>Export for the Reaction Sensitivity Protocol</h3>
               <p>
-                Export the outcome as a CSV that can be imported into the <strong>Reaction Sensitivity Protocol</strong> (Step 0
+                Export the outcome as a CSV that can be imported into the <strong>Reaction Sensitivity Protocol</strong> (Step 1
                 pre-screen) to feed the experimental result into the overall sensitivity assessment.
               </p>
               <button type="button" className="primary" disabled={download.isPending} onClick={() => download.mutate("csv")}>

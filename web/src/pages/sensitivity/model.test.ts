@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  BLANK_PROJECT, INITIAL, buildProtocol, bySeverity, findingRows, importPatch, reactionList, reactionPatch,
-  severityCounts, splitHeadline, type BourneImport,
+  BLANK_PROJECT, INITIAL, buildProtocol, bySeverity, daContext, daTone, findingRows, importPatch, reactionList,
+  reactionPatch, severityCounts, splitHeadline, timescaleTiles, type BourneImport,
 } from "./model";
 
 const imp: BourneImport = {
@@ -62,5 +62,23 @@ describe("sensitivity model", () => {
       "The reaction may be **micro** limited.",
     ]);
     expect(splitHeadline("🟢 **Not mixing-sensitive**")).toEqual(["Not mixing-sensitive", ""]);
+  });
+
+  it("builds the timescale tiles, colouring Da by band", () => {
+    expect(timescaleTiles(null, null)).toEqual([]);
+    expect(timescaleTiles(69, null).map((t) => [t.label, t.value])).toEqual([["Reaction time t_rxn", "69"]]);
+    const da = {
+      reactor: "TMA EasyMax-102", N_rpm: 525, V_L: 0.055, fluid: "Methanol", t_blend_s: 1.2153, t_E_s: 0.02421,
+      Re: 12168.4, P_V_W_L: 0.2581, Da_macro: 0.0176, Da_micro: 1.5,
+    };
+    expect(timescaleTiles(69, da).map((t) => [t.label, t.value, t.tone])).toEqual([
+      ["Reaction time t_rxn", "69", undefined],
+      ["Blend time θ95", "1.22", undefined],
+      ["Micromixing time t_E", "0.0242", undefined],
+      ["Da macro", "0.0176", "ok"],
+      ["Da micro", "1.5", "critical"],
+    ]);
+    expect([daTone(0.099), daTone(0.1), daTone(1)]).toEqual(["ok", "warning", "critical"]);
+    expect(daContext(da)).toBe("TMA EasyMax-102 · 525 RPM · 0.055 L · Methanol · Re 12,168 · P/V 0.258 W/L");
   });
 });

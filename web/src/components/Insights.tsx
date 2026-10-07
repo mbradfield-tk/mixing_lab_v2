@@ -140,6 +140,72 @@ export function ThresholdBar({ value, threshold, tone }: { value: number; thresh
   );
 }
 
+export interface ScaleZone {
+  to: number;
+  label: string;
+  tone: Tone;
+}
+
+/** Position (0-100 %) of ``value`` on a log axis from ``min`` to ``max``, clamped. */
+export function logPosition(value: number, min: number, max: number): number {
+  const v = Math.min(Math.max(value, min), max);
+  return ((Math.log10(v) - Math.log10(min)) / (Math.log10(max) - Math.log10(min))) * 100;
+}
+
+/** Log-scale track of coloured zones with value markers (e.g. Da against the 0.1 / 1 thresholds). */
+export function LogScale({
+  min,
+  max,
+  zones,
+  markers,
+  unit = "",
+}: {
+  min: number;
+  max: number;
+  zones: ScaleZone[];
+  markers: { label: string; value: number }[];
+  unit?: string;
+}) {
+  const ticks: number[] = [];
+  for (let e = Math.ceil(Math.log10(min)); e <= Math.floor(Math.log10(max)); e++) ticks.push(10 ** e);
+  const edges = zones.map((z) => logPosition(z.to, min, max));
+  const placed = markers
+    .map((m) => ({ ...m, pos: logPosition(m.value, min, max) }))
+    .sort((a, b) => a.pos - b.pos)
+    .map((m, i, all) => ({ ...m, row: i > 0 && m.pos - all[i - 1].pos < 22 ? (i % 2) : 0 }));
+  const rows = Math.max(1, ...placed.map((m) => m.row + 1));
+  return (
+    <div className="log-scale">
+      <div className="log-markers" style={{ height: `${rows * 26 + 4}px` }}>
+        {placed.map((m) => (
+          <span
+            key={m.label}
+            className={`log-marker${m.pos < 10 ? " edge-start" : m.pos > 90 ? " edge-end" : ""}`}
+            style={{ left: `${m.pos}%`, bottom: `${m.row * 26}px` }}
+          >
+            <b>{m.label}</b> {Number(m.value.toPrecision(3))}
+            {unit}
+          </span>
+        ))}
+      </div>
+      <div className="log-track">
+        {zones.map((z, i) => (
+          <span key={z.label} className={`log-zone tone-${z.tone}`} style={{ width: `${edges[i] - (edges[i - 1] ?? 0)}%` }}>
+            {z.label}
+          </span>
+        ))}
+      </div>
+      <div className="log-ticks">
+        {ticks.map((t) => (
+          <span key={t} style={{ left: `${logPosition(t, min, max)}%` }}>
+            {t >= 1 ? t : t.toPrecision(1)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The source table, collapsed, for reference and CSV download. */
 export function TableDetails({ rows, csvName, stale, summary = "Show as table" }: { rows: Row[]; csvName?: string; stale?: boolean; summary?: string }) {
   if (!rows.length) return null;

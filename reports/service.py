@@ -107,7 +107,9 @@ def protocol_page(req: s.ProtocolRequest) -> s.ProtocolPage:
         next_steps=jsonable(pd.DataFrame(md["next_steps"])),
         insights=[s.FindingOut(area=f.area, kind=f.kind, status=f.status, detail=f.detail, code=f.code)
                   for f in res["findings"]],
-        actions=[s.ActionOut(area=a.area, action=a.action, code=a.code) for a in res["next_steps"]])
+        actions=[s.ActionOut(area=a.area, action=a.action, code=a.code) for a in res["next_steps"]],
+        t_rxn_s=jsonable(res["t_rxn"]) if res["kinetics_known"] else None,
+        damkohler=services.screening_damkohler_out(res["da"]))
 
 
 def protocol_snapshot(req: s.ProtocolReportRequest) -> dict:

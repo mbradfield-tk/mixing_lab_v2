@@ -410,7 +410,8 @@ class ScreeningDamkohler(Contract):
 
 
 class ProtocolResult(Contract):
-    ready: bool = Field(description="False until Steps 1–4 are answered; verdict is provisional")
+    ready: bool = Field(description="False until kinetics, phases, competing and heat are answered; "
+                        "verdict is provisional")
     verdict: MessageOut
     steps: list[MessageOut | None] = Field(description="Steps 0–5 (Bourne, kinetics, phases, "
                                            "competing, heat, timescales)")
@@ -467,6 +468,8 @@ class ProtocolPage(Contract):
     next_steps: list[Row]
     insights: list[FindingOut] = Field(description="Findings with their severity, for display")
     actions: list[ActionOut]
+    t_rxn_s: Num | None = Field(description="Reaction time used for Da (None when kinetics unknown)")
+    damkohler: ScreeningDamkohler | None
 
 
 class BourneImport(Contract):

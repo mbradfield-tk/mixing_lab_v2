@@ -197,3 +197,55 @@ export function splitHeadline(verdict: string): [string, string] {
   const m = /^(.+?)\s+[-—]\s+(.*)$/s.exec(text);
   return m ? [m[1].replace(/\*\*/g, ""), m[2].charAt(0).toUpperCase() + m[2].slice(1)] : [text.replace(/\*\*/g, ""), ""];
 }
+
+// The server's pending note names the Taipy step numbers, so the page uses its own wording.
+export const SUMMARY_PENDING =
+  "*Complete Steps 2, 3, 5 and 6 - select a reaction with kinetics, at least one phase, whether competing reactions are present, and resolve ΔH - to see the overall verdict.*";
+
+type Tone = "critical" | "warning" | "caution" | "ok" | "unknown" | "info";
+
+export const DA_ZONES: { to: number; label: string; tone: Tone }[] = [
+  { to: 0.1, label: "Mixing-insensitive", tone: "ok" },
+  { to: 1, label: "Transitional", tone: "warning" },
+  { to: 100, label: "Mixing-limited", tone: "critical" },
+];
+
+/** Reaction-time bands of the vessel-free screen (``assess_protocol`` Step 5). */
+export const SPEED_ZONES: { to: number; label: string; tone: Tone }[] = [
+  { to: 0.1, label: "Very fast", tone: "critical" },
+  { to: 1, label: "Fast", tone: "warning" },
+  { to: 10, label: "Moderate", tone: "caution" },
+  { to: 1000, label: "Slow", tone: "ok" },
+];
+
+/** ``rules.da_band`` colour of a Damköhler number. */
+export const daTone = (da: number): Tone => (da >= 1 ? "critical" : da >= 0.1 ? "warning" : "ok");
+
+const g3 = (x: number) => String(Number(x.toPrecision(3)));
+
+/** Timescale and Damköhler tiles for the mixing-time step. */
+export function timescaleTiles(
+  tRxn: number | null | undefined,
+  da: Schemas["ScreeningDamkohler"] | null | undefined,
+): { label: string; value: string; unit?: string; tone?: Tone; hint?: string }[] {
+  if (!tRxn) return [];
+  const tiles: { label: string; value: string; unit?: string; tone?: Tone; hint?: string }[] = [
+    { label: "Reaction time t_rxn", value: g3(tRxn), unit: "s" },
+  ];
+  if (!da) return tiles;
+  const num = (x: number | null | undefined) => (x === null || x === undefined ? Number.NaN : x);
+  const [blend, tE, dMacro, dMicro] = [num(da.t_blend_s), num(da.t_E_s), num(da.Da_macro), num(da.Da_micro)];
+  if (Number.isFinite(blend)) tiles.push({ label: "Blend time θ95", value: g3(blend), unit: "s", hint: "macromixing" });
+  if (Number.isFinite(tE)) tiles.push({ label: "Micromixing time t_E", value: g3(tE), unit: "s", hint: "micromixing" });
+  if (Number.isFinite(dMacro)) tiles.push({ label: "Da macro", value: g3(dMacro), tone: daTone(dMacro), hint: "θ95 / t_rxn" });
+  if (Number.isFinite(dMicro)) tiles.push({ label: "Da micro", value: g3(dMicro), tone: daTone(dMicro), hint: "t_E / t_rxn" });
+  return tiles;
+}
+
+/** One-line vessel / operating-point context of the Damköhler screen. */
+export function daContext(da: Schemas["ScreeningDamkohler"]): string {
+  const parts = [da.reactor, `${Math.round(da.N_rpm)} RPM`, `${g3(da.V_L)} L`, da.fluid];
+  if (da.Re !== null && da.Re !== undefined) parts.push(`Re ${Math.round(da.Re).toLocaleString("en-US")}`);
+  if (da.P_V_W_L !== null && da.P_V_W_L !== undefined) parts.push(`P/V ${g3(da.P_V_W_L)} W/L`);
+  return parts.join(" · ");
+}

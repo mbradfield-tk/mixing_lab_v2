@@ -395,8 +395,6 @@ class MixingReport(FPDF):
             _detail_clean = self._s(detail)
             _rgb, _clean = status_dot(status)
             _status_clean = self._s(f"{_STATUS_DOT} {_clean}" if _rgb else _clean)
-            x_before = self.get_x()
-            y_before = self.get_y()
             # Estimate lines needed
             _lines = max(1, len(_detail_clean) // int(col_w3 / 1.8) + 1)
             row_h = max(6, _lines * 5)
@@ -405,7 +403,6 @@ class MixingReport(FPDF):
             self.cell(col_w2, row_h, _status_clean, border=1)
             self.set_text_color(40, 40, 40)
             # Use multi_cell for detail (wraps text)
-            x_mc = self.get_x()
             y_mc = self.get_y()
             self.multi_cell(col_w3, 5, _detail_clean, border=1)
             # Ensure we move to correct y
@@ -765,8 +762,8 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
 
 
 def build_comparison_envelope_fig(param: str, curve_data: dict,
-                                  env_df, reactor_info: dict) -> "go.Figure | None":
-    """Build a multi-reactor operating-envelope Plotly figure for *param*."""
+                                  env_df, reactor_info: dict):
+    """Build a multi-reactor operating-envelope Plotly figure for *param* (None if no data)."""
     import plotly.graph_objects as go
 
     _PALETTE = [
@@ -818,7 +815,6 @@ def build_comparison_envelope_fig(param: str, curve_data: dict,
 
     # Reference lines
     if param in ("Da_macro", "Da_micro", "Da_GL", "Da_SL"):
-        import math
         for da_val, da_color, label in [
             (0.1, "orange", "Da=0.1"), (1.0, "red", "Da=1"),
         ]:

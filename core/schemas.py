@@ -441,6 +441,64 @@ class ScaleUpResult(Contract):
     rows: list[ScaleUpRow]
 
 
+class ComparisonChartRequest(_NeedsParameters):
+    comparison: ComparisonRequest
+    parameters: list[str] = Field(default_factory=list,
+                                  description="PointResult fields; default: the first available")
+
+    @field_validator("parameters")
+    @classmethod
+    def _known(cls, v: list[str]) -> list[str]:
+        return cls._check(v)
+
+
+class ChartResult(Contract):
+    figures: dict[str, dict] = Field(description="name -> Plotly figure JSON for react-plotly.js")
+    captions: dict[str, str] = Field(default_factory=dict, description="Markdown captions")
+    rows: dict[str, int] = Field(default_factory=dict, description="Subplot rows (sizing hint)")
+
+
+class ComparisonResult(Contract):
+    parameters: list[str] = Field(description="Result keys present for every vessel")
+    corners: list[Row] = Field(description="Min/max RPM x min/max volume points per vessel")
+    ranges: list[Row] = Field(description="Per-vessel min/max of each parameter")
+    heat: list[Row] = Field(description="Heat balance at max RPM / max volume (dH != 0)")
+    impact_ratios: list[Row]
+    skipped: list[str] = Field(description="Vessels without usable geometry / speed data")
+
+
+# ---------------------------------------------------------------------------
+# Units
+# ---------------------------------------------------------------------------
+class UnitConversionRequest(Contract):
+    property: str = Field(min_length=1, description="e.g. 'Pressure', 'Gas flow rate'")
+    from_unit: str = Field(min_length=1)
+    value: float
+    gas_T_C: float = Field(25.0, description="Actual gas temperature (gas flow only)")
+    gas_P_atm: float = Field(1.0, gt=0, description="Actual gas pressure (gas flow only)")
+
+
+class UnitConversionResult(Contract):
+    property: str
+    from_unit: str
+    value: float
+    converted: dict[str, Num]
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+class LoginRequest(Contract):
+    username: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=1, max_length=500)
+
+
+class TokenResult(Contract):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in_s: int
+
+
 # ---------------------------------------------------------------------------
 # Fluids
 # ---------------------------------------------------------------------------
@@ -697,6 +755,7 @@ class UaSurfaceRequest(HeatTransferRequest):
     x_range: tuple[float, float] | None = Field(None, description="Default: vessel range or ±50%")
     y_range: tuple[float, float] | None = None
     n_points: int = Field(30, ge=2, le=100)
+    color_theme: Literal["Turbo", "Viridis", "Cool/Warm", "X-ray"] = "Turbo"
 
     @model_validator(mode="after")
     def _distinct(self):
@@ -796,6 +855,55 @@ class ReactorRecord(Record):
     N_rpm_max: float | None = Field(None, gt=0)
     V_L_min: float | None = Field(None, ge=0)
     V_L_max: float | None = Field(None, gt=0)
+
+
+def _col(column: str, default=None):
+    return Field(default, validation_alias=AliasChoices(column), serialization_alias=column)
+
+
+class RecordedResult(Record):
+    """One saved assessment (a row of recorded_results.csv; aliases are the CSV headers)."""
+    reactor: str = Field(min_length=1)
+    reaction: str = ""
+    fluid: str = ""
+    fluid_T_C: Num = None
+    N_rpm: Num = _col("RPM")
+    V_L: Num = _col("Volume (L)")
+    Re: Num = None
+    P_V_W_L: Num = _col("P/V (W/L)")
+    tip_speed_m_s: Num = _col("Tip speed (m/s)")
+    blend_time_s: Num = _col("Blend time (s)")
+    circulation_time_s: Num = _col("Circulation time (s)")
+    t_E_s: Num = _col("Micromix t_E (s)")
+    t_E_local_s: Num = _col("Micromix t_E_local (s)")
+    kolmogorov_um: Num = _col("Kolmogorov η (µm)")
+    edcf_W_kg_s: Num = _col("EDCF (W/kg/s)")
+    torque_N_m: Num = _col("Torque (N·m)")
+    froude: Num = _col("Froude number")
+    avg_shear_rate_1_s: Num = _col("Avg shear rate (1/s)")
+    max_shear_rate_1_s: Num = _col("Max shear rate (1/s)")
+    avg_shear_stress_Pa: Num = _col("Avg shear stress (Pa)")
+    kLa_1_s: Num = _col("kLa (1/s)")
+    kLa_surface_1_s: Num = _col("kLa_surface (1/s)")
+    t_rxn_s: Num = _col("t_rxn (s)")
+    Da_macro: Num = None
+    Da_micro: Num = None
+    Da_GL: Num = None
+    Da_SL: Num = None
+    assessment: str = _col("Assessment", "")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_is_none(cls, v, info):
+        if v == "" and info.field_name not in ("reaction", "fluid", "assessment"):
+            return None
+        if isinstance(v, float) and v != v:  # NaN read back from the CSV
+            return None
+        return v
+
+
+RESULT_COLUMNS = [RecordedResult.model_fields[f].serialization_alias or f
+                  for f in RecordedResult.model_fields]
 
 
 def validation_message(exc: ValidationError) -> str:

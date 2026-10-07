@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 from taipy.gui import Markdown, download, notify
 
 from core.heat_transfer import (
@@ -40,9 +39,10 @@ from core.heat_transfer import (
     ua_sweep_series,
 )
 from viz import heat_transfer as viz_ht
+from viz.common import empty as empty_fig
 from reports import snapshots
-from utils.menu_icons import inject_icons
-from utils.report_builder import (
+from pages._menu_icons import inject_icons
+from reports.pdf import (
     build_heat_transfer_pdf,
     report_filename,
     report_header_label,
@@ -140,10 +140,8 @@ sweep_u_color_max = 0.0
 sweep_ua_color_min = 0.0
 sweep_ua_color_max = 0.0
 sweep_result_ready = False
-sweep_u_fig = go.Figure()
-sweep_u_fig.update_layout(title="Overall U Surface", height=500)
-sweep_ua_fig = go.Figure()
-sweep_ua_fig.update_layout(title="UA Surface", height=500)
+sweep_u_fig = empty_fig("Overall U Surface", height=500)
+sweep_ua_fig = empty_fig("UA Surface", height=500)
 
 _htm = htm_db[selected_htm]
 cp_jacket = safe_float(_htm.get("Cp_J_kgK"), 3500.0)
@@ -200,9 +198,7 @@ rxn_adiabatic_text = _adiabatic_text(rho, cp, rxn_c0, rxn_dH, t_start)
 
 rxn_result_ready = False
 rxn_summary_df = pd.DataFrame(columns=["Metric", "Value"])
-rxn_fig = go.Figure()
-rxn_fig.update_layout(title="Reaction Temperature Profile", xaxis_title="Time (min)",
-                      yaxis_title="Temperature (C)")
+rxn_fig = empty_fig("Reaction Temperature Profile", "Time (min)", "Temperature (C)")
 
 status_message = "Set inputs and click Compute."
 kpi_df = pd.DataFrame([{"Metric": "U (W/m2.K)", "Value": "-"}])
@@ -216,20 +212,15 @@ corr_csv = b""
 htm_compare_csv = b""
 summary_csv = b""
 
-temp_fig = go.Figure()
-temp_fig.update_layout(title="Batch Temperature Profile", xaxis_title="Time (min)", yaxis_title="Temperature (C)")
-duty_fig = go.Figure()
-duty_fig.update_layout(title="Heat Duty over Time", xaxis_title="Time (min)", yaxis_title="|Q| (W)")
+temp_fig = empty_fig("Batch Temperature Profile", "Time (min)", "Temperature (C)")
+duty_fig = empty_fig("Heat Duty over Time", "Time (min)", "|Q| (W)")
 
-res_fig = go.Figure()
-res_fig.update_layout(title="Heat Transfer Resistance Contributions",
-                      xaxis_title="Contribution to total resistance (%)")
+res_fig = empty_fig("Heat Transfer Resistance Contributions",
+                    "Contribution to total resistance (%)")
 agitator_text = ""
 
-ua_rpm_fig = go.Figure()
-ua_rpm_fig.update_layout(title="UA vs Stir Speed", xaxis_title="Stir speed (rpm)", yaxis_title="UA (W/K)")
-ua_vol_fig = go.Figure()
-ua_vol_fig.update_layout(title="UA vs Volume", xaxis_title="Liquid volume (L)", yaxis_title="UA (W/K)")
+ua_rpm_fig = empty_fig("UA vs Stir Speed", "Stir speed (rpm)", "UA (W/K)")
+ua_vol_fig = empty_fig("UA vs Volume", "Liquid volume (L)", "UA (W/K)")
 
 # Project Information (captured in the exported PDF's header/filename and body)
 ht_project_name = ""

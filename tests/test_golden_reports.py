@@ -28,7 +28,7 @@ from pages import mixing_sensitivity as ms
 from pages import vessel_assessment as va
 from pages import vessel_comparison as vc
 from utils import bourne_kpi as kpi
-from utils import report_builder as rb
+from reports import pdf as rb
 
 GOLDEN = Path(__file__).parent / "golden" / "report_outputs.json"
 _PDF_BUILDERS = ("build_vessel_assessment_pdf", "build_reactor_comparison_pdf",

@@ -28,11 +28,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 from taipy.gui import Markdown, download, notify
 
-from utils.menu_icons import inject_icons
-from utils.report_builder import build_bourne_protocol_pdf, report_filename, report_header_label
+from pages._menu_icons import inject_icons
+from reports.pdf import build_bourne_protocol_pdf, report_filename, report_header_label
 from utils import bourne_kpi as kpi
 from core import catalog
 from core import records
@@ -42,6 +41,7 @@ from core import sensitivity_rules as rules
 from core.catalog import is_known_solvent
 from core.options import CenterMode, FeedBasis, Toggle, is_on
 from viz import bourne as viz_bourne
+from viz.common import empty as empty_fig
 from reports import snapshots
 from core.records import (
     VesselGeometry,
@@ -261,7 +261,7 @@ bp_t1_adj_result_df = pd.DataFrame(columns=["Step", "Volume (L)", "Low (RPM)",
 bp_t1_adj_caption = ""
 
 # Speed vs fill-volume iso-P/m plot
-bp_t1_plot = go.Figure()
+bp_t1_plot = empty_fig()
 bp_t1_show_plot = False
 
 # ---------------------------------------------------------------------------
@@ -509,7 +509,7 @@ def _build_t1_plot(state):
     data = plan.t1_speed_plan(_system(state), state.bp_t1_pm_eff, state.bp_v_min,
                               state.bp_v_max, adj)
     state.bp_t1_show_plot = data is not None
-    state.bp_t1_plot = viz_bourne.t1_speed_plan(data) if data else go.Figure()
+    state.bp_t1_plot = viz_bourne.t1_speed_plan(data) if data else empty_fig()
 
 
 def _build_t1_adj(state):

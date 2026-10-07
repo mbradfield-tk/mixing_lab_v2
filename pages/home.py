@@ -9,10 +9,8 @@ from pathlib import Path
 
 from taipy.gui import Markdown
 
-from utils.menu_icons import image_thumb_uri, inject_icons
-
-APP_VERSION = "Beta"
-RELEASE_DATE = "October 2026"
+from core.version import APP_VERSION, RELEASE_DATE
+from pages._menu_icons import image_thumb_uri, inject_icons
 
 # App logo, downscaled + cached (displayed ~180px; 360px thumb stays crisp on retina).
 _LOGO_URI = image_thumb_uri(

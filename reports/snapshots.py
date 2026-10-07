@@ -1,4 +1,4 @@
-"""Pure builders for the ``snap`` dicts consumed by ``utils.report_builder.build_*_pdf``.
+"""Pure builders for the ``snap`` dicts consumed by ``reports.pdf.build_*_pdf``.
 
 Every function takes plain values (results, tables, figures, labels) — never GUI
 state — so a page and an HTTP endpoint produce the same report.
@@ -19,7 +19,7 @@ from core.heat_transfer import (
     time_factor,
     ua_sweep_series,
 )
-from utils import report_builder as rb
+from reports import pdf as rb
 from utils.bourne_kpi import KPI_COLUMNS
 from viz import heat_transfer as viz_ht
 

@@ -204,7 +204,6 @@ COLUMN_LABELS: dict[str, str] = {
     "location": "Location",
     "manufacturer": "Manufacturer",
     "manufacturer_model": "Manufacturer Model",
-    "type": "Type",
     "scale": "Scale",
     "D_tank_m": "Tank Diameter [m]",
     "L_tan_tan_m": "Tan-Tan Length [m]",

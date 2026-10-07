@@ -18,16 +18,16 @@ screening is implemented.
 from __future__ import annotations
 
 import pandas as pd
-import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
-from utils.menu_icons import inject_icons
+from pages._menu_icons import inject_icons
 from pages import _db_common as db
 from core import catalog
 from core import fluids
 from core import repositories as repos
 from core import solvents as solvent_curves
 from viz import fluids as viz_fluids
+from viz.common import empty as empty_fig
 
 REPO = repos.fluids
 FLUID_CSV = REPO.path
@@ -73,6 +73,12 @@ flu_new_notes = ""
 
 fluid_upload = ""
 
+# Admin gate (custom fluids are a shared table)
+admin_authenticated = False
+admin_user = ""
+admin_pw = ""
+admin_status = db.admin_status_initial()
+
 # ---------------------------------------------------------------------------
 # Solvent Properties (T) view
 # ---------------------------------------------------------------------------
@@ -81,7 +87,7 @@ solvent_P = 1.0
 solvent_T = 25.0
 solvent_props_df = pd.DataFrame(columns=["Property", "Value", "Units"])
 solvent_range_msg = ""
-solvent_prop_fig = go.Figure()
+solvent_prop_fig = empty_fig()
 
 # ---------------------------------------------------------------------------
 # Blend view
@@ -194,24 +200,50 @@ solvent_props_df, solvent_range_msg, solvent_prop_fig = _compute_solvent_props(
 # ---------------------------------------------------------------------------
 # Handlers — Custom fluid CRUD
 # ---------------------------------------------------------------------------
+def _write(state, action, *args) -> bool:
+    """Run a repository write; notify and return False when it is refused."""
+    try:
+        _persist(state, action(*args, principal=db.as_principal(state.admin_authenticated)))
+    except (PermissionError, ValueError) as exc:
+        notify(state, "E" if isinstance(exc, ValueError) else "W", str(exc))
+        return False
+    return True
+
+
+def on_admin_unlock(state):
+    ok, state.admin_status, kind, msg = db.unlock_attempt(state.admin_user, state.admin_pw)
+    state.admin_authenticated = ok
+    if ok:
+        state.admin_pw = ""
+    notify(state, kind, msg)
+
+
+def on_admin_lock(state):
+    state.admin_authenticated = False
+    state.admin_user = ""
+    state.admin_pw = ""
+    state.admin_status = db.admin_status_initial()
+    notify(state, "I", "Editing locked.")
+
+
 def on_fluid_edit(state, var_name, payload):
     if _fluid_searching(state):
         return
-    _persist(state, REPO.edit(state.fluid_df, payload, db.ANONYMOUS))
-    notify(state, "S", "Saved.")
+    if _write(state, REPO.edit, state.fluid_df, payload):
+        notify(state, "S", "Saved.")
 
 
 def on_fluid_delete(state, var_name, payload):
     if _fluid_searching(state):
         return
-    _persist(state, REPO.delete(state.fluid_df, payload, db.ANONYMOUS))
-    notify(state, "I", "Row deleted.")
+    if _write(state, REPO.delete, state.fluid_df, payload):
+        notify(state, "I", "Row deleted.")
 
 
 def on_fluid_add(state, var_name, payload):
     if _fluid_searching(state):
         return
-    _persist(state, REPO.add_blank(state.fluid_df, db.ANONYMOUS))
+    _write(state, REPO.add_blank, state.fluid_df)
 
 
 def on_fluid_add_row(state):
@@ -222,15 +254,10 @@ def on_fluid_add_row(state):
         "Cp_J_per_kgK": state.flu_new_Cp, "k_W_per_mK": state.flu_new_k,
         "hsp_d": state.flu_new_hd, "hsp_p": state.flu_new_hp, "hsp_h": state.flu_new_hh,
     }
-    try:
-        df = REPO.create(state.fluid_df, data, db.ANONYMOUS)
-    except ValueError as exc:
-        notify(state, "E", str(exc))
-        return
-    _persist(state, df)
-    name = (state.flu_new_name or "").strip()
-    state.flu_new_name = ""
-    notify(state, "S", f"Added '{name}'.")
+    if _write(state, REPO.create, state.fluid_df, data):
+        name = (state.flu_new_name or "").strip()
+        state.flu_new_name = ""
+        notify(state, "S", f"Added '{name}'.")
 
 
 def on_fluid_import(state):
@@ -242,8 +269,8 @@ def on_fluid_import(state):
     except Exception as exc:  # noqa: BLE001 - surface parse errors to the user
         notify(state, "E", f"Import failed: {exc}")
         return
-    _persist(state, REPO.replace(new_df, db.ANONYMOUS))
-    notify(state, "S", f"Imported {len(new_df)} custom fluids (replaced database).")
+    if _write(state, REPO.replace, new_df):
+        notify(state, "S", f"Imported {len(new_df)} custom fluids (replaced database).")
 
 
 # ---------------------------------------------------------------------------
@@ -431,12 +458,12 @@ non-atmospheric pressure.
 
 Add or edit **custom fluids** not in the built-in solvent library (mixtures,
 slurries, concentrated acids). Custom fluids have fixed properties.
-**Every table edit is saved automatically.**
+Unlock the **Admin** panel (bottom of the page) to edit; **every table edit is saved automatically.**
 
 <|Custom fluids database|expandable|expanded=True|
 <|{fluid_search}|input|label=Search custom fluids|on_change=on_fluid_search|class_name=db-search|>
 
-<|{fluid_view_df}|table|editable={fluid_search == ""}|filter|rebuild|on_edit=on_fluid_edit|on_delete=on_fluid_delete|on_add=on_fluid_add|width=100%|page_size=12|>
+<|{fluid_view_df}|table|editable={admin_authenticated and fluid_search == ""}|filter|rebuild|on_edit=on_fluid_edit|on_delete=on_fluid_delete|on_add=on_fluid_add|width=100%|page_size=12|>
 |>
 |>
 
@@ -463,7 +490,7 @@ slurries, concentrated acids). Custom fluids have fixed properties.
 
 <|{flu_new_notes}|input|label=Notes|>
 
-<|Add fluid|button|on_action=on_fluid_add_row|>
+<|Add fluid|button|on_action=on_fluid_add_row|active={admin_authenticated}|>
 |>
 
 **Hansen solubility parameters** _(optional — for miscibility screening; 0 = unknown)_
@@ -540,9 +567,9 @@ between phases is neglected._
 <|layout|columns=1 1|
 <|Download CSV|file_download|content={fluid_export}|name=fluids_export.csv|label=Download custom fluids|>
 
-<|{fluid_upload}|file_selector|label=Import CSV (replaces custom fluids)|on_action=on_fluid_import|extensions=.csv|>
+<|{fluid_upload}|file_selector|label=Import CSV (replaces custom fluids)|on_action=on_fluid_import|extensions=.csv|active={admin_authenticated}|>
 |>
 |>
 |>
-""")
+""" + db.ADMIN_PANEL_MD)
 )

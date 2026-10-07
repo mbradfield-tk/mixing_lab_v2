@@ -32,8 +32,8 @@ from pathlib import Path
 import pandas as pd
 from taipy.gui import Markdown, download, notify
 
-from utils.menu_icons import inject_icons
-from utils.report_builder import build_protocol_pdf, report_filename, report_header_label
+from pages._menu_icons import inject_icons
+from reports.pdf import build_protocol_pdf, report_filename, report_header_label
 from core import bourne_io
 from core import kinetics
 from core import operating_point as op

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from core import bourne_plan as plan
-from core import catalog, envelope, fluids, kinetics, scale_up
+from core import catalog, envelope, fluids, kinetics, scale_up, units
 from core import operating_point as op
 from core import repositories as repos
 from core import schemas as s
@@ -247,6 +247,18 @@ def compare(req: s.ComparisonRequest) -> dict:
             "incl_heat": ctx["incl_heat"], "incl_particles": ctx["incl_particles"]}
 
 
+def comparison_summary(req: s.ComparisonRequest) -> s.ComparisonResult:
+    """Tables of the Vessel Comparison page (corner points, ranges, heat, impact ratios)."""
+    cmp = compare(req)
+    env_df, present = cmp["env_df"], cmp["present"]
+    return s.ComparisonResult(
+        parameters=present, corners=jsonable(env_df), ranges=jsonable(cmp["agg_df"]),
+        heat=(jsonable(scale_up.heat_summary_data(env_df, cmp["reactor_info"]))
+              if cmp["incl_heat"] else []),
+        impact_ratios=jsonable(scale_up.impact_ratio_data(env_df, present, cmp["incl_heat"])),
+        skipped=list(cmp["skipped"]))
+
+
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
@@ -276,17 +288,26 @@ def kpi_assessment(rows: list[s.KpiResponse], test: int) -> dict:
     return res
 
 
-def _centre_pm(req: s.BournePlanRequest, sys: plan.BourneSystem) -> tuple[float, str]:
+def centre_pm(req: s.BournePlanRequest, sys: plan.BourneSystem) -> tuple[float, str]:
+    """(Test 1 centre-point P/m in W/kg, Markdown caption of how it was chosen)."""
     if req.centre == "custom_rpm" and not req.centre_rpm:
         raise ValueError("centre = 'custom_rpm' needs centre_rpm.")
     return plan.resolve_center_pm(sys, req.centre, req.centre_pm_W_kg, req.centre_rpm or 0.0)
 
 
+def bourne_speed_plan(req: s.BournePlanRequest) -> dict | None:
+    """Raw ``plan.t1_speed_plan`` (iso-P/m speed lines over the fill range); None without one."""
+    sys = bourne_system(req)
+    row = _reactor(req.reactor)
+    return plan.t1_speed_plan(sys, centre_pm(req, sys)[0], sf(row.get("V_L_min"), 0.0),
+                              sf(row.get("V_L_max"), sf(row.get("V_L"), sys.V_L)),
+                              req.fed_batch_volumes_L)
+
+
 def bourne_plan(req: s.BournePlanRequest) -> s.BournePlanResult:
     """Test 1-3 operating conditions (before any KPI is measured)."""
     sys = bourne_system(req)
-    pm, info = _centre_pm(req, sys)
-    row = _reactor(req.reactor)
+    pm, info = centre_pm(req, sys)
     t1 = plan.test1_conditions(sys, pm)
     steps = [("Initial", sys.V_L)] + [(f"Adj. {i + 1}", v) for i, v in
                                       enumerate(req.fed_batch_volumes_L) if v > 0]
@@ -295,9 +316,7 @@ def bourne_plan(req: s.BournePlanRequest) -> s.BournePlanResult:
     return s.BournePlanResult(
         centre_pm_W_kg=pm, centre_info=info, centerpoint=jsonable(plan.centerpoint_metrics(sys, pm)),
         test1=jsonable(t1), test1_pm_span=plan.pm_range_ratio([r["P/m (W/kg)"] for r in t1]),
-        speed_plan=jsonable(plan.t1_speed_plan(
-            sys, pm, sf(row.get("V_L_min"), 0.0),
-            sf(row.get("V_L_max"), sf(row.get("V_L"), sys.V_L)), req.fed_batch_volumes_L)),
+        speed_plan=jsonable(bourne_speed_plan(req)),
         setpoints=[s.SpeedSetpoint(
             step=sp["Step"], V_L=sp["Volume (L)"], low_rpm=sp["Low (RPM)"][0],
             centre_rpm=sp["Centre (RPM)"][0], high_rpm=sp["High (RPM)"][0],
@@ -327,7 +346,7 @@ def bourne_assess(req: s.BourneAssessRequest) -> s.BourneAssessResult:
 def bourne_evaluation(req: s.BourneAssessRequest) -> dict:
     """Test conditions, KPI verdicts and decision-tree outcome for the Bourne report."""
     sys = bourne_system(req)
-    pm, _info = _centre_pm(req, sys)
+    pm, _info = centre_pm(req, sys)
     t1_rows = plan.test1_conditions(sys, pm)
     results = {1: kpi_assessment(req.test1, 1),
                2: kpi_assessment(req.test2, 2) if req.test2 else None,
@@ -551,6 +570,15 @@ def blend(req: s.BlendRequest) -> s.BlendResult:
         phases=jsonable(phases[0]) if phases else None,
         phases_unknown_split=bool(phases[1]) if phases else False,
         dispersion=jsonable(res["dispersion"]))
+
+
+# ---------------------------------------------------------------------------
+# Units
+# ---------------------------------------------------------------------------
+def convert_units(req: s.UnitConversionRequest) -> s.UnitConversionResult:
+    converted = units.convert(req.property, req.from_unit, req.value, req.gas_T_C, req.gas_P_atm)
+    return s.UnitConversionResult(property=req.property, from_unit=req.from_unit, value=req.value,
+                                  converted=jsonable(converted))
 
 
 # ---------------------------------------------------------------------------

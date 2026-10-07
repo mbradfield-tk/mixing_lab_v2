@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pages.mixing_sensitivity as ms
-from utils.report_builder import build_protocol_pdf
+from reports.pdf import build_protocol_pdf
 
 pypdf = pytest.importorskip("pypdf")
 

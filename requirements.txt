@@ -3,7 +3,8 @@
 #
 #   python -m venv .venv && source .venv/bin/activate
 #   pip install -r requirements.txt
-#   python app.py
+#   python app.py                      # Taipy UI
+#   uvicorn api.main:app --port 8000   # HTTP API (docs at /api/v1/docs)
 #
 # Development extras (tests, equation-image rebuild, datasheet parsing) are at
 # the bottom and are not needed to run the server.
@@ -17,10 +18,16 @@ gunicorn>=22.0                # production WSGI server only (app:create_app fact
 gevent==24.11.1               # gunicorn worker class for production
 gevent-websocket==0.10.1
 
+# --- HTTP API (api/, run with: uvicorn api.main:app) -------------------------
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32      # CSV uploads
+itsdangerous==2.2.0           # signed admin bearer tokens (also a Flask dependency)
+
 # --- Data / numerics -------------------------------------------------------
 numpy==2.5.1
 pandas==2.2.2
-pydantic==2.13.5              # core/schemas.py JSON contracts (future FastAPI layer)
+pydantic==2.13.5              # core/schemas.py JSON contracts (API request/response models)
 
 # --- Charts / reports ------------------------------------------------------
 plotly==6.9.0
@@ -31,5 +38,6 @@ matplotlib==3.11.1            # viz/vessel_schematic.py (2D drawings) and script
 
 # --- Development / tooling (optional) --------------------------------------
 pytest==9.1.1
+httpx==0.28.1                 # FastAPI TestClient (tests/test_api.py)
 openpyxl==3.1.5               # reading/writing the equation-audit workbook
 pypdf==6.19.0                 # parsing vendor HTM datasheets in data/HTM_datasheets/

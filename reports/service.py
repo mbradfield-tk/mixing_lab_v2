@@ -15,7 +15,7 @@ from core.operating_point import evaluate_point
 from core.options import Competing, CorrSource
 from reports import snapshots
 from reports.tables import assessment_tables
-from utils import report_builder as rb
+from reports import pdf as rb
 from viz import vessel as viz_vessel
 
 

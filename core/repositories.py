@@ -22,7 +22,8 @@ from core.auth import Principal, authorize
 from core.csv_store import append_csv, fresh_csv, save_csv
 from core.records import DATA_DIR
 from core.schemas import (
-    FluidRecord, ParticleRecord, ReactionRecord, ReactorRecord, validation_message,
+    RESULT_COLUMNS, FluidRecord, ParticleRecord, ReactionRecord, ReactorRecord, RecordedResult,
+    validation_message,
 )
 from utils.solvent_properties import is_known_solvent
 
@@ -104,6 +105,9 @@ class Repository:
                principal: Principal) -> pd.DataFrame:
         """Set several columns of the row named ``name``."""
         authorize(principal, self.table)
+        unknown = [c for c in changes if c not in df.columns]
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(unknown)}")
         idx = self.index_of(df, name)
         out = df.copy()
         for col, value in changes.items():
@@ -149,6 +153,10 @@ class ReactorRepository(Repository):
         out = vimport.refresh_search_names(tables.apply_edit(df.copy(), payload))
         return self.save(out, principal)
 
+    def update(self, df, name, changes, principal):
+        out = super().update(df, name, changes, principal)
+        return self.save(vimport.refresh_search_names(out), principal)
+
     def add_blank(self, df, principal, values=None):
         authorize(principal, self.table)
         out, _ = vimport.assign_missing_reactor_ids(
@@ -174,8 +182,10 @@ class ResultsRepository(Repository):
         return fresh_csv(self.path).copy()
 
     def append(self, rows: list[dict], principal: Principal) -> int:
+        """Validate and append saved results; returns the new record count."""
         authorize(principal, self.table)
-        return append_csv(pd.DataFrame(rows), self.path)
+        return append_csv(pd.DataFrame([self.validate(r) for r in rows],
+                                       columns=self.columns), self.path)
 
     def clear(self, df: pd.DataFrame, principal: Principal) -> pd.DataFrame:
         """Remove every record, keeping the header."""
@@ -224,7 +234,7 @@ particles = Repository("particles", DATA_DIR / "particles.csv", PARTICLE_COLUMNS
                        "particle_name", "particle", ParticleRecord)
 fluids = Repository("fluids", DATA_DIR / "fluids.csv", FLUID_COLUMNS, "fluid_name",
                     "custom fluid", FluidRecord, reserved=_library_solvent)
-results = ResultsRepository("recorded_results", DATA_DIR / "recorded_results.csv", [],
-                            "reactor", "record")
+results = ResultsRepository("recorded_results", DATA_DIR / "recorded_results.csv", RESULT_COLUMNS,
+                            "reactor", "record", RecordedResult)
 
 REPOSITORIES = {r.table: r for r in (reactors, reactions, particles, fluids, results)}

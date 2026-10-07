@@ -38,8 +38,9 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
 def append_csv(new_df: pd.DataFrame, path: Path) -> int:
     """Append rows to a CSV atomically; returns the resulting row count."""
     with _io_lock:
-        out = (pd.concat([pd.read_csv(path), new_df], ignore_index=True)
-               if path.exists() else new_df)
+        existing = pd.read_csv(path) if path.exists() else None
+        out = (new_df if existing is None or existing.empty
+               else pd.concat([existing, new_df], ignore_index=True))
         _atomic_write(out, path)
         return len(out)
 

@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
-from utils.menu_icons import inject_icons
-from utils.report_builder import build_vessel_assessment_pdf, report_filename
+from pages._menu_icons import inject_icons
+from reports.pdf import build_vessel_assessment_pdf, report_filename
 from core import catalog
 from core import operating_point as op
 from core import repositories as repos
@@ -26,6 +25,7 @@ from core.kinetics import effective_t_rxn as _auto_t_rxn
 from core.envelope import envelope_data, solve_operating_point, surface_data
 from core.options import Coalescence, CorrSource, FeedLocation, GasTransfer, Toggle, is_on
 from viz import vessel as viz_vessel
+from viz.common import empty as empty_fig
 from reports import snapshots
 from reports.tables import MT_COLUMNS, assessment_tables
 from core.records import (
@@ -243,7 +243,7 @@ va_env_caption = ""
 # 3D response surfaces z = f(N, V) — generated on demand (button) because the
 # N×V grid costs ~375 hydro evaluations per parameter set.
 _SURF_N_PTS, _SURF_V_PTS = 25, 15
-va_surf_fig = go.Figure()
+va_surf_fig = empty_fig()
 va_surf_class = "env-rows-2"
 va_surf_caption = ""
 va_surf_ready = False
@@ -275,7 +275,7 @@ va_corr_applicability = ""
 va_sl_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_heat_df = pd.DataFrame(columns=["Parameter", "Value", "Units"])
 va_result_ready = False
-va_env_fig = go.Figure()
+va_env_fig = empty_fig()
 va_compute_class = "compute-btn"   # red until an assessment is run; blue after
 va_stale = False                   # True when inputs change after a run
 va_hydro_csv = b""

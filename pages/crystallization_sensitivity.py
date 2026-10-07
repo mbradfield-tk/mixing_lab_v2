@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from taipy.gui import Markdown
 
-from utils.menu_icons import inject_icons
+from pages._menu_icons import inject_icons
 
 page = Markdown(
     inject_icons("""

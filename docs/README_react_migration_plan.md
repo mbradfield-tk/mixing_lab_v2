@@ -1,14 +1,16 @@
 # Modularization roadmap: FastAPI back end + React front end
 
-Status date: 2026-10-06. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 is complete** (see the P0 section for what was delivered); P1 is next.
+Status date: 2026-10-06. This plan follows on from the "Option 2" refactor (Parts 1–4). **P0 and P1 are complete** (see each section for what was delivered); P2, the React pages, is next.
 
 ## Where we are
 
 ```mermaid
 flowchart LR
-    pages["pages/ (Taipy UI)"] --> services["core/services.py"]
+    pages["pages/ (Taipy UI)"] --> services["core/services.py + repositories"]
+    api["api/ (FastAPI, /api/v1)"] --> services
+    api --> reports
     pages --> viz["viz/ (plotly, matplotlib)"]
-    pages --> reports["reports/ (snapshots, PDF service)"]
+    pages --> reports["reports/ (snapshots, pdf, charts)"]
     services --> core["core/ (domain, no UI)"]
     reports --> core
     reports --> viz
@@ -32,6 +34,12 @@ flowchart LR
   - Admin login is server-side and fails closed.
   - Pages no longer import the calculation engine, and a test enforces the layer rules.
   - 812 tests in total.
+- **P1 (2026-10-06).**
+  - A FastAPI app (`api/`) exposes every service, database, report, chart, media file and reference table under `/api/v1`, with admin bearer tokens.
+  - Pages no longer import plotly.
+  - Media lookup, vessel capacity geometry and unit conversion live in `core/`.
+  - The PDF builder moved to `reports/pdf.py`.
+  - 838 tests in total.
 
 **Still coupled to Taipy or not exposed as a service:**
 
@@ -39,12 +47,12 @@ flowchart LR
 |---|---|
 | Database pages (vessel, fluid, reaction, particle, recorded results) | ~~CRUD, validation, search and filtering live in page callbacks that call `save_csv`/`append_csv` directly. There are no record schemas and no repository layer.~~ **Resolved in P0:** `core/repositories.py` + record schemas. Pages keep only the Taipy table plumbing. |
 | Interactive computations | ~~Pages still import the engine directly; HT, Bourne and fluid blend work have no contract.~~ **Resolved in P0:**<br>• `core/catalog.py`, `core/fluids.py` and new services in `core/services.py`.<br>• `tests/test_p0_seams.py::test_layer_boundaries` blocks direct engine imports from `pages/`. |
-| Figures | Five pages still import plotly. Some figures are built in the page (for example the fluid blend phase figure and parts of the HT and Bourne pages). |
-| Vessel media / schematic | Both return ready-made HTML (`pages/_vessel_media.py` builds iframe HTML; `viz/vessel_schematic.py` returns an `<img>` tag). React needs URLs or data instead. |
+| Figures | ~~Five pages still import plotly.~~ **Resolved in P1:** placeholders come from `viz/common.empty`. Every chart is also available as Plotly JSON from `POST /api/v1/charts/{kind}`. |
+| Vessel media / schematic | ~~Both return ready-made HTML.~~ **Resolved in P1:** `core/media.vessel_media()` returns `{kind, url, mime, caption}`; `core/vessel_capacity.py` holds the capacity curve, fill level and impeller warnings. The API serves the media file, a PNG schematic and the fill-state JSON. The Taipy HTML builders stay in `pages/_vessel_media.py`. |
 | Auth | ~~The admin gate is a username/password check inside the page, with a **hard-coded default password**.~~ **Resolved in P0:** `core/auth.py` reads credentials from the environment only and fails closed. Write permissions are enforced in the repositories. |
-| Static and utility pages | The Unit Converter, Equations Reference and Home pages hold their logic or content inside Taipy Markdown. |
-| `utils/` package | It mixes engine code (`calculations/`, `rom_registry`, `solvent_properties`), reporting (`report_builder.py`, 2,000+ lines), web plumbing (`usage.py`, Flask) and UI (`menu_icons.py`). |
-| Server | `app.py` combines Flask, Taipy, usage logging, media `path_mapping` and CSS. There is no HTTP API. |
+| Static and utility pages | ~~The Unit Converter, Equations Reference and Home pages hold their logic or content inside Taipy Markdown.~~ **Resolved in P1:** `core/units.py`, `GET /equations`, and `GET /version` (from `core/version.py`). |
+| `utils/` package | **Partly resolved in P1:**<br>• The PDF builder moved to `reports/pdf.py`; the menu icons moved to `pages/_menu_icons.py`.<br>• The engine modules stay in `utils/` but are held to core rules by `test_layer_boundaries`.<br>• `utils/usage.py` (the SQLite logger) is shared by the Flask hook and the API middleware. |
+| Server | **Resolved in P1:** `uvicorn api.main:app` runs next to the Taipy app. `app.py` is unchanged. |
 
 ## Target architecture
 
@@ -103,6 +111,10 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
   - `pages/` must not import `utils.calculations`, `utils.rom_registry` or `utils.solvent_properties`;
   - `core/` must not import `taipy`, `plotly`, `matplotlib`, `pages`, `viz`, `reports` or `fastapi`;
   - `viz/` and `reports/` must not import `taipy` or `pages`.
+  - *Extended in P1:*
+    - `pages/` must also not import `plotly`, `matplotlib` or `fastapi`;
+    - `api/` must not import `taipy` or `pages`;
+    - `utils/` (the engine) must not import any UI or API layer.
 
 **2. Data layer: record schemas and repositories.**
 
@@ -141,7 +153,7 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
 - **Pages rewired.** All four database pages and Recorded Results now go through the repositories, and so do the Vessel Assessment and Vessel Comparison “save result” actions.
 - **Option lists.** The analysis pages read their option lists from `core/catalog.py` instead of their own `pd.read_csv` calls.
 - **Not yet:**
-  - The RecordedResult schema. Rows are still free-form dicts from the two save actions; define the schema when the `/results` endpoint is designed.
+  - ~~The RecordedResult schema.~~ **Done in P1:** `RecordedResult` (snake_case fields, CSV headers as aliases, `RESULT_COLUMNS`). `ResultsRepository.append` validates every saved row.
   - Live option lists in the Taipy pages. The lists come from the repositories but are still built once at import. React and the API get live lists through `options()`, so this is not worth fixing in Taipy.
 
 **3. Server-side authentication and authorisation.**
@@ -156,12 +168,14 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
   - Credentials come only from `MIXING_LAB_ADMIN_USER` / `MIXING_LAB_ADMIN_PW`, compared in constant time.
   - With either variable unset, admin login is **disabled** and the page says so.
   - `login()` returns a `Principal`; `authorize(principal, table)` raises `PermissionError`.
-- **Write policy.** `PROTECTED_TABLES = {reactors, reactions}`, which matches the previous UI gates. Particles, custom fluids and recorded results stay open.
-  - The repositories enforce the policy, so it now also covers the Reaction “Add reaction” form, which previously bypassed the lock.
-  - **Decision needed before P1:** should particles, fluids and the recorded-results “clear all” also require admin?
+- **Write policy (decided 2026-10-06).** `PROTECTED_TABLES = {reactors, reactions, particles, fluids}`: the shared reference tables need admin for every write, including import. **Recorded results stay open**, because they belong to the local user (saving and “clear all” need no login).
+  - The repositories enforce the policy, so it also covers the Reaction “Add reaction” form, which previously bypassed the lock.
+  - The Particle and Custom Fluid pages gained the same Admin panel as the Vessel and Reaction pages (`db.ADMIN_PANEL_MD`).
 - **Taipy gotcha found along the way.** Taipy resolves `state.<var>` from the *calling module's* frame. Shared helpers in `pages/_db_common.py` therefore must not read or write `state`. They return values (`unlock_attempt`, `as_principal`), and each page's `on_admin_unlock` / `on_admin_lock` assigns them.
 
 ### P1: HTTP API alongside Taipy
+
+> **Status: done (2026-10-06).** Steps 4–8 below are complete. What was delivered is listed under each step. Golden outputs are unchanged. Every vessel schematic (180 renders) and Unit Converter result (483 cases) was compared byte-for-byte before and after the moves. Behaviour changes are listed in [README_code_changes.md §15](README_code_changes.md).
 
 **4. FastAPI skeleton (`api/`).**
 
@@ -189,11 +203,66 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
 - **Tests:** use `TestClient` to replay every golden scenario through HTTP and assert parity.
 - **Types for React:** export the OpenAPI schema and generate TypeScript types with `openapi-typescript`. Commit the generated file or regenerate it in CI.
 
+*Delivered:*
+
+- **Run it:** `uvicorn api.main:app --port 8000`. Interactive docs are at `/api/v1/docs`, the schema at `/api/v1/openapi.json`. `app.py` (Taipy) is unchanged and runs side by side.
+- **Files:**
+  - [api/main.py](../api/main.py): app factory, error mapping, CORS, gzip, static mounts, usage middleware, `/health`, `/version`, `/auth/login`.
+  - [api/security.py](../api/security.py): signed, 8-hour bearer tokens.
+  - [api/routers/databases.py](../api/routers/databases.py): one CRUD router per table, plus recorded results.
+  - [api/routers/calculations.py](../api/routers/calculations.py).
+  - [api/routers/outputs.py](../api/routers/outputs.py): reports, charts, media, equations.
+- **Routes** (all under `/api/v1`):
+
+| Area | Routes |
+|---|---|
+| Meta / auth | `GET /health`, `GET /version`, `POST /auth/login` → `{access_token}` |
+| Databases | `/vessels`, `/reactions`, `/particles`, `/fluids/custom`, each with:<br>• `GET ""` (list + `q`/`field`/`op` search)<br>• `GET /names`, `GET /columns`, `GET /export` (CSV)<br>• `GET` / `PATCH` / `DELETE /{name}`, `POST ""`<br>• `PUT /import` (replace); vessels use `POST /import/preview` + `POST /import/apply` (merge review) instead |
+| Recorded results | `GET /results` (filters + counts), `GET /results/export`, `POST /results`, `DELETE /results` |
+| Calculations | `POST /assessment/{point,solve,sweep,surface}`<br>`POST /sensitivity/assess`<br>`POST /comparison`, `POST /comparison/scale-up`<br>`POST /bourne/{plan,assess}`<br>`POST /heat-transfer/{heat-cool,reaction-profile,ua-surface}`<br>`GET /fluids/library`, `POST /fluids/{solvent-state,blend}`<br>`GET /units`, `POST /units/convert`<br>`GET /options` |
+| Outputs | `POST /reports/{kind}` (PDF), `POST /charts/{kind}` (Plotly JSON) |
+| Reference | `GET /media/vessels/{name}`, `GET /media/vessels/{name}/fill`, `GET /media/vessels/{name}/schematic.png`, `GET /equations` |
+| Static | `/vimages/...`, `/vassets/...`: same URLs as Taipy, cached for 1 day, gzip |
+
+- **Errors:**
+  - `LookupError` → 404, `ValueError` and pydantic errors → 422, `PermissionError` → 403.
+  - A missing or expired token → 401; admin not configured → 503 on login.
+  - Anything else → a generic 500, with the traceback only in the server log.
+- **Security:**
+  - Uploads are limited to 5 MB.
+  - Media IDs are restricted to `[A-Za-z0-9_.-]` with no `..`.
+  - Static mounts cover only `images/` and `assets/`; repo files return 404 (tested).
+  - CORS is off unless `MIXING_LAB_CORS_ORIGINS` is set.
+  - Set `MIXING_LAB_API_SECRET` so tokens survive restarts.
+- **Usage logging:** the middleware logs each `/api/v1` call as page `api:<METHOD> <path>` to the same `data/usage.db`.
+- **Tests:** [tests/test_api.py](../tests/test_api.py) (22 tests) checks:
+  - HTTP JSON equals the service results, which `test_contracts` ties to the page goldens;
+  - every chart kind;
+  - the PDF report;
+  - auth (login, 401, 403, 503);
+  - CRUD on temp copies of the CSVs, and the vessel import review;
+  - the upload limit, hidden 500 details, media and static traversal, CORS;
+  - an **OpenAPI snapshot**.
+- **Types for React:** `python scripts/export_openapi.py` writes [api/openapi.json](../api/openapi.json). Generate the TypeScript types from it with `npx openapi-typescript api/openapi.json -o src/api/schema.d.ts`. The snapshot test fails when a route or contract changes without regenerating.
+- **Still open:**
+  - Mounting behind a reverse proxy, and SSO identity headers. Decide at deployment time.
+  - The schematic as SVG/JSON geometry: PNG and fill data are served today.
+
 **5. Charts as data.**
 
 - Move the remaining in-page figure code (fluid blend phase figure, HT and Bourne leftovers) into `viz/`. After that, no page imports plotly.
 - Chart endpoints return `figure_json(fig)` (react-plotly.js renders it directly). Optionally they can return raw series and let React build the figure.
 - Keep `env-rows-N` and height hints in the response metadata, not in CSS class names.
+
+*Delivered:*
+
+- **No page imports plotly any more.** The empty placeholder figures come from [viz/common.py](../viz/common.py), and the layer test now bans `plotly` and `matplotlib` in `pages/`.
+- **[reports/charts.py](../reports/charts.py).** `CHARTS` / `render_chart(kind, payload)` returns `ChartResult {figures: {name: plotly JSON}, captions, rows}`. Kinds:
+  - `assessment-envelope`, `assessment-surfaces`, `comparison-envelope`;
+  - `heat-cool` (temperature, duty, resistances, UA vs speed, UA vs volume), `reaction-profile`, `ua-surface`;
+  - `bourne-speed-plan`, `solvent-properties`, `blend-phases`.
+
+  The `rows` field is the subplot sizing hint that replaces `env-rows-N`.
 
 **6. Media and schematic as data.**
 
@@ -202,6 +271,14 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
   - the HTML builders stay in Taipy-only code.
   - React then renders `<model-viewer>` or `<img>` itself.
 - `viz/vessel_schematic.py`: separate the geometry (outline points, liquid level, impeller and baffle boxes, the `brim_volume` capacity curve) into `core/` from the matplotlib rendering. The API can then return JSON geometry (drawn as SVG in React) or a PNG/SVG file.
+
+*Delivered:*
+
+- **[core/media.py](../core/media.py)** provides `find_vessel_media`, `static_url`, `mime_type`, `media_caption` and `vessel_media()`. `pages/_vessel_media.py` keeps only the Taipy HTML builders.
+- **[core/vessel_capacity.py](../core/vessel_capacity.py)** provides `geometry()` (outline and capacity curve), `brim_volume`, `fill_state()` (level, fill %, wetted area, impeller wall and level warnings) and `fill_summary()` for JSON.
+  - `viz/vessel_schematic.py` now only draws.
+  - `build_vessel_schematic(..., as_png=True)` returns PNG bytes for the API.
+- **Verification:** all 180 schematic renders (44 vessels × 4 fills) are byte-identical before and after the split.
 
 **7. Reorganise the `utils/` package.**
 
@@ -214,11 +291,23 @@ Each step keeps the Taipy app working and the golden tests passing, so the migra
 
 Make each move with `git mv` plus import updates, and require the golden tests to pass after every move.
 
+*Delivered:*
+
+- **Moves** (`git mv`, so history is kept): `utils/report_builder.py` → [reports/pdf.py](../reports/pdf.py), and `utils/menu_icons.py` → [pages/_menu_icons.py](../pages/_menu_icons.py). Dead locals and an unused import flagged by lint were removed. The PDF builder is not split per report yet; it is one module, which can be split when a React page needs it.
+- **Engine modules:** `calculations/`, `rom_registry`, `rom_templates`, `solvent_properties`, `validation` and `bourne_kpi` stay in `utils/` to avoid churning about 100 imports. `test_layer_boundaries` holds them to core rules: no `taipy`, `plotly`, `pages`, `viz`, `reports` or `api` imports.
+- **`utils/usage.py`** stays as the shared SQLite logger. The Flask hook (Taipy) and the FastAPI middleware both call `log_access`. Delete the Flask hook when Taipy is retired.
+
 **8. Static and utility pages.**
 
 - **Equations Reference:** serve `data/equations_reference.json` as-is from `/equations`.
 - **Unit Converter:** move the conversion tables and functions into `core/units.py` and expose `/units/convert`. React can also convert on the client.
 - **Home:** becomes static React content. `APP_VERSION` comes from `/version`.
+
+*Delivered:*
+
+- **[core/units.py](../core/units.py)** holds all conversion tables, `convert()`, `units_for()` and `GAS_REFERENCE`. The Unit Converter page now only formats; its output for all 483 property/unit/value cases is identical.
+- **`GET /equations`** serves `data/equations_reference.json`, re-read when the file changes.
+- **[core/version.py](../core/version.py)** holds `APP_VERSION` and `RELEASE_DATE`, used by the Home page and `GET /version`.
 
 ### P2: React migration (strangler pattern)
 
@@ -269,4 +358,10 @@ Make each move with `git mv` plus import updates, and require the golden tests t
 
 ## Suggested next increment
 
-Steps 1 and 3 can start right away and are independent. Do step 1 first, Heat Transfer and then Bourne, because those pages carry the most non-service logic. Step 2 (repositories) then unblocks both the database API and the first React CRUD pages.
+Start P2 with step 10, row 1:
+
+1. Scaffold the Vite + React + TypeScript app and generate types from `api/openapi.json`.
+2. Build Home, Equations Reference and Unit Converter against `/api/v1`.
+3. Settle deployment: a reverse proxy routes `/api` to uvicorn and `/app` to React, while Taipy keeps the rest.
+
+In parallel, step 9 should add input-hash caching for the slow endpoints. Those are the 3D surfaces, comparisons and PDFs; a cold kaleido PDF takes about 11 s.

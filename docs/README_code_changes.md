@@ -332,3 +332,44 @@ This is the back-end-seams refactor from [README_react_migration_plan.md](README
 
 - `pages/_db_common.py` no longer defines the CSV helpers. They live in `core/tables.py`, and `_db_common` re-exports them.
 - The per-page copies of the Bourne verdict text, the fluid blend calculation and the VC scale-up/heat-summary loops were replaced by calls into `core/`.
+
+---
+
+## 15. P1 HTTP API (2026-10-06): behaviour changes
+
+The new FastAPI app (`api/`) adds routes and changes nothing in the Taipy pages' calculations. Golden outputs, all 180 vessel schematics and all 483 Unit Converter cases are byte-identical. The items below behave differently.
+
+**15a. Particles and custom fluids now need admin to edit** (decision of 2026-10-06).
+
+- `core/auth.PROTECTED_TABLES` is now reactors, reactions, particles and fluids.
+- The Particle Database and Fluid Database pages show the same Admin panel as the Vessel and Reaction pages.
+- While locked, their tables are read-only and the add-form button and CSV import are disabled.
+- **Recorded results stay open to the local user:** saving and "clear all" need no login.
+
+**15b. Saved results are validated.**
+
+- `ResultsRepository.append` checks each row against the new `RecordedResult` schema.
+- The reactor name is required, numbers must be numbers, and unknown columns are rejected.
+- Rows are always written with the full `recorded_results.csv` header in its fixed order. Missing values are left blank, as before.
+
+**15c. Vessel media IDs are sanitised.** `core/media.find_vessel_media` only accepts reactor IDs made of letters, digits, `_`, `.` and `-`, with no `..`. Every current ID passes (34 of 44 vessels still resolve to media). The check stops path-traversal through the new `/media/vessels/...` routes.
+
+**15d. Appending to an empty results file.** `core/csv_store.append_csv` no longer concatenates onto a header-only frame. This silences a pandas FutureWarning; the written CSV is the same.
+
+**15e. Files moved** (with `git mv`; import paths changed, behaviour did not):
+
+| Before | After |
+|---|---|
+| `utils/report_builder.py` | `reports/pdf.py` |
+| `utils/menu_icons.py` | `pages/_menu_icons.py` |
+| `pages/_vessel_media.py` media lookup | `core/media.py` |
+| `viz/vessel_schematic.py` geometry / capacity / fill state | `core/vessel_capacity.py` |
+| Unit Converter tables | `core/units.py` |
+| Home `APP_VERSION` | `core/version.py` |
+
+**15f. New dependencies:** `fastapi`, `uvicorn[standard]`, `python-multipart` and `itsdangerous` (runtime), plus `httpx` (tests). See `requirements.txt`.
+
+**15g. Lint clean-up.**
+
+- Unused locals and an unused import were removed from `reports/pdf.py`.
+- The duplicate `"type"` key in `COLUMN_LABELS` was removed. Its later value ("Reaction Type") already applied, so labels are unchanged.

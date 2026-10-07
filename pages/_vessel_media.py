@@ -19,48 +19,18 @@ from __future__ import annotations
 import base64
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-IMG_DIR = BASE_DIR / "images" / "reactors"
-IMAGES_ROOT = BASE_DIR / "images"
-MODEL_VIEWER_JS = BASE_DIR / "assets" / "model-viewer-umd.min.js"
+from core.media import (
+    ASSETS_URL_PREFIX, BASE_DIR, IMAGES_ROOT, IMAGES_URL_PREFIX, IMG_DIR, IMG_SUFFIXES,
+    MODEL_SUFFIXES, MODEL_VIEWER_JS, find_vessel_media, media_caption, static_url,
+)
+
+__all__ = ["ASSETS_URL_PREFIX", "BASE_DIR", "IMAGES_ROOT", "IMAGES_URL_PREFIX", "IMG_DIR",
+           "IMG_SUFFIXES", "MODEL_SUFFIXES", "MODEL_VIEWER_JS", "find_vessel_media",
+           "media_caption", "build_vessel_viewer_html", "build_image_html",
+           "build_multi_vessel_viewer_html"]
+
 MODEL_VIEWER_CDN = "https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
-
-# URL prefixes served by Taipy path_mapping (registered in app.py).
-IMAGES_URL_PREFIX = "/vimages"
-ASSETS_URL_PREFIX = "/vassets"
-
-IMG_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
-MODEL_SUFFIXES = (".glb", ".gltf")
-
-
-def find_vessel_media(reactor_id: str) -> tuple[str, Path] | None:
-    """Return ``(kind, path)`` for a vessel's best available media.
-
-    ``kind`` is ``"3d"`` for a navigable model or ``"image"`` for a 2D picture.
-    3D ``.glb`` is preferred (self-contained binary), then ``.gltf``, then the
-    ``_iso`` image, then ``_side``, then any other matching image.
-    """
-    rid = str(reactor_id).strip()
-    if not rid or rid.lower() == "nan" or not IMG_DIR.exists():
-        return None
-
-    for ext in MODEL_SUFFIXES:
-        candidate = IMG_DIR / f"{rid}_3d{ext}"
-        if candidate.is_file():
-            return "3d", candidate
-
-    for view in ("iso", "side"):
-        for ext in IMG_SUFFIXES:
-            candidate = IMG_DIR / f"{rid}_{view}{ext}"
-            if candidate.is_file():
-                return "image", candidate
-
-    for p in sorted(IMG_DIR.glob(f"{rid}_*")):
-        if p.suffix.lower() in IMG_SUFFIXES:
-            return "image", p
-    return None
 
 
 @lru_cache(maxsize=64)
@@ -71,12 +41,7 @@ def _data_uri(path_str: str, mime: str) -> str:
 
 def _media_src(path: Path, mime: str) -> str:
     """Static URL for a file under images/ (base64 data URI otherwise)."""
-    p = Path(path).resolve()
-    try:
-        rel = p.relative_to(IMAGES_ROOT)
-    except ValueError:
-        return _data_uri(str(p), mime)
-    return f"{IMAGES_URL_PREFIX}/{quote(rel.as_posix())}"
+    return static_url(path) or _data_uri(str(Path(path).resolve()), mime)
 
 
 @lru_cache(maxsize=1)
@@ -128,15 +93,6 @@ def build_vessel_viewer_html(reactor_id: str, height: int = 360) -> str:
         f"style=\"max-width:100%;max-height:{height}px;object-fit:contain;border-radius:4px;\"/>"
         "</body></html>"
     )
-
-
-def media_caption(reactor_id: str) -> str:
-    media = find_vessel_media(reactor_id)
-    if media is None:
-        return "No vessel imagery found."
-    kind, path = media
-    label = "Interactive 3D model" if kind == "3d" else "Image"
-    return f"{label}: {path.name}"
 
 
 def build_image_html(image_path, alt: str = "diagram", background: str = "#ffffff") -> str:

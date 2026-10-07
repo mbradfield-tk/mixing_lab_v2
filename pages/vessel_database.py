@@ -14,7 +14,7 @@ from pages import _db_common as db
 from core import repositories as repos
 from core import tables
 from core import vessel_import as vimport
-from utils.menu_icons import inject_icons
+from pages._menu_icons import inject_icons
 from pages._vessel_media import build_vessel_viewer_html, media_caption
 from viz.vessel_schematic import brim_volume, build_vessel_schematic
 

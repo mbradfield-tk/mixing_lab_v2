@@ -10,7 +10,7 @@ if sys.version_info >= (3, 13):
 from taipy.gui import Gui, navigate
 from flask import Flask
 
-from utils.menu_icons import image_thumb_uri, menu_icon_uri
+from pages._menu_icons import image_thumb_uri, menu_icon_uri
 from utils.usage import install_usage_logging
 
 from pages import (
@@ -84,7 +84,7 @@ TAKEDA_LOGO_URI = _takeda_logo_uri()
 
 
 # Per-item menu icons. Each menu key may supply a PNG at images/menu/[key].png
-# (lowercase); when present a small cached thumbnail (utils/menu_icons.py)
+# (lowercase); when present a small cached thumbnail (pages/_menu_icons.py)
 # replaces the emoji fallback below.
 MENU_ICON_EMOJI = {
     "Vessel_Database": "⚗️",
@@ -181,7 +181,7 @@ __MENU_ICONS__
 }
 
 /* Inline menu-icon images embedded in page headings and Home links (see
-   utils/menu_icons.py). Sized in em so the icon scales with its heading/text. */
+   pages/_menu_icons.py). Sized in em so the icon scales with its heading/text. */
 img[alt="menu-icon"] {
     height: 1.1em;
     width: auto;

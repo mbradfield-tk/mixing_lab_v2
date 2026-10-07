@@ -20,7 +20,7 @@ from pages import mixing_sensitivity as ms
 from pages import vessel_assessment as va
 from pages import vessel_comparison as vc
 from reports import service
-from utils import report_builder as rb
+from reports import pdf as rb
 
 GOLDEN = json.loads(gr.GOLDEN.read_text())
 

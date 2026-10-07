@@ -15,7 +15,7 @@ import pandas as pd
 from taipy.gui import Markdown, notify
 
 from core import repositories as repos
-from utils.menu_icons import inject_icons
+from pages._menu_icons import inject_icons
 from pages import _db_common as db
 
 REPO = repos.results

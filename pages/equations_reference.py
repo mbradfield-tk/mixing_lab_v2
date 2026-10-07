@@ -18,7 +18,7 @@ from pathlib import Path
 
 from taipy.gui import Markdown
 
-from utils.menu_icons import inject_icons
+from pages._menu_icons import inject_icons
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _JSON = DATA_DIR / "equations_reference.json"

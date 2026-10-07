@@ -29,11 +29,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 from taipy.gui import Markdown, notify
 
-from utils.menu_icons import inject_icons
-from utils.report_builder import build_reactor_comparison_pdf, report_filename
+from pages._menu_icons import inject_icons
+from reports.pdf import build_reactor_comparison_pdf, report_filename
 from core import catalog
 from core import kinetics
 from core import records
@@ -50,6 +49,7 @@ from core.records import (
 )
 from pages import _db_common as db
 from viz import vessel as viz_vessel
+from viz.common import empty as empty_fig
 from reports import snapshots
 from pages._vessel_media import build_multi_vessel_viewer_html
 
@@ -212,7 +212,7 @@ vc_detail_df = pd.DataFrame()
 vc_rpm_ref_df = pd.DataFrame()
 vc_env_params_options = list(_BASE_PLOT_PARAMS)
 vc_env_params = ["Da_micro", "Da_macro", "Blend time 95% (s)", "P/V (W/L)"]
-vc_env_fig = go.Figure()
+vc_env_fig = empty_fig()
 vc_env_class = "env-rows-2"
 vc_heat_df = pd.DataFrame()
 vc_scale_df = pd.DataFrame()

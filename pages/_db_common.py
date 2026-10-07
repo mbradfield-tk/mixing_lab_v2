@@ -24,11 +24,33 @@ __all__ = [
     "clean_uploaded_frame", "csv_bytes", "delete_row", "detail_table", "filter_rows",
     "fix_mojibake", "friendly", "friendly_columns", "load_csv", "name_taken", "reaction_names",
     "read_upload_csv", "reset", "split_label", "as_principal", "admin_status_initial",
-    "unlock_attempt", "ADMIN_LOCKED", "ADMIN_UNLOCKED",
+    "unlock_attempt", "ADMIN_LOCKED", "ADMIN_UNLOCKED", "ADMIN_PANEL_MD",
 ]
 
 ADMIN_LOCKED = "🔒 Editing is locked. Unlock with admin credentials to modify the database."
 ADMIN_UNLOCKED = "🔓 Editing unlocked. Changes save automatically to the CSV."
+
+# Appended to a page's Markdown; the page defines admin_* vars and on_admin_unlock/lock.
+ADMIN_PANEL_MD = """
+<|part|class_name=va-card|
+## Admin
+<|{admin_status}|text|>
+
+<|part|render={not admin_authenticated}|
+<|layout|columns=230px 230px 150px|
+<|{admin_user}|input|label=Admin username|>
+
+<|{admin_pw}|input|password|label=Admin password|on_action=on_admin_unlock|>
+
+<|Unlock editing|button|on_action=on_admin_unlock|>
+|>
+|>
+
+<|part|render={admin_authenticated}|
+<|Lock editing|button|on_action=on_admin_lock|>
+|>
+|>
+"""
 
 # Taipy resolves ``state.<var>`` from the *calling* module, so these helpers never
 # touch ``state``; the page handlers read and assign the values themselves.

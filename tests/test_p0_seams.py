@@ -32,16 +32,16 @@ def test_login_needs_env_and_matching_credentials(monkeypatch):
     assert auth.login("ops", "nope") is None
 
 
-def test_write_policy_protects_reactors_and_reactions_only():
-    for table in ("reactors", "reactions"):
+def test_write_policy_protects_shared_tables_only():
+    for table in ("reactors", "reactions", "particles", "fluids"):
         with pytest.raises(PermissionError):
             auth.authorize(ANON, table)
         auth.authorize(ADMIN, table)
-    for table in ("particles", "fluids", "recorded_results"):
-        auth.authorize(ANON, table)
+    auth.authorize(ANON, "recorded_results")
 
 
-@pytest.mark.parametrize("module", ["pages.reaction_database", "pages.vessel_database"])
+@pytest.mark.parametrize("module", ["pages.reaction_database", "pages.vessel_database",
+                                    "pages.particle_database", "pages.fluid_database"])
 def test_page_unlock_and_lock_handlers(monkeypatch, module):
     import importlib
     from types import SimpleNamespace
@@ -78,17 +78,19 @@ def test_particle_create_validates_and_persists(tmp_path):
     df = repo.load()
     good = {"particle_name": " Test bead ", "rho_p_kg_m3": 2500, "d10_um": 10, "d50_um": 50,
             "d90_um": 90}
-    out = repo.create(df, good, ANON)
+    with pytest.raises(PermissionError):
+        repo.create(df, good, ANON)
+    out = repo.create(df, good, ADMIN)
     assert len(out) == len(df) + 1 and out.iloc[-1]["particle_name"] == "Test bead"
     assert len(repo.load()) == len(out)
     with pytest.raises(ValueError, match="already exists"):
-        repo.create(out, good, ANON)
+        repo.create(out, good, ADMIN)
     with pytest.raises(ValueError, match="d10 ≤ d50 ≤ d90"):
-        repo.create(out, {**good, "particle_name": "B", "d50_um": 5}, ANON)
+        repo.create(out, {**good, "particle_name": "B", "d50_um": 5}, ADMIN)
     with pytest.raises(ValueError, match="Particle Density"):
-        repo.create(out, {**good, "particle_name": "C", "rho_p_kg_m3": "abc"}, ANON)
+        repo.create(out, {**good, "particle_name": "C", "rho_p_kg_m3": "abc"}, ADMIN)
     with pytest.raises(ValueError, match="Enter a particle name"):
-        repo.create(out, {**good, "particle_name": "  "}, ANON)
+        repo.create(out, {**good, "particle_name": "  "}, ADMIN)
 
 
 def test_reaction_writes_need_admin_and_derive_t_rxn(tmp_path):
@@ -111,7 +113,7 @@ def test_custom_fluid_cannot_shadow_a_library_solvent(tmp_path):
     repo = _temp(repos.fluids, tmp_path)
     with pytest.raises(ValueError, match="solvent library"):
         repo.create(repo.load(), {"fluid_name": "Water", "rho_kg_m3": 1000, "mu_Pa_s": 1e-3,
-                                  "D_mol_m2_s": 1e-9, "surface_tension_N_m": 0.07}, ANON)
+                                  "D_mol_m2_s": 1e-9, "surface_tension_N_m": 0.07}, ADMIN)
 
 
 def test_reactor_add_blank_assigns_an_id(tmp_path):
@@ -135,11 +137,18 @@ def test_numeric_search_and_its_guidance():
 
 def test_results_append_and_clear(tmp_path):
     repo = _temp(repos.results, tmp_path)
-    repo.path.write_text("reactor,Assessment\n")
-    repo.append([{"reactor": "R1", "Assessment": "Potentially sensitive"}], ANON)
+    repo.path.write_text(",".join(repo.columns) + "\n")
+    repo.append([{"reactor": "R1", "RPM": 300, "Re": "", "Assessment": "Potentially sensitive"}],
+                ANON)
     df = repo.load()
     assert len(df) == 1 and repos.result_counts(df) == (0, 1, 0)
-    assert repo.clear(df, ANON).empty and repo.path.read_text().strip() == "reactor,Assessment"
+    assert list(df.columns) == repo.columns and df.at[0, "RPM"] == 300
+    with pytest.raises(ValueError, match="^reactor: "):
+        repo.append([{"reactor": ""}], ANON)
+    with pytest.raises(ValueError):
+        repo.append([{"reactor": "R2", "Unknown column": 1}], ANON)
+    assert repo.clear(df, ANON).empty
+    assert repo.path.read_text().strip() == ",".join(repo.columns)
 
 
 # --- catalog / services -----------------------------------------------------
@@ -223,14 +232,16 @@ def _imports(path: Path) -> set[str]:
 
 
 @pytest.mark.parametrize("folder,banned", [
-    ("pages", ENGINE),
-    ("core", ("taipy", "plotly", "matplotlib", "pages", "viz", "reports", "fastapi")),
-    ("viz", ("taipy", "pages")),
-    ("reports", ("taipy", "pages")),
+    ("pages", ENGINE + ("plotly", "matplotlib", "fastapi")),
+    ("core", ("taipy", "plotly", "matplotlib", "pages", "viz", "reports", "api", "fastapi")),
+    ("viz", ("taipy", "pages", "api", "fastapi")),
+    ("reports", ("taipy", "pages", "api", "fastapi")),
+    ("api", ("taipy", "pages")),
+    ("utils", ("taipy", "plotly", "pages", "viz", "reports", "api", "fastapi")),
 ])
 def test_layer_boundaries(folder, banned):
-    bad = {f"{p.name}: {m}" for p in (ROOT / folder).glob("*.py") for m in _imports(p)
-           if any(m == b or m.startswith(b + ".") for b in banned)}
+    bad = {f"{p.relative_to(ROOT)}: {m}" for p in (ROOT / folder).rglob("*.py")
+           for m in _imports(p) if any(m == b or m.startswith(b + ".") for b in banned)}
     assert not bad, sorted(bad)
 
 

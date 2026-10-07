@@ -12,8 +12,8 @@ from dataclasses import dataclass
 ADMIN_USER_ENV = "MIXING_LAB_ADMIN_USER"
 ADMIN_PW_ENV = "MIXING_LAB_ADMIN_PW"
 
-# Tables whose writes need an admin principal; the rest are open to every user.
-PROTECTED_TABLES = frozenset({"reactors", "reactions"})
+# Shared reference tables need an admin principal; recorded results belong to the local user.
+PROTECTED_TABLES = frozenset({"reactors", "reactions", "particles", "fluids"})
 
 NOT_CONFIGURED_MSG = (f"Admin editing is disabled on this server — set {ADMIN_USER_ENV} and "
                       f"{ADMIN_PW_ENV} to enable it.")

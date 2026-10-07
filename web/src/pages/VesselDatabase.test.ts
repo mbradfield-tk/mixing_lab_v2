@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultFill, fillStatus, splitLabel, type Fill } from "./VesselDatabase";
+import { defaultFill, defaultProps, fillStatus, splitLabel, vesselRatios, type Fill } from "./VesselDatabase";
 
 const OK: Fill = {
   total_L: 10,
@@ -36,5 +36,31 @@ describe("vessel helpers (ports of pages/vessel_database.py)", () => {
       "🟡 Top impeller exposed",
     );
     expect(fillStatus({}, 5, OK)).toBe("");
+  });
+});
+
+describe("vesselRatios", () => {
+  it("picks defaults by column so a relabelled column stays visible", () => {
+    const labels = new Map([["D_imp_m", "Impeller Diameter [m]"], ["D_tank_m", "Tank Diameter [m]"]]);
+    const props = defaultProps(labels);
+    expect(props).toContain("Impeller Diameter");
+    expect(props.slice(10, 13)).toEqual(["Impeller Diameter", "D/T", "H/T"]);
+    expect(defaultProps(new Map([["D_imp_m", "Impeller 1 Diameter [m]"]]))).toContain("Impeller 1 Diameter");
+  });
+
+  it("derives D/T and H/T (dish + tan-tan height) from the tank diameter, skipping missing values", () => {
+    expect(
+      vesselRatios({ D_tank_m: 0.05, D_imp_m: 0.03, H_bot_dish_m: 0.01164, L_tan_tan_m: 0.088, H_m: 0.09384 }).map((r) => [
+        r.prop,
+        r.value,
+      ]),
+    ).toEqual([
+      ["D/T", "0.6"],
+      ["H/T", "1.99"],
+    ]);
+    // no measured dish height: falls back to H_max - L_tan_tan; full height is ignored
+    expect(vesselRatios({ D_tank_m: 1, H_max_m: 1.5, L_tan_tan_m: 1.2, H_m: 9 }).map((r) => r.value)).toEqual(["1.5"]);
+    expect(vesselRatios({ D_tank_m: 1.2, D_imp_m: "0.4", L_tan_tan_m: "" }).map((r) => r.prop)).toEqual(["D/T"]);
+    expect(vesselRatios({ D_tank_m: 0, D_imp_m: 0.4, L_tan_tan_m: 1 })).toEqual([]);
   });
 });

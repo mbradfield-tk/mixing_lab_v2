@@ -16,10 +16,43 @@ import { useDebounced } from "../hooks";
 type Run = ReturnType<typeof useNotice>["run"];
 
 const DEFAULT_VESSEL = "TMA EasyMax-102";
-const DEFAULT_PROPS = [
-  "Reactor ID", "Reactor Name", "Owner", "Scale", "Tank Diameter", "Min Volume", "Max Volume",
-  "Impeller Count", "Min Speed", "Max Speed", "Shell Material", "Impeller Diameter"
+// CSV columns (plus the derived D/T and H/T) shown by default, in display order.
+const DEFAULT_COLUMNS = [
+  "reactor_id", "reactor_name", "owner", "scale", "D_tank_m", "L_tan_tan_m", "H_bot_dish_m", "V_L_min", "V_L_max",
+  "impeller_count", "D_imp_m", "D/T", "H/T", "N_rpm_min", "N_rpm_max", "shell_material",
 ];
+
+/** Default property names under the server's current column labels. */
+export function defaultProps(labels: Map<string, string>): string[] {
+  return DEFAULT_COLUMNS.map((c) => splitLabel(labels.get(c) ?? c)[0]);
+}
+
+/** Bottom-dish height (m), as ``core.records.bottom_dish_height``: measured, else H_max - L_tan_tan, else 0. */
+function bottomDishHeight(row: Row): number {
+  for (const key of ["H_bot_dish_m", "H_bottom_dish_m"]) {
+    const h = num(row[key]);
+    if (h > 0) return h;
+  }
+  const hMax = num(row.H_max_m);
+  const ltt = num(row.L_tan_tan_m);
+  return hMax > 0 && ltt > 0 && hMax > ltt ? hMax - ltt : 0;
+}
+
+/** Geometry ratios derived from the vessel row (not stored in the CSV). */
+export function vesselRatios(row: Row): { prop: string; value: string; unit: string; note: string }[] {
+  const t = num(row.D_tank_m);
+  const ratio = (x: number) => (t > 0 && x > 0 ? formatG(x / t, 3) : null);
+  const ltt = num(row.L_tan_tan_m);
+  const out = [
+    { prop: "D/T", value: ratio(num(row.D_imp_m)), note: "Impeller 1 diameter / tank diameter" },
+    {
+      prop: "H/T",
+      value: ltt > 0 ? ratio(bottomDishHeight(row) + ltt) : null,
+      note: "(Bottom dish height + tan-tan length) / tank internal diameter",
+    },
+  ];
+  return out.filter((r): r is { prop: string; value: string; note: string } => r.value !== null).map((r) => ({ ...r, unit: "–" }));
+}
 
 const ADD_FIELDS: Field[] = [
   { key: "reactor_name", label: "Vessel name *", initial: "" },
@@ -108,7 +141,9 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
   const [params, setParams] = useSearchParams();
   const fallback = names.includes(DEFAULT_VESSEL) ? DEFAULT_VESSEL : (names[0] ?? "");
   const vessel = names.includes(params.get("vessel") ?? "") ? (params.get("vessel") as string) : fallback;
-  const [props, setProps] = useState<string[]>(DEFAULT_PROPS);
+  const [picked, setProps] = useState<string[] | null>(null);
+  const defaults = useMemo(() => defaultProps(labels), [labels]);
+  const props = picked ?? defaults;
   const [fillText, setFillText] = useState("");
   const defaultedFor = useRef("");
 
@@ -163,16 +198,23 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
       const [prop] = splitLabel(label);
       if (prop && !out.includes(prop)) out.push(prop);
     }
-    return out;
+    return [...out, "D/T", "H/T"];
   }, [labels]);
 
-  const details = Object.entries(row.data ?? {})
+  const stored = Object.entries(row.data ?? {})
     .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
     .map(([col, v]) => {
       const [prop, unit] = splitLabel(labels.get(col) ?? col);
-      return { prop, value: String(v), unit: unit || "–" };
-    })
-    .filter((d) => props.length === 0 || props.includes(d.prop));
+      return { prop, value: String(v), unit: unit || "–", note: "" };
+    });
+  const derived = row.data ? vesselRatios(row.data) : [];
+  const order = (p: string) => {
+    const i = defaults.indexOf(p);
+    return i < 0 ? defaults.length : i;
+  };
+  const details = [...stored, ...derived]
+    .filter((d) => props.length === 0 || props.includes(d.prop))
+    .sort((a, b) => order(a.prop) - order(b.prop));
 
   const schematicUrl =
     debouncedFill === null
@@ -191,38 +233,40 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
         </select>
       </label>
       {row.isError && <ErrorNote error={row.error} />}
-      <div className="grid-2 explore">
-        <div className="media-box">
+      <div className="explore-top">
+        <figure className="viewer-panel">
           {media.data ? (
             <>
               <VesselViewer media={media.data} name={vessel} />
-              {media.data.caption && <p className="muted">{media.data.caption}</p>}
+              {media.data.caption && <figcaption className="muted">{media.data.caption}</figcaption>}
             </>
           ) : media.isSuccess ? (
             <p className="muted placeholder">No image or 3D model available for this vessel.</p>
           ) : null}
-        </div>
-        <div>
-          <MultiSelect label="Properties to show" options={allProps} value={props} onChange={setProps} />
-          <table className="results">
-            <thead>
-              <tr>
-                <th>Property</th>
-                <th>Value</th>
-                <th>Units</th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.map((d) => (
-                <tr key={d.prop}>
-                  <td>{d.prop}</td>
-                  <td>{d.value}</td>
-                  <td>{d.unit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        </figure>
+        <section className="spec-panel" aria-label={`Properties of ${vessel}`}>
+          <header>
+            <h3>{vessel}</h3>
+            <MultiSelect label="Properties to show" options={allProps} value={props} onChange={setProps} />
+          </header>
+          <dl className="spec-list">
+            {details.map((d) => (
+              <div key={d.prop} className={d.note ? "derived" : undefined} title={d.note || undefined}>
+                <dt>{d.prop}</dt>
+                <dd>
+                  {d.value}
+                  {d.unit !== "–" && <span className="spec-unit"> {d.unit}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {derived.length > 0 && (
+            <p className="muted spec-note">
+              Calculated: D/T = impeller 1 diameter / tank diameter; H/T = (bottom dish height + tan-tan length) / tank
+              diameter — the aspect ratio of the liquid-holding volume.
+            </p>
+          )}
+        </section>
       </div>
 
       <h3>2D Schematic &amp; Liquid Level</h3>

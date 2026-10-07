@@ -828,6 +828,110 @@ label.narrow {
   margin-top: 12px;
 }
 
+.explore-top {
+  display: grid;
+  grid-template-columns: minmax(300px, 5fr) minmax(320px, 6fr);
+  gap: 20px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .explore-top {
+    grid-template-columns: 1fr;
+  }
+}
+
+.viewer-panel {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.viewer-panel .vessel-media {
+  height: 440px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.viewer-panel figcaption {
+  font-size: 0.85rem;
+}
+
+.spec-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 480px;
+}
+
+.spec-panel header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.spec-panel header h3 {
+  margin: 0 0 4px;
+}
+
+.spec-list {
+  margin: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.spec-list div {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, 1.2fr);
+  gap: 12px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.spec-list div:nth-child(even) {
+  background: #fafafa;
+}
+
+.spec-list dt {
+  color: var(--muted);
+}
+
+.spec-list dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.spec-list .derived dt::after {
+  content: "calc";
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: rgba(225, 37, 27, 0.1);
+  color: var(--primary);
+}
+
+.spec-unit {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.spec-note {
+  font-size: 0.8rem;
+  margin: 0;
+  padding: 6px 14px;
+}
+
 .media-box {
   min-height: 200px;
 }

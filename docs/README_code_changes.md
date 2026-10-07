@@ -510,6 +510,13 @@ The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` 
     
     The roots table now appears only when there is more than one solution.
 - **Heat Transfer:** core KPIs and both summaries are shown as tiles.
+- **Vessel Database, Explore Vessel:**
+  - **Layout:** the 3D viewer and a compact spec sheet sit side by side and stack on narrow screens. The spec sheet has a vessel-name header with the property picker and scrolling property/value rows, with units shown inline.
+  - **Default properties:** now include Impeller 1 Diameter and two calculated ratios, marked "calc":
+    - **D/T** = `D_imp_m / D_tank_m`;
+    - **H/T** = `(bottom dish height + L_tan_tan_m) / D_tank_m`, the aspect ratio of the liquid-holding volume. The dish height is `H_bot_dish_m`, else `H_max_m − L_tan_tan_m`, as in `core.records.bottom_dish_height`. Overall height `H_m` is not used: it is missing for some vessels and includes the top head.
+  - **Default list:** shows Tan-Tan Length and Bottom Dish Height (the H/T inputs) instead of Full Height.
+  - **Label change:** `D_imp_m` is now labelled "Impeller 1 Diameter [m]" (was "Impeller Diameter"), matching the Impeller 2/3 labels. Labels are display-only, so the CSV is unchanged; the Taipy vessel table shows the new label too.
 - **Not converted (still tables):** comparative or multi-row data, such as the Vessel Comparison tables, the correlation / heat-transfer-medium comparisons, Bourne condition tables and Recorded Results.
 - **API (additive):**
   - `BourneTestOut.kpi_details`;

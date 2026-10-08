@@ -111,3 +111,56 @@ def test_damkohler_callback_only_called_with_known_kinetics():
     assert calls == []
     rules.assess_protocol(_inputs(), damkohler_for=lambda t: calls.append(t))
     assert calls == [pytest.approx(1.0)]
+
+
+# Slow reaction (t_rxn = 100 s), single liquid phase, batch, no competing reactions.
+_QUIET = dict(k=0.01, bourne="insensitive", bourne_tests_done=[1])
+
+
+def test_heat_flag_is_not_reported_as_a_mixing_sensitivity():
+    r = rules.assess_protocol(_inputs(**_QUIET, dH=-200.0))
+    v = r["verdict"]
+    assert any(f.code == "heat.limiting" for f in r["findings"])
+    assert v.code == "low" and v.kind == "warning"
+    assert "heat transfer needs review" in v.text and "not a mixing sensitivity" in v.text
+    assert "Damköhler" not in v.text and "scale-dependent" not in v.text
+    assert any(a.code == "heat.balance" for a in r["next_steps"])
+
+
+def test_no_heat_flag_gives_a_plain_low_verdict():
+    v = rules.assess_protocol(_inputs(**_QUIET, dH=-10.0))["verdict"]
+    assert v.code == "low" and v.kind == "ok" and "heat" not in v.text.lower()
+
+
+def test_scale_dependent_verdict_names_the_right_confirmation():
+    r = rules.assess_protocol(_inputs(**_QUIET, dH=-10.0, competing="yes"))
+    v = r["verdict"]
+    assert v.code == "scale_dependent" and "micro/mesomixing" in v.text
+    assert "Bourne Tests 2 and 3" in v.text and "Damköhler" not in v.text
+    assert [a.code for a in r["next_steps"]].count("selectivity.bourne") == 1
+
+
+def test_theory_only_counts_mixing_mechanisms_only():
+    # One mixing mechanism (very fast reaction) plus a heat flag is moderate, not "multiple mechanisms".
+    v = rules.assess_protocol(_inputs(k=100.0, dH=-200.0))["verdict"]
+    assert v.code == "moderate" and "Separately, heat transfer" in v.text
+
+
+def test_fast_reaction_finding_matches_step_severity():
+    r = rules.assess_protocol(_inputs(k=2.0, dH=-10.0))  # t_rxn = 0.5 s
+    micro = next(f for f in r["findings"] if f.code == "micromixing.fast_reaction")
+    assert r["steps"][5].kind == micro.kind == "warning"
+
+
+def test_semi_batch_has_one_feed_zone_finding_and_action():
+    r = rules.assess_protocol(_inputs(dH=-10.0, competing="yes", semi_batch=True))
+    assert not any(f.area.startswith("Semi-batch") for f in r["findings"])
+    assert [a.code for a in r["next_steps"]].count("selectivity.bourne") == 1
+
+
+def test_computed_damkohler_asks_for_a_recheck_not_a_new_calculation():
+    da = dict(reactor="R", N_rpm=300.0, V_L=1.0, fluid="Water", Re=1e4, P_V_W_L=0.1,
+              t_blend=5.0, t_E=0.01, Da_macro=5.0, Da_micro=0.01)
+    r = rules.assess_protocol(_inputs(dH=-10.0), damkohler_for=lambda t: da)
+    codes = [a.code for a in r["next_steps"]]
+    assert "damkohler.recheck" in codes and "damkohler.compute" not in codes

@@ -943,6 +943,8 @@ class BournePlanTables(Contract):
     centre_pm_W_kg: float
     centre_info: str = Field(description="Markdown")
     test1_pm_span: float
+    test1_speed_warning: str = Field("", description="Markdown alert when a Test 1 condition hits the "
+                                     "vessel's min / max stir speed ('' if none)")
     has_speed_plan: bool = Field(description="False for a vessel with a single working volume")
     reactor_limits: list[Row]
     test1: list[Row]

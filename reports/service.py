@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 
 from core import schemas as s
 from core import bourne_io
+from core import bourne_plan as plan
 from core.records import range_midpoint, sf
 from core import scale_up
 from core import sensitivity_rules as rules
@@ -240,6 +241,7 @@ def bourne_plan_tables(req: s.BournePlanRequest) -> s.BournePlanTables:
     return s.BournePlanTables(
         centre_pm_W_kg=p.centre_pm_W_kg, centre_info=p.centre_info,
         test1_pm_span=p.test1_pm_span, has_speed_plan=p.speed_plan is not None,
+        test1_speed_warning=plan.test1_speed_limit_warning(sys, p.centre_pm_W_kg),
         reactor_limits=jsonable(btables.reactor_limits(services.bourne_reactor(req.reactor))),
         test1=jsonable(btables.test1_table(p.test1)),
         test1_summary=jsonable(btables.with_operating(btables.test1_summary_table(p.test1), t_c)),

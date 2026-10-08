@@ -140,6 +140,28 @@ def test1_conditions(sys: BourneSystem, pm_center: float) -> list[dict]:
     return rows
 
 
+def test1_speed_limit_warning(sys: BourneSystem, pm_center: float) -> str:
+    """Markdown alert listing Test 1 conditions whose speed hits the vessel's min / max RPM ('' if none)."""
+    hits = []
+    for label, factor in T1_CONDITIONS:
+        target = n_for_pm(pm_center * factor, sys.V_m3, sys.Np, sys.D_imp) * 60.0
+        if sys.n_max > 0 and target > sys.n_max:
+            bound, limit = "maximum", sys.n_max
+        elif sys.n_min > 0 and target < sys.n_min:
+            bound, limit = "minimum", sys.n_min
+        else:
+            continue
+        pm = specific_power(sys, limit / 60.0)
+        hits.append(f"- **{label}** needs {target:,.0f} RPM ({pm_center * factor:.3g} W/kg), "
+                    f"beyond the {bound} stir speed of {limit:,.0f} RPM. It runs at {limit:,.0f} RPM "
+                    f"instead, giving {pm:.3g} W/kg.")
+    if not hits:
+        return ""
+    return ("The vessel's stir-speed limit is reached for:\n\n" + "\n".join(hits) +
+            "\n\nThe Test 1 P/m span is therefore narrower than the intended 100×, which weakens the "
+            "sensitivity screen. Consider another centre point, fill volume or vessel.")
+
+
 def centerpoint_metrics(sys: BourneSystem, pm_center: float) -> dict:
     """Hydrodynamics at the (unclamped) Test 1 centre point, for the report."""
     n_rps = n_for_pm(pm_center, sys.V_m3, sys.Np, sys.D_imp)

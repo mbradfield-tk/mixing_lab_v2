@@ -2259,7 +2259,7 @@
   "ms_da_caption": "**TMA EasyMax-102** at 525 RPM, 0.055 L, Methanol — Re = 12,168, P/V = 0.294 W/L, θ₉₅ = 1.22 s, t_E = 0.0227 s  →  **Da_macro = 0.0176** (insensitive), **Da_micro = 0.000329** (insensitive).",
   "ms_trxn_caption": "Your reaction time: **t_rxn = 69 s**.",
   "ms_summary_note": "",
-  "ms_verdict": "🔴 **Mixing sensitivity confirmed** - the reaction may be **micro/mesomixing limited**, and the Bourne pre-screen confirms a sensitivity is present. Characterise the reaction in detail to identify the controlling mechanism.",
+  "ms_verdict": "🔴 **Mixing sensitivity confirmed** - the Bourne pre-screen shows a sensitivity, and the theoretical screen flags **micro/mesomixing** as likely. To pinpoint the controlling scale, complete Test 3 of the Bourne Protocol.",
   "ms_ready": true,
   "ms_show_dh_action": false,
   "ms_findings_df": [
@@ -2273,7 +2273,7 @@
    },
    {
     "Sensitivity Type": "Micro/mesomixing (selectivity)",
-    "Finding": "🔴 Likely sensitive - Competing reactions present - both micromixing (local ε) and mesomixing (feed dispersion) may affect selectivity."
+    "Finding": "🔴 Likely sensitive - Competing reactions present - both micromixing (local ε) and mesomixing (feed dispersion) may affect selectivity. In semi-batch operation the feed rate and feed location set the local concentration at the feed point (Bourne Tests 2 & 3)."
    },
    {
     "Sensitivity Type": "Macromixing (blend time)",
@@ -2286,24 +2286,16 @@
    {
     "Sensitivity Type": "Heat transfer",
     "Finding": "🟢 Manageable - |ΔH| = 10.0 kJ/mol, ΔT_ad ≈ 2 K - modest thermal load, unlikely to be limiting in most configurations."
-   },
-   {
-    "Sensitivity Type": "Semi-batch (fed-batch)",
-    "Finding": "🟡 Feed-point sensitive - Mesomixing (feed-plume dispersion) controls local concentration, heat release and supersaturation at the feed point."
    }
   ],
   "ms_nextsteps_df": [
    {
-    "Area": "Micro/mesomixing",
-    "Recommended action": "Run the Bourne Protocol to screen micro/meso effects."
+    "Area": "Bourne Protocol",
+    "Recommended action": "Complete Test 3 (feed location) to identify the controlling scale."
    },
    {
     "Area": "Mass transfer",
     "Recommended action": "Assess Da_GL / Da_SL on the Vessel Assessment page."
-   },
-   {
-    "Area": "Semi-batch",
-    "Recommended action": "Run the full Bourne Protocol: vary impeller speed, feed rate/time, and feed location."
    }
   ],
   "ms_step0_assess": "🔴 Bourne Protocol confirmed **mixing sensitivity**, but the controlling scale is not yet resolved. Complete **Test 3** (feed location) to pinpoint the controlling scale.",

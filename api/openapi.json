@@ -1437,6 +1437,12 @@
             "title": "Test1 Pm Span",
             "type": "number"
           },
+          "test1_speed_warning": {
+            "default": "",
+            "description": "Markdown alert when a Test 1 condition hits the vessel's min / max stir speed ('' if none)",
+            "title": "Test1 Speed Warning",
+            "type": "string"
+          },
           "test1_summary": {
             "description": "Test 1 conditions: N, fill volume, P/V, P/m",
             "items": {

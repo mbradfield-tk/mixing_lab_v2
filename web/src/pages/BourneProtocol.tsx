@@ -429,6 +429,11 @@ export function BourneProtocol() {
     rows ? <ResultTable rows={rows} csvName={csvName} stale={planStale} /> : plan.isFetching ? <p className="muted">Calculating…</p> : null;
   const test1Conditions = (
     <>
+      {tables?.test1_speed_warning && (
+        <VerdictBanner tone="warning" title="Stir-speed limit reached">
+          <Markdown>{tables.test1_speed_warning}</Markdown>
+        </VerdictBanner>
+      )}
       {conditions(tables?.test1_summary, "bourne_test_1_conditions.csv")}
       {tables && (
         <details>

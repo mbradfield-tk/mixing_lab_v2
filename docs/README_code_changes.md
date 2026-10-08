@@ -685,3 +685,21 @@ Code docstrings were corrected: the blend-time form, the ε_max / mesomixing / E
 - **Page:** a "Show vortex at an agitation rate" switch adds an rpm slider (over the vessel's rated speed range, defaulting to the midpoint) and a caption with the vortex depth and model notes.
 - **Docs:** a new "Free-surface vortex (Nagata)" entry in `data/equations.md` and row G9 in `docs/EQUATIONS_REGISTRY.md`.
 - **Tests:** `tests/test_vortex.py` and the rpm helpers in `VesselDatabase.test.ts`. 771 Python and 103 web tests pass.
+
+**16r. Bourne Test 1 stir-speed limit alert.**
+
+- `core/bourne_plan.test1_speed_limit_warning` lists each Test 1 condition (low, centre, high) whose target speed falls outside the vessel's minimum or maximum RPM. For each it gives the speed and P/m that were needed, the limit applied, and the P/m actually reached.
+- `BournePlanTables.test1_speed_warning` carries the alert. The page shows it as a warning banner above the Test 1 conditions table, on both the Protocol and Plan tabs.
+
+**16s. Reaction Sensitivity Protocol: verdict logic review.**
+
+- **Heat transfer is no longer treated as a mixing mechanism.** The verdict is built from the mixing and mass-transport findings only (micromixing, micro/mesomixing selectivity, feed-plume mesomixing, macromixing, mass transfer). A heat-transfer flag is reported alongside it ("…; heat transfer needs review" plus a "Separately, heat transfer is likely limiting" sentence), and it never produces "scale-dependent mixing sensitivity … confirm with Damköhler". An unknown ΔH no longer makes the mixing verdict "Incomplete". The "Kinetics basis" caveat is no longer counted as a mechanism; it adds a proxy-kinetics note instead.
+- **Each mechanism has its own confirmation step** in the verdict: Damköhler numbers for micro/macromixing, Bourne Tests 2 and 3 for feed-zone selectivity, and kLa-based Da_GL / Da_SL for mass transfer.
+- **Findings now agree with Step 7.** A 0.1–1 s reaction is "Possible at scale" (warning) in both places; only t_rxn < 0.1 s is "Likely sensitive". The duplicate "Semi-batch (fed-batch)" finding is merged into the selectivity / feed-plume finding.
+- **Next steps:**
+  - "Re-check Da at the target scale" when Da was already computed on the page, rather than "compute Da".
+  - "Complete Test N" when the Bourne Protocol confirmed a sensitivity but did not resolve the scale.
+  - A single feed-zone action, which is not suggested when the Bourne Protocol already settled it.
+- **PDF:** the verdict colour now comes from the verdict's severity rather than keyword matching, which had printed "Mixing sensitivity confirmed" in green.
+- **Page:** the Step 2 text now says that t_rxn is the initial-rate time constant (it previously claimed the 90 % conversion time was used). The summary tile reads "Likely limiting".
+- **Tests:** new rule tests in `tests/test_core_rules.py`. The Reaction Sensitivity Protocol goldens (`page_outputs`, `page_parity`, `report_outputs`) were refreshed, and every diff traces to the points above.

@@ -1158,12 +1158,7 @@ def build_protocol_pdf(snap: dict) -> bytes:
 
     # Overall verdict
     if overall_verdict:
-        if "high" in overall_verdict.lower():
-            _oc = "RED"
-        elif "moderate" in overall_verdict.lower() or "low-to-moderate" in overall_verdict.lower():
-            _oc = "AMBER"
-        else:
-            _oc = "GREEN"
+        _oc = {"critical": "RED", "ok": "GREEN"}.get(snap.get("verdict_kind", ""), "AMBER")
         pdf.assessment_box(overall_verdict, _oc)
         pdf.ln(4)
 

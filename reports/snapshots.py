@@ -96,7 +96,8 @@ def protocol_snapshot(res: dict, md: dict, *, reaction: str, competing_label: st
         "bourne_mechanism": res["b_mechs"][0] if res["b_mechs"] else "",
         "bourne_meta": dict(bourne_meta or {}),
         "competing": competing_label if res["competing_set"] else "Not assessed",
-        "overall_verdict": strip_md(md["verdict"]), "using_approximate": res["using_approx"],
+        "overall_verdict": strip_md(md["verdict"]), "verdict_kind": res["verdict"].kind,
+        "using_approximate": res["using_approx"],
         "dh_estimated": res["dh_estimated"], "is_semi_batch": res["is_semi_batch"],
         "damkohler": dict(res["da"]) if res["da"] else {},
     }

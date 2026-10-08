@@ -41,6 +41,15 @@ def test_test1_conditions_clamp_and_span_100x_when_unclamped():
     assert clamped[2]["note"] == " (clamped to N_max)" and clamped[2]["N (RPM)"] == 400.0
 
 
+def test_test1_speed_limit_warning_names_low_and_high_cases():
+    assert plan.test1_speed_limit_warning(SYS, 0.2) == ""
+    tight = plan.BourneSystem(**{**SYS.__dict__, "n_min": 150.0, "n_max": 400.0})
+    w = plan.test1_speed_limit_warning(tight, 0.2)
+    assert "**Low (0.1× P/m)**" in w and "minimum stir speed of 150 RPM" in w
+    assert "**High (10× P/m)**" in w and "maximum stir speed of 400 RPM" in w
+    assert "Centre (1× P/m)" not in w
+
+
 def test_speed_setpoints_hold_pm_as_volume_grows():
     rows, clamped = plan.speed_setpoints(SYS, 0.2, [("Initial", 0.1), ("Adj. 1", 0.2)])
     assert not clamped

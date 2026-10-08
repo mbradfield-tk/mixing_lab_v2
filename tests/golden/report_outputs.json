@@ -536,16 +536,16 @@
    "competing": "No",
    "dT_ad": 27.7778,
    "damkohler": {
-    "Da_macro": 0.0121743,
-    "Da_micro": 0.000226996,
+    "reactor": "TMA EasyMax-102",
     "N_rpm": 525.0,
-    "P_V_W_L": 0.294066,
-    "Re": 12168.4,
     "V_L": 0.055,
     "fluid": "Methanol",
-    "reactor": "TMA EasyMax-102",
+    "t_blend": 1.21743,
     "t_E": 0.0226996,
-    "t_blend": 1.21743
+    "Re": 12168.4,
+    "P_V_W_L": 0.294066,
+    "Da_macro": 0.0121743,
+    "Da_micro": 0.000226996
    },
    "dh_estimated": false,
    "findings": [
@@ -588,10 +588,10 @@
     },
     {
      "Area": "Heat transfer",
-     "Recommended action": "Run a heat balance (Vessel Assessment) to quantify Q_gen vs Q_cool."
+     "Recommended action": "Run a heat balance (Vessel Assessment or Heat Transfer Tool) to compare the reaction heat rate with the jacket duty."
     }
    ],
-   "overall_verdict": "Moderate mixing sensitivity risk - heat transfer is likely to be sensitive. Investigate this mechanism and run a Bourne pre-screen to confirm whether a sensitivity is present experimentally.",
+   "overall_verdict": "Low mixing sensitivity risk; heat transfer needs review - no mixing mechanism is expected to limit this reaction under typical operating conditions. Separately, heat transfer is likely limiting - this is a heat-removal (thermal) question, not a mixing sensitivity: run a heat balance to confirm the jacket can handle the reaction heat.",
    "phases": [
     "Liquid"
    ],
@@ -602,7 +602,8 @@
    "step_number": "",
    "t_rxn": 100.0,
    "unit_operation": "",
-   "using_approximate": false
+   "using_approximate": false,
+   "verdict_kind": "warning"
   }
  },
  "va": {

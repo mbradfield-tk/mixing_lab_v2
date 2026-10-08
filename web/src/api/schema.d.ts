@@ -1927,6 +1927,12 @@ export interface components {
             /** Test1 Pm Span */
             test1_pm_span: number;
             /**
+             * Test1 Speed Warning
+             * @description Markdown alert when a Test 1 condition hits the vessel's min / max stir speed ('' if none)
+             * @default
+             */
+            test1_speed_warning: string;
+            /**
              * Test1 Summary
              * @description Test 1 conditions: N, fill volume, P/V, P/m
              */

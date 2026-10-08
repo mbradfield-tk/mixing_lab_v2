@@ -40,7 +40,7 @@ function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourn
       <StatGrid
         size="sm"
         stats={[
-          { label: "Likely sensitive", value: counts.critical, tone: counts.critical ? "critical" : "info" },
+          { label: "Likely limiting", value: counts.critical, tone: counts.critical ? "critical" : "info" },
           { label: "Watch / borderline", value: counts.watch, tone: counts.watch ? "warning" : "info" },
           { label: "Unlikely / manageable", value: counts.ok, tone: "ok" },
           { label: "Unknown", value: counts.unknown, tone: "unknown" },
@@ -306,8 +306,8 @@ export function MixingSensitivity() {
       <Card title="Step 2 - Reaction Kinetics">
         <p>
           The characteristic reaction time <strong>t<sub>rxn</sub></strong> is the Damköhler reference timescale for every
-          mechanism below. When derived from k and C₀, the protocol uses a conservative 90% conversion process-window estimate
-          rather than only the initial rate.
+          mechanism below. When derived from k and C₀ it is the initial-rate time constant, the shortest
+          and most conservative estimate; the 90% conversion time is shown for process-window planning only.
         </p>
         <div className="form-row">
           <SelectField

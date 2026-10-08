@@ -1,7 +1,7 @@
 """Request -> Plotly figure JSON: the bodies of ``POST /charts/{kind}``.
 
-The figures are the same ``viz`` builders the Taipy pages bind, so a React page
-rendering them with react-plotly.js shows the identical chart.
+The figures come from the ``viz`` builders the PDF reports also use, so the React
+page (react-plotly.js) and the report show the identical chart.
 """
 from __future__ import annotations
 

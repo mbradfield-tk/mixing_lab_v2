@@ -1,28 +1,19 @@
-# Mixing Lab v2 — runtime dependencies (Python 3.12; Taipy GUI does not yet
-# support 3.13). Versions are the ones the app is developed/tested against.
+# Mixing Lab v2 — runtime dependencies (Python 3.12). Versions are the ones the app
+# is developed/tested against.
 #
 #   python -m venv .venv && source .venv/bin/activate
 #   pip install -r requirements.txt
-#   python app.py                      # Taipy UI
-#   uvicorn api.main:app --port 8000   # HTTP API (docs at /api/v1/docs)
+#   (cd web && npm ci && npm run build)  # React UI -> web/dist, served by the API
+#   uvicorn api.main:app --port 8000     # app at /app, API docs at /api/v1/docs
 #
 # Development extras (tests, equation-image rebuild, datasheet parsing) are at
 # the bottom and are not needed to run the server.
 
-# --- Web UI / server -------------------------------------------------------
-taipy-gui==4.0.2
-Flask==3.1.3
-Flask-SocketIO==5.6.1
-flask-compress==1.24          # optional: gzip/brotli for GLB models + viewer JS
-gunicorn>=22.0                # production WSGI server only (app:create_app factory)
-gevent==24.11.1               # gunicorn worker class for production
-gevent-websocket==0.10.1
-
-# --- HTTP API (api/, run with: uvicorn api.main:app) -------------------------
+# --- HTTP API + web app (api/, run with: uvicorn api.main:app) -------------
 fastapi==0.142.2
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32      # CSV uploads
-itsdangerous==2.2.0           # signed admin bearer tokens (also a Flask dependency)
+itsdangerous==2.2.0           # signed admin bearer tokens
 
 # --- Data / numerics -------------------------------------------------------
 numpy==2.5.1

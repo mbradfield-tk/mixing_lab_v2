@@ -123,7 +123,10 @@ describe("buildRequest", () => {
     expect(r.request.solids).toBeNull();
     expect(r.request.feed).toBeNull();
     expect(r.request.gas).toEqual({ present: false, v_s_m_s: 0, coalescing: true });
-    expect(r.request.heat).toEqual({ T_process_C: 25, T_coolant_C: 15 });
+    expect(r.request.heat).toEqual({ T_process_C: 25, T_coolant_C: 15, htm: null, v_jacket_m_s: 1, d_hyd_jacket_m: 0.05 });
+    const withHtf = buildRequest({ ...base, htm: "Water-Glycol (50/50)" });
+    if (!("request" in withHtf)) throw new Error(withHtf.error);
+    expect(withHtf.request.heat?.htm).toBe("Water-Glycol (50/50)");
     expect(r.request.fluid?.rho_kg_m3).toBe(997);
   });
 

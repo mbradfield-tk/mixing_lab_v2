@@ -1,1 +1,1 @@
-"""Framework-free domain logic shared by the GUI pages (no Taipy imports)."""
+"""Framework-free domain logic behind the API (no web-framework imports)."""

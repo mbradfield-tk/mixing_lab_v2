@@ -1,10 +1,9 @@
-"""Contract tests: the JSON services reproduce the page results, and every
+"""Contract tests: the JSON services reproduce the golden page results, and every
 response serialises to strict JSON (no NaN/inf)."""
 
 import json
 import os
 import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,14 +16,9 @@ from core import kinetics
 from core import schemas as s
 from core import services as svc
 from core.messages import icon
-from core.options import CorrSource, FeedLocation
 from core.serialize import jsonable
-from pages import mixing_sensitivity as ms
-from pages import vessel_assessment as va
 
-import test_golden_outputs as golden  # noqa: E402  (tests/ is on sys.path under pytest)
-
-GOLDEN = json.loads((Path(__file__).parent / "golden" / "page_outputs.json").read_text())
+from golden_helpers import PAGE_OUTPUTS as GOLDEN, REQUESTS  # noqa: E402
 
 
 def _strict(model) -> dict:
@@ -40,24 +34,7 @@ def _close(a, b, rel=1e-5):
 # --------------------------------------------------------------------------- VA
 def _va_request(full: bool = False) -> s.PointRequest:
     """The Vessel Assessment defaults (and the golden 'va_full' options) as a request."""
-    extra = {}
-    if full:
-        extra = dict(
-            solids=s.SolidsSpec(rho_p_kg_m3=va.va_rho_p, d50_um=va.va_d50, sphericity=va.va_phi,
-                                loading_g_per_100g=va.va_x_wt, zwietering_S=va.va_szw,
-                                gmb_z=va.va_gmb_z, clearance_ratio=va.va_cd),
-            gas=s.GasSpec(v_s_m_s=va.va_vs, coalescing=va.va_coalescing == "Coalescing"),
-            feed=s.FeedSpec(location=FeedLocation.NEAR_IMPELLER, d_pipe_mm=va.va_feed_diam))
-    return s.PointRequest(
-        reactor=va.va_reactor, N_rpm=va.va_n_rpm, V_L=va.va_v_l,
-        corr_source=CorrSource.from_label(va.va_corr_mode),
-        fluid=s.FluidSpec(name=va.va_fluid, T_C=va.va_T, rho_kg_m3=va.va_rho, mu_Pa_s=va.va_mu,
-                          D_mol_m2_s=va.va_dmol),
-        reaction=s.ReactionSpec(order=va.va_order, k=va.va_k, C0_mol_L=va.va_c0,
-                                t_rxn_s=va.va_trxn, dH_kJ_mol=-100.0 if full else va.va_dH),
-        geometry=s.GeometryOverrides(D_tank_m=va.va_d_tank, D_imp_m=va.va_d_imp, Np=va.va_np,
-                                     Nq=va.va_nq),
-        heat=s.HeatSpec(T_process_C=va.va_T, T_coolant_C=va.va_T_cool), **extra)
+    return s.PointRequest.model_validate(REQUESTS["va_full" if full else "va_default"])
 
 
 @pytest.mark.parametrize("scenario, full", [("va_default", False), ("va_full", True)])
@@ -87,7 +64,7 @@ def test_solve_matches_vessel_assessment(scenario, full):
 
 def test_sweep_matches_vessel_assessment_envelope():
     params = ["Da_macro", "Da_micro", "P_V_W_L", "blend_time_95_s", "tip_speed_m_s", "Re"]
-    assert [s.core_key(p) for p in params] == va.va_env_params
+    assert [s.core_key(p) for p in params] == REQUESTS["va_env_params"]
     res = svc.sweep(s.SweepRequest(point=_va_request(), parameters=params))
     v_min, v_max = res.vessel_V_range_L
     env_y = GOLDEN["va_default"]["env_y"]
@@ -108,41 +85,12 @@ def test_surface_shape_and_json():
 
 
 # --------------------------------------------------------------------------- MS
-def _protocol_request(pi, state) -> s.ProtocolRequest:
-    vessel = None
-    if getattr(state, "ms_da_mode", "Off") == "On":
-        vessel = s.ScreeningVessel(
-            reactor=state.ms_da_reactor, N_rpm=state.ms_da_rpm, V_L=state.ms_da_vl,
-            solvent=str(ms._reaction_row(state.ms_reaction).get("solvent", "") or ""),
-            T_C=state.ms_rxn_T)
-    return s.ProtocolRequest(
-        reaction=s.ReactionSpec(order=pi.order, k=pi.k, C0_mol_L=pi.C0,
-                                t_rxn_s=pi.t_specified, dH_kJ_mol=pi.dH),
-        reaction_type=pi.rxn_type, kinetics=pi.kinetics, bourne=pi.bourne,
-        bourne_mechanism=pi.bourne_mech or None,
-        bourne_tests_done=pi.bourne_tests_done, bourne_results=pi.bourne_rows,
-        semi_batch=pi.semi_batch, phases=pi.phases, competing=pi.competing or None,
-        dh_override_kJ_mol=pi.dh_override, dh_override_measured=pi.dh_override_measured,
-        dh_action=pi.dh_action or None, dh_reference_kJ_mol=pi.dh_ref_value,
-        c0_heat_mol_L=pi.c0_heat, rho_cp_kJ_m3K=pi.rho_cp, screening_vessel=vessel)
-
-
-MS_SCENARIOS = sorted(n for n in golden.SCENARIOS if n.startswith("ms_"))
+MS_SCENARIOS = sorted(REQUESTS["ms_scenarios"])
 
 
 @pytest.mark.parametrize("name", MS_SCENARIOS)
-def test_assess_matches_mixing_sensitivity_page(name, monkeypatch):
-    captured = {}
-    real = ms._protocol_inputs
-
-    def spy(state):
-        captured["inputs"], captured["state"] = real(state), state
-        return captured["inputs"]
-
-    monkeypatch.setattr(ms, "notify", lambda *_a, **_k: None)
-    monkeypatch.setattr(ms, "_protocol_inputs", spy)
-    golden.SCENARIOS[name]()
-    res = svc.assess(_protocol_request(captured["inputs"], captured["state"]))
+def test_assess_matches_mixing_sensitivity_page(name):
+    res = svc.assess(s.ProtocolRequest.model_validate(REQUESTS["ms_scenarios"][name]))
     want = GOLDEN[name]
     out = _strict(res)
 

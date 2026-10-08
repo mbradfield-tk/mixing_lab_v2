@@ -808,6 +808,21 @@
             "title": "V L",
             "type": "number"
           },
+          "V_L_range": {
+            "description": "Fill-volume range for the inputs (database, else a band around the default)",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "V L Range",
+            "type": "array"
+          },
           "centre_rpm": {
             "description": "Mid speed range (Custom RPM centre default)",
             "title": "Centre Rpm",
@@ -840,6 +855,7 @@
         },
         "required": [
           "V_L",
+          "V_L_range",
           "centre_rpm",
           "reactor_limits"
         ],
@@ -1393,9 +1409,57 @@
             "title": "Test1",
             "type": "array"
           },
+          "test1_detail": {
+            "description": "Test 1 conditions with the full hydrodynamics (dissipation, shear, mixing times, ...)",
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Test1 Detail",
+            "type": "array"
+          },
           "test1_pm_span": {
             "title": "Test1 Pm Span",
             "type": "number"
+          },
+          "test1_summary": {
+            "description": "Test 1 conditions: N, fill volume, P/V, P/m",
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Test1 Summary",
+            "type": "array"
           },
           "test2": {
             "items": {
@@ -1451,6 +1515,8 @@
           "has_speed_plan",
           "reactor_limits",
           "test1",
+          "test1_summary",
+          "test1_detail",
           "setpoints",
           "setpoints_caption",
           "test2",
@@ -3774,6 +3840,32 @@
           },
           "T_process_C": {
             "title": "T Process C",
+            "type": "number"
+          },
+          "d_hyd_jacket_m": {
+            "default": 0.05,
+            "description": "Jacket hydraulic diameter (with htm)",
+            "exclusiveMinimum": 0.0,
+            "title": "D Hyd Jacket M",
+            "type": "number"
+          },
+          "htm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coolant / heat-transfer medium (data/HTM.csv); sets the jacket-side h_o. None = typical jacket h_o (1500 W/m²·K)",
+            "title": "Htm"
+          },
+          "v_jacket_m_s": {
+            "default": 1.0,
+            "description": "Jacket-side HTF velocity (with htm)",
+            "exclusiveMinimum": 0.0,
+            "title": "V Jacket M S",
             "type": "number"
           }
         },

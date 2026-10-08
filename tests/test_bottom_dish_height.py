@@ -78,7 +78,7 @@ def test_measured_bottom_dish_height_overrides_dish_type_estimate():
 
 
 def test_bottom_dish_height_reads_csv_column_with_derived_fallback():
-    from pages._db_common import bottom_dish_height
+    from core.records import bottom_dish_height
 
     assert bottom_dish_height(pd.Series({"H_bot_dish_m": 0.02})) == 0.02
     assert bottom_dish_height(pd.Series({"H_bottom_dish_m": 0.03})) == 0.03

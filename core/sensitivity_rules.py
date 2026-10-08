@@ -3,7 +3,7 @@ verdict and next steps, Damköhler bands, and the Bourne Protocol decision tree.
 
 Every function is a pure function of its arguments (no GUI state). The protocol
 returns structured objects (:mod:`core.messages`); ``protocol_md`` renders them
-to the Markdown the Taipy page and PDF report display.
+to the Markdown the web page and PDF report display.
 """
 from __future__ import annotations
 
@@ -1194,7 +1194,7 @@ SUMMARY_PENDING = ("*Complete Steps 1–4 - select a reaction with kinetics, at 
 
 
 def protocol_md(res: dict) -> dict:
-    """Markdown rendering of :func:`assess_protocol` for the Taipy page and PDF report."""
+    """Markdown rendering of :func:`assess_protocol` for the web page and PDF report."""
     out = {f"step{i}": (m.md() if m else "") for i, m in enumerate(res["steps"])}
     t_rxn, dt_ad = res["t_rxn"], res["dt_ad"]
     if not res["has_enthalpy"]:

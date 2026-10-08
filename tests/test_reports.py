@@ -1,4 +1,4 @@
-"""Report services: request -> snapshot/PDF must match what the pages produce."""
+"""Report services: request -> snapshot/PDF must match the golden page snapshots."""
 
 import json
 import os
@@ -9,46 +9,33 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import test_contracts as tc  # noqa: E402  (tests/ is on sys.path under pytest)
-import test_golden_outputs as g  # noqa: E402
-import test_golden_reports as gr  # noqa: E402
+import golden_helpers as gh  # noqa: E402  (tests/ is on sys.path under pytest)
 from core import schemas as s
-from core.options import CorrSource, FeedLocation
-from pages import bourne_protocol as bp
-from pages import heat_transfer as ht
-from pages import mixing_sensitivity as ms
-from pages import vessel_assessment as va
-from pages import vessel_comparison as vc
 from reports import service
 from reports import pdf as rb
 
-GOLDEN = json.loads(gr.GOLDEN.read_text())
+GOLDEN = gh.REPORT_OUTPUTS
+REQ = gh.REQUESTS
 
 
 def _va_report_request() -> s.AssessmentReportRequest:
-    point = tc._va_request(full=True)
-    point = point.model_copy(update={"gas": point.gas.model_copy(update={"present": True})})
-    return s.AssessmentReportRequest(
-        point=point, envelope_parameters=[s.CORE_KEYS[k] for k in va.va_env_params],
-        reaction_name=va.va_reaction)
+    return s.AssessmentReportRequest.model_validate(REQ["va_report"])
 
 
 def _ms_report_request() -> s.ProtocolReportRequest:
-    st = g._state(ms, ms_started=True, **{**g._MS_BASE, "ms_da_mode": "On"})
-    return s.ProtocolReportRequest(protocol=tc._protocol_request(ms._protocol_inputs(st), st),
-                                   reaction_name=st.ms_reaction)
+    return s.ProtocolReportRequest.model_validate(REQ["ms_report"])
 
 
 def test_assessment_snapshot_matches_vessel_assessment_page():
-    got = json.loads(json.dumps(gr._n(service.assessment_snapshot(_va_report_request())),
+    got = json.loads(json.dumps(gh.snapshot_norm(service.assessment_snapshot(_va_report_request())),
                                 ensure_ascii=False))
-    assert g._first_diff(got, GOLDEN["va"]["snap"]) is None
+    assert gh.first_diff(got, GOLDEN["va"]["snap"]) is None
 
 
 def test_protocol_snapshot_matches_mixing_sensitivity_page():
-    got = json.loads(json.dumps(gr._n(service.protocol_snapshot(_ms_report_request())),
+    got = json.loads(json.dumps(gh.snapshot_norm(service.protocol_snapshot(_ms_report_request())),
                                 ensure_ascii=False))
-    assert g._first_diff(got, GOLDEN["ms"]["snap"]) is None
+    assert gh.first_diff(got, GOLDEN["ms"]["snap"]) is None
 
 
 @pytest.fixture
@@ -76,49 +63,24 @@ def test_envelope_figure_is_strict_json_for_react_plotly():
 
 # --------------------------------------------------------------------------- VC / BP / HT
 def _vc_report_request() -> s.ComparisonRequest:
-    pipes = {str(r["Reactor"]): float(r["Feed pipe ID (mm)"]) for _, r in vc.vc_feed_pipe_df.iterrows()}
-    return s.ComparisonRequest(
-        reactors=list(vc.vc_reactors),
-        fluid=s.FluidSpec(name=vc.vc_fluid, T_C=vc.vc_T, P_atm=vc.vc_P),
-        reaction=s.ReactionSpec(order=vc.vc_rxn_order, k=vc.vc_rxn_k, C0_mol_L=vc.vc_rxn_c0,
-                                t_rxn_s=vc.vc_rxn_trxn, dH_kJ_mol=-100.0),
-        reaction_name=vc.vc_reaction, corr_source=CorrSource.from_label(vc.vc_corr_mode),
-        gas=s.GasSpec(present=True, v_s_m_s=vc.vc_vs, coalescing=True),
-        solids=s.SolidsSpec(rho_p_kg_m3=vc.vc_rho_p, d50_um=vc.vc_d50, sphericity=vc.vc_phi,
-                            loading_g_per_100g=vc.vc_x_wt, zwietering_S=vc.vc_szw,
-                            gmb_z=vc.vc_gmb_z, clearance_ratio=vc.vc_cd),
-        feed=s.ComparisonFeed(location=FeedLocation.NEAR_IMPELLER, pipe_id_mm=pipes),
-        T_coolant_C=vc.vc_T_cool, scale_param=vc.vc_scale_param, scale_basis_reactor=vc.vc_basis)
-
-
-def _kpi(values) -> list[s.KpiResponse]:
-    low, centre, high = values
-    return [s.KpiResponse(name="Yield", unit="%", low=low, centre=centre, high=high)]
+    return s.ComparisonRequest.model_validate(REQ["vc_report"])
 
 
 def _bp_report_request() -> s.BourneReportRequest:
-    return s.BourneReportRequest(reactor=bp.bp_reactor, fluid=bp.bp_fluid, T_C=bp.bp_T,
-                                 test1=_kpi([90.0, 100.0, 112.0]), test2=_kpi([95.0, 100.0, 108.0]),
-                                 test3=_kpi([100.0, 100.0, 101.0]))
-
-
-def _ht_base() -> dict:
-    return dict(reactor=ht.selected_reactor, fluid=ht.selected_fluid, T_start_C=ht.t_start,
-                T_jacket_C=ht.t_jacket, lining_material="None", time_unit=ht.time_unit)
+    return s.BourneReportRequest.model_validate(REQ["bp_report"])
 
 
 def _ht_cool_request() -> s.HeatCoolRequest:
-    return s.HeatCoolRequest(**_ht_base(), T_target_C=ht.t_target)
+    return s.HeatCoolRequest.model_validate(REQ["ht_cool"])
 
 
 def _ht_rxn_request() -> s.ReactionProfileRequest:
-    return s.ReactionProfileRequest(**_ht_base(), reaction=s.ReactionSpec(
-        order=ht.rxn_order, k=0.01, C0_mol_L=1.0, dH_kJ_mol=-100.0))
+    return s.ReactionProfileRequest.model_validate(REQ["ht_rxn"])
 
 
 @pytest.fixture
 def fake_png(monkeypatch):
-    monkeypatch.setattr(rb, "fig_to_png_bytes", lambda fig: gr._fig_key(fig).encode())
+    monkeypatch.setattr(rb, "fig_to_png_bytes", lambda fig: gh.fig_key(fig).encode())
 
 
 @pytest.mark.parametrize("golden_name, build", [
@@ -128,8 +90,12 @@ def fake_png(monkeypatch):
     ("ht_reaction", lambda: service.reaction_profile_snapshot(_ht_rxn_request())),
 ])
 def test_endpoint_snapshots_match_pages(golden_name, build, fake_png):
-    got = json.loads(json.dumps(gr._n(build()), ensure_ascii=False))
-    assert g._first_diff(got, GOLDEN[golden_name]["snap"]) is None
+    got = json.loads(json.dumps(gh.snapshot_norm(build()), ensure_ascii=False))
+    if golden_name == "bp":  # report-only additions (not in the page snapshot)
+        assert got.pop("T_C") == REQ["bp_report"]["T_C"]
+        info = dict(got.pop("vessel_info"))
+        assert {"Impeller type", "Impeller diameter", "Working volume range"} <= set(info)
+    assert gh.first_diff(got, GOLDEN[golden_name]["snap"]) is None
 
 
 @pytest.fixture

@@ -84,6 +84,9 @@ class Feed:
 class Heat:
     T_process: float
     T_coolant: float
+    htm: str = ""            # coolant / heat-transfer medium; "" = typical jacket h_o
+    h_jacket: float = 0.0    # jacket-side h_o from the HTF (W/m²·K); 0 = typical value
+    htm_note: str = ""       # e.g. coolant temperature outside the HTF's range
 
 
 @dataclass(frozen=True)
@@ -159,7 +162,8 @@ def jacket_ua(inp: PointInputs, N_rps: float, V_L: float) -> tuple[float, float]
     u_val, _warn = estimate_U_detailed(
         N_rps=N_rps, D_imp=g.D_imp, D_tank=g.D_tank, rho=inp.fluid.rho, mu=inp.fluid.mu,
         material=g.shell_material, lining_material=g.lining_material,
-        wall_thickness_mm=g.wall_thickness_mm, fluid_name=inp.fluid.name)
+        wall_thickness_mm=g.wall_thickness_mm, fluid_name=inp.fluid.name,
+        jacket_htc=inp.heat.h_jacket if inp.heat is not None else 0.0)
     return u_val, area
 
 
@@ -205,6 +209,9 @@ def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
         })
         if q_feed != 0.0:
             out.update({"Q_feed (W)": q_feed, "Q_load (W)": q_load})
+        if inp.heat.htm:
+            out.update({"Coolant (HTF)": inp.heat.htm, "h_o jacket (W/m²·K)": inp.heat.h_jacket,
+                        "HTF note": inp.heat.htm_note})
     return out
 
 

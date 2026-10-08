@@ -4,7 +4,7 @@ All routes live under ``/api/v1``. Domain errors map to HTTP status codes in one
 place: ``LookupError`` 404, ``ValueError`` / pydantic validation 422,
 ``PermissionError`` 403. Unexpected errors return a generic 500 (details only
 in the server log). Vessel media and the 3D-viewer script are served as static
-files under the same ``/vimages`` / ``/vassets`` URLs the Taipy app uses.
+files under the ``/vimages`` / ``/vassets`` URLs.
 
 Environment: ``MIXING_LAB_ADMIN_USER`` / ``MIXING_LAB_ADMIN_PW`` (admin login),
 ``MIXING_LAB_API_SECRET`` (token signing), ``MIXING_LAB_CORS_ORIGINS``

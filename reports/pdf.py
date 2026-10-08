@@ -1316,6 +1316,15 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.kv("Reactor", reactor_name, bold_val=True)
     pdf.kv("Fluid", fluid_name, bold_val=True)
     pdf.kv("Working volume", f"{V_L:.3f} L")
+    T_C = snap.get("T_C")
+    if T_C is not None:
+        pdf.kv("Temperature", f"{T_C:g} deg C")
+    vessel_info = snap.get("vessel_info") or []
+    if vessel_info:
+        pdf.ln(2)
+        pdf.sub_title("Vessel")
+        pdf.data_table(["Property", "Value"], [[k, str(v)] for k, v in vessel_info],
+                       col_widths=[60, 130], wrap=True)
     if centerpoint_metrics:
         pdf.ln(2)
         pdf.sub_title("Centerpoint Hydrodynamics")
@@ -1329,18 +1338,22 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.section_title("Test 1 -- Impeller Speed")
     pdf.sub_title("Conditions")
     if t1_conditions:
-        _t1_cond_headers = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
+        _t_col = ["T (C)"] if T_C is not None else []
+        _t1_cond_headers = ["Condition", *_t_col, "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
         _t1_cond_rows = []
         for cond in t1_conditions:
             _t1_cond_rows.append([
                 cond.get("Condition", ""),
+                *([f"{T_C:g}"] if T_C is not None else []),
                 _fmt_sig(cond.get('Volume (L)', 0)),
                 f"{cond.get('N (RPM)', 0):.0f}",
                 f"{cond.get('P/m (W/kg)', 0):.4g}",
                 f"{cond.get('P/V (W/L)', 0):.4g}",
                 f"{cond.get('Tip speed (m/s)', 0):.3f}",
             ])
-        pdf.data_table(_t1_cond_headers, _t1_cond_rows, col_widths=[50, 25, 25, 30, 25, 30])
+        pdf.data_table(_t1_cond_headers, _t1_cond_rows,
+                       col_widths=([44, 18, 22, 22, 28, 26, 30] if T_C is not None
+                                   else [50, 25, 25, 30, 25, 30]))
         pdf.ln(1)
         pdf.body_text("Feed rate and feed location held constant.")
     if t1_responses:
@@ -1410,16 +1423,22 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
                 f"Feed location: {t2_conds.get('feed_location', 'constant')}."
             )
             pdf.ln(1)
-            _t2_cond_headers = ["Condition", "Feed time (min)", "Flow rate (mL/min)"]
+            _t2_cond_headers = ["Condition", *(["T (C)"] if T_C is not None else []),
+                                "Volume (L)", "N (RPM)", "Feed time (min)", "Flow rate (mL/min)"]
             _t2_cond_rows = []
             for row in t2_conds.get("rows", []):
                 _t2_cond_rows.append([
                     row.get("Condition", ""),
+                    *([f"{T_C:g}"] if T_C is not None else []),
+                    _fmt_sig(V_L),
+                    f"{t2_conds.get('N_RPM', 0):.0f}",
                     f"{row.get('Feed time (min)', 0):.2f}",
                     f"{row.get('Flow rate (mL/min)', 0):.2f}",
                 ])
             if _t2_cond_rows:
-                pdf.data_table(_t2_cond_headers, _t2_cond_rows, col_widths=[65, 45, 45])
+                pdf.data_table(_t2_cond_headers, _t2_cond_rows,
+                               col_widths=([50, 20, 25, 25, 35, 35] if T_C is not None
+                                           else [55, 30, 30, 37, 38]))
             pdf.ln(1)
             pdf.body_text(f"Total feed volume: {t2_conds.get('feed_vol_mL', 0):.1f} mL.")
         pdf.ln(2)
@@ -1444,16 +1463,22 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
                 f"Feed time = {t3_conds.get('feed_time_min', 0):.1f} min (centerpoint)."
             )
             pdf.ln(1)
-            _t3_cond_headers = ["Feed Location", "eps_loc/eps_avg", "eps_loc (W/kg)"]
+            _t3_cond_headers = ["Feed Location", *(["T (C)"] if T_C is not None else []),
+                                "Volume (L)", "N (RPM)", "eps_loc/eps_avg", "eps_loc (W/kg)"]
             _t3_cond_rows = []
             for row in t3_conds.get("rows", []):
                 _t3_cond_rows.append([
                     row.get("Feed Location", ""),
+                    *([f"{T_C:g}"] if T_C is not None else []),
+                    _fmt_sig(V_L),
+                    f"{t3_conds.get('N_RPM', 0):.0f}",
                     f"{row.get('eps_loc/eps_avg', 0):.2f}",
                     f"{row.get('eps_loc (W/kg)', 0):.4g}",
                 ])
             if _t3_cond_rows:
-                pdf.data_table(_t3_cond_headers, _t3_cond_rows, col_widths=[65, 40, 40])
+                pdf.data_table(_t3_cond_headers, _t3_cond_rows,
+                               col_widths=([50, 20, 25, 25, 35, 35] if T_C is not None
+                                           else [55, 30, 30, 37, 38]))
         pdf.ln(2)
         _bourne_later_test_responses(
             pdf, t3_responses,

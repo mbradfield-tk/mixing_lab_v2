@@ -79,6 +79,10 @@ class FeedSpec(Contract):
 class HeatSpec(Contract):
     T_process_C: float
     T_coolant_C: float
+    htm: str | None = Field(None, description="Coolant / heat-transfer medium (data/HTM.csv); sets "
+                            "the jacket-side h_o. None = typical jacket h_o (1500 W/m²·K)")
+    v_jacket_m_s: float = Field(1.0, gt=0, description="Jacket-side HTF velocity (with htm)")
+    d_hyd_jacket_m: float = Field(0.05, gt=0, description="Jacket hydraulic diameter (with htm)")
 
 
 class GeometryOverrides(Contract):
@@ -938,6 +942,9 @@ class BournePlanTables(Contract):
     has_speed_plan: bool = Field(description="False for a vessel with a single working volume")
     reactor_limits: list[Row]
     test1: list[Row]
+    test1_summary: list[Row] = Field(description="Test 1 conditions: N, fill volume, P/V, P/m")
+    test1_detail: list[Row] = Field(description="Test 1 conditions with the full hydrodynamics "
+                                    "(dissipation, shear, mixing times, ...)")
     setpoints: list[Row]
     setpoints_caption: str
     test2: list[Row]
@@ -953,6 +960,8 @@ class BourneOptions(Contract):
 
 class BourneDefaults(Contract):
     V_L: float = Field(description="Mid fill range working volume")
+    V_L_range: tuple[float, float] = Field(description="Fill-volume range for the inputs (database, "
+                                           "else a band around the default)")
     centre_rpm: float = Field(description="Mid speed range (Custom RPM centre default)")
     reactor_limits: list[Row] = Field(description="Volume / speed limits table (page formatting)")
 

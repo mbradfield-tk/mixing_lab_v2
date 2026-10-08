@@ -1676,6 +1676,14 @@ export interface components {
              */
             V_L: number;
             /**
+             * V L Range
+             * @description Fill-volume range for the inputs (database, else a band around the default)
+             */
+            V_L_range: [
+                number,
+                number
+            ];
+            /**
              * Centre Rpm
              * @description Mid speed range (Custom RPM centre default)
              */
@@ -1909,8 +1917,22 @@ export interface components {
             test1: {
                 [key: string]: number | string | null;
             }[];
+            /**
+             * Test1 Detail
+             * @description Test 1 conditions with the full hydrodynamics (dissipation, shear, mixing times, ...)
+             */
+            test1_detail: {
+                [key: string]: number | string | null;
+            }[];
             /** Test1 Pm Span */
             test1_pm_span: number;
+            /**
+             * Test1 Summary
+             * @description Test 1 conditions: N, fill volume, P/V, P/m
+             */
+            test1_summary: {
+                [key: string]: number | string | null;
+            }[];
             /** Test2 */
             test2: {
                 [key: string]: number | string | null;
@@ -2819,6 +2841,23 @@ export interface components {
             T_coolant_C: number;
             /** T Process C */
             T_process_C: number;
+            /**
+             * D Hyd Jacket M
+             * @description Jacket hydraulic diameter (with htm)
+             * @default 0.05
+             */
+            d_hyd_jacket_m: number;
+            /**
+             * Htm
+             * @description Coolant / heat-transfer medium (data/HTM.csv); sets the jacket-side h_o. None = typical jacket h_o (1500 W/m²·K)
+             */
+            htm?: string | null;
+            /**
+             * V Jacket M S
+             * @description Jacket-side HTF velocity (with htm)
+             * @default 1
+             */
+            v_jacket_m_s: number;
         };
         /**
          * HeatTransferDefaults

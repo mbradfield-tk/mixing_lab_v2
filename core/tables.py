@@ -1,5 +1,5 @@
 """DataFrame helpers for the database tables: tolerant CSV import, inline edits,
-search and the friendly column labels. Framework-free (shared by Taipy pages and the API)."""
+search and the friendly column labels. Framework-free."""
 from __future__ import annotations
 
 import io

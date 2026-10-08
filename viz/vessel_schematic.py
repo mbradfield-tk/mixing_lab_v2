@@ -3,7 +3,7 @@
 Ported from the Streamlit ``1_Reactor_Database.py`` "Draw Reactor" feature. The
 vessel outline (straight walls + shape-aware bottom/top dishes), impellers and
 shaft are rendered with matplotlib and returned as a self-contained HTML ``<img>``
-(base64 PNG) so it can be shown in a Taipy ``part`` ``content`` iframe.
+(base64 PNG); the API serves it as a PNG.
 
 Given a fill volume (L) the liquid surface height is found by inverting the
 vessel's cumulative capacity curve (which accounts for the dish volumes and an

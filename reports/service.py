@@ -14,7 +14,8 @@ from core.records import range_midpoint, sf
 from core import scale_up
 from core import sensitivity_rules as rules
 from core import services
-from core.envelope import envelope_data
+from core.envelope import envelope_data, operating_window
+from utils.calculations import compute_reactor_hydro
 from core.operating_point import evaluate_point
 from core.options import Competing, CorrSource
 from core.serialize import jsonable
@@ -213,9 +214,11 @@ def comparison_report(req: s.ComparisonRequest) -> ReportFile:
 def bourne_defaults(name: str) -> s.BourneDefaults:
     """Working-volume / centre-RPM defaults and the reactor-limits table for a vessel."""
     row = services.bourne_reactor(name)
+    v_l = range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
+    n_rpm = range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0)
+    _n, v_min, v_max = operating_window(row, n_rpm, v_l, n_pts=2)
     return s.BourneDefaults(
-        V_L=range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0)),
-        centre_rpm=range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0),
+        V_L=v_l, V_L_range=(float(v_min), float(v_max)), centre_rpm=n_rpm,
         reactor_limits=jsonable(btables.reactor_limits(row)))
 
 
@@ -227,15 +230,27 @@ def bourne_plan_tables(req: s.BournePlanRequest) -> s.BournePlanTables:
                   "Centre (RPM)": (sp.centre_rpm, "centre" in sp.clamped),
                   "High (RPM)": (sp.high_rpm, "high" in sp.clamped)} for sp in p.setpoints]
     sp_df, caption = btables.setpoints_table(setpoints, any(sp.clamped for sp in p.setpoints))
+    sys = services.bourne_system(req)
+    nq = sf(services.bourne_reactor(req.reactor).get("Nq")) or None
+    hydros = [compute_reactor_hydro(
+        N=r["N (RPM)"] / 60.0, D_imp=sys.D_imp, D_tank=sys.D_tank, H=sys.H_liquid, rho=sys.rho,
+        mu=sys.mu, Np=sys.Np, Nq=nq, D_mol=sys.D_mol) for r in p.test1]
+    t_c = req.T_C
+    n_centre = p.test1[1]["N (RPM)"] if len(p.test1) > 1 else None
     return s.BournePlanTables(
         centre_pm_W_kg=p.centre_pm_W_kg, centre_info=p.centre_info,
         test1_pm_span=p.test1_pm_span, has_speed_plan=p.speed_plan is not None,
         reactor_limits=jsonable(btables.reactor_limits(services.bourne_reactor(req.reactor))),
-        test1=jsonable(btables.test1_table(p.test1)), setpoints=jsonable(sp_df),
-        setpoints_caption=caption, test2=jsonable(btables.test2_table(p.test2)),
-        test3=jsonable(btables.test3_table(
+        test1=jsonable(btables.test1_table(p.test1)),
+        test1_summary=jsonable(btables.with_operating(btables.test1_summary_table(p.test1), t_c)),
+        test1_detail=jsonable(btables.with_operating(
+            btables.test1_detail_table(p.test1, hydros, sys.rho), t_c)),
+        setpoints=jsonable(sp_df),
+        setpoints_caption=caption,
+        test2=jsonable(btables.with_operating(btables.test2_table(p.test2), t_c, sys.V_L, n_centre)),
+        test3=jsonable(btables.with_operating(btables.test3_table(
             [{**r, "Feed location": btables.T3_PAGE_LABELS.get(r["Feed location"], r["Feed location"])}
-             for r in p.test3])))
+             for r in p.test3]), t_c, sys.V_L, n_centre)))
 
 
 def bourne_sensitivity_csv(req: s.BourneReportRequest) -> ReportFile:
@@ -252,11 +267,14 @@ def bourne_sensitivity_csv(req: s.BourneReportRequest) -> ReportFile:
 
 def bourne_snapshot(req: s.BourneReportRequest) -> dict:
     ev = services.bourne_evaluation(req)
-    return snapshots.bourne_snapshot(
+    snap = snapshots.bourne_snapshot(
         reactor=req.reactor, fluid=req.fluid, V_L=ev["system"].V_L,
         dominant=ev["outcome"]["dominant"], conclusions=ev["conclusions"],
         t1_rows=ev["t1_rows"], t1_result=ev["results"][1], centerpoint=ev["centerpoint"],
         t2=ev["t2"], t3=ev["t3"], project=snapshots.project_meta(**req.project.model_dump()))
+    # Not in the golden page snapshot: temperature and vessel description for the report.
+    snap.update(T_C=req.T_C, vessel_info=btables.vessel_info(services.bourne_reactor(req.reactor)))
+    return snap
 
 
 def bourne_report(req: s.BourneReportRequest) -> ReportFile:

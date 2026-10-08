@@ -1,0 +1,870 @@
+{
+ "va_default": {
+  "reactor": "TMA EasyMax-102",
+  "N_rpm": 525.0,
+  "V_L": 0.055,
+  "corr_source": "Literature",
+  "fluid": {
+   "name": "Water",
+   "T_C": 25.0,
+   "P_atm": 1.0,
+   "rho_kg_m3": 997.0,
+   "mu_Pa_s": 0.00089,
+   "D_mol_m2_s": 2.3e-09
+  },
+  "reaction": {
+   "order": "pseudo-1",
+   "k": 0.01,
+   "C0_mol_L": 0.3,
+   "t_rxn_s": 69.0,
+   "dH_kJ_mol": -10.0
+  },
+  "gas": {
+   "present": false,
+   "v_s_m_s": 0.0,
+   "coalescing": true
+  },
+  "solids": null,
+  "feed": null,
+  "heat": {
+   "T_process_C": 25.0,
+   "T_coolant_C": 15.0,
+   "htm": null,
+   "v_jacket_m_s": 1.0,
+   "d_hyd_jacket_m": 0.05
+  },
+  "geometry": {
+   "D_tank_m": 0.05,
+   "D_imp_m": 0.03,
+   "Np": 1.27,
+   "Nq": 0.79
+  }
+ },
+ "va_full": {
+  "reactor": "TMA EasyMax-102",
+  "N_rpm": 525.0,
+  "V_L": 0.055,
+  "corr_source": "Literature",
+  "fluid": {
+   "name": "Water",
+   "T_C": 25.0,
+   "P_atm": 1.0,
+   "rho_kg_m3": 997.0,
+   "mu_Pa_s": 0.00089,
+   "D_mol_m2_s": 2.3e-09
+  },
+  "reaction": {
+   "order": "pseudo-1",
+   "k": 0.01,
+   "C0_mol_L": 0.3,
+   "t_rxn_s": 69.0,
+   "dH_kJ_mol": -100.0
+  },
+  "gas": {
+   "present": false,
+   "v_s_m_s": 0.005,
+   "coalescing": true
+  },
+  "solids": {
+   "rho_p_kg_m3": 1300.0,
+   "d50_um": 75.0,
+   "sphericity": 0.85,
+   "loading_g_per_100g": 5.0,
+   "zwietering_S": 5.5,
+   "gmb_z": 3.0,
+   "clearance_ratio": 0.33
+  },
+  "feed": {
+   "location": "near_impeller",
+   "d_pipe_mm": 3.0,
+   "rate_mL_min": null,
+   "T_C": null,
+   "fluid": null
+  },
+  "heat": {
+   "T_process_C": 25.0,
+   "T_coolant_C": 15.0,
+   "htm": null,
+   "v_jacket_m_s": 1.0,
+   "d_hyd_jacket_m": 0.05
+  },
+  "geometry": {
+   "D_tank_m": 0.05,
+   "D_imp_m": 0.03,
+   "Np": 1.27,
+   "Nq": 0.79
+  }
+ },
+ "va_env_params": [
+  "Da_macro",
+  "Da_micro",
+  "P/V (W/L)",
+  "Blend time 95% (s)",
+  "Tip speed (m/s)",
+  "Re"
+ ],
+ "va_reaction": "Hydrogenation (Pd/C) TAK-279",
+ "ms_scenarios": {
+  "ms_bourne_confirmed_mech": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "confirmed",
+   "bourne_mechanism": "Mesomixing",
+   "bourne_tests_done": [
+    1,
+    2,
+    3
+   ],
+   "bourne_results": [
+    {
+     "test": "Test 1 - Impeller speed",
+     "finding": "Mixing-sensitive (impeller speed)",
+     "sensitive_kpis": "Yield (12.0%); Impurity A (qualitative)"
+    }
+   ],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_bourne_confirmed_unresolved": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "confirmed",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [
+    {
+     "test": "Test 1 - Impeller speed",
+     "finding": "Mixing-sensitive (impeller speed)",
+     "sensitive_kpis": "Yield (12.0%); Impurity A (qualitative)"
+    }
+   ],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "not_sure",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_bourne_inconclusive_semibatch": {
+   "reaction": {
+    "order": "1",
+    "k": 2.0,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "inconclusive",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    2
+   ],
+   "bourne_results": [],
+   "semi_batch": true,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_bourne_insensitive_fast": {
+   "reaction": {
+    "order": "1",
+    "k": 50.0,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "insensitive",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_default": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid",
+    "solid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_dh_calorimetry": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": 0.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": "calorimetry",
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_dh_estimate_similar": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": 0.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": "estimate",
+   "dh_reference_kJ_mol": -25.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_dh_override_measured": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": -150.0,
+   "dh_override_measured": true,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 2.0,
+   "rho_cp_kJ_m3K": 1500.0,
+   "screening_vessel": null
+  },
+  "ms_dh_unresolved": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": 0.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_incomplete_inputs": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [],
+   "competing": null,
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_inline_da": {
+   "reaction": {
+    "order": "2",
+    "k": 5.0,
+    "C0_mol_L": 0.5,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -120.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid",
+    "gas"
+   ],
+   "competing": "yes",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": {
+    "reactor": "TMA EasyMax-102",
+    "N_rpm": 525.0,
+    "V_L": 0.055,
+    "solvent": "MeOH",
+    "T_C": 30.0
+   }
+  },
+  "ms_kinetics_declined": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "declined",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_kinetics_missing": {
+   "reaction": {
+    "order": "1",
+    "k": 0.0,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_proxy_kinetics_endothermic": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": 30.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "approximate",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "solid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  },
+  "ms_very_fast_competing": {
+   "reaction": {
+    "order": "2",
+    "k": 500.0,
+    "C0_mol_L": 0.5,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": true,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "yes",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": null
+  }
+ },
+ "va_report": {
+  "point": {
+   "reactor": "TMA EasyMax-102",
+   "N_rpm": 525.0,
+   "V_L": 0.055,
+   "corr_source": "Literature",
+   "fluid": {
+    "name": "Water",
+    "T_C": 25.0,
+    "P_atm": 1.0,
+    "rho_kg_m3": 997.0,
+    "mu_Pa_s": 0.00089,
+    "D_mol_m2_s": 2.3e-09
+   },
+   "reaction": {
+    "order": "pseudo-1",
+    "k": 0.01,
+    "C0_mol_L": 0.3,
+    "t_rxn_s": 69.0,
+    "dH_kJ_mol": -100.0
+   },
+   "gas": {
+    "present": true,
+    "v_s_m_s": 0.005,
+    "coalescing": true
+   },
+   "solids": {
+    "rho_p_kg_m3": 1300.0,
+    "d50_um": 75.0,
+    "sphericity": 0.85,
+    "loading_g_per_100g": 5.0,
+    "zwietering_S": 5.5,
+    "gmb_z": 3.0,
+    "clearance_ratio": 0.33
+   },
+   "feed": {
+    "location": "near_impeller",
+    "d_pipe_mm": 3.0,
+    "rate_mL_min": null,
+    "T_C": null,
+    "fluid": null
+   },
+   "heat": {
+    "T_process_C": 25.0,
+    "T_coolant_C": 15.0,
+    "htm": null,
+    "v_jacket_m_s": 1.0,
+    "d_hyd_jacket_m": 0.05
+   },
+   "geometry": {
+    "D_tank_m": 0.05,
+    "D_imp_m": 0.03,
+    "Np": 1.27,
+    "Nq": 0.79
+   }
+  },
+  "envelope_parameters": [
+   "Da_macro",
+   "Da_micro",
+   "P_V_W_L",
+   "blend_time_95_s",
+   "tip_speed_m_s",
+   "Re"
+  ],
+  "reaction_name": "Hydrogenation (Pd/C) TAK-279"
+ },
+ "ms_report": {
+  "protocol": {
+   "reaction": {
+    "order": "1",
+    "k": 0.01,
+    "C0_mol_L": 1.0,
+    "t_rxn_s": 0.0,
+    "dH_kJ_mol": -50.0
+   },
+   "reaction_type": "Heterogeneous",
+   "kinetics": "available",
+   "bourne": "skip",
+   "bourne_mechanism": null,
+   "bourne_tests_done": [
+    1
+   ],
+   "bourne_results": [],
+   "semi_batch": false,
+   "phases": [
+    "liquid"
+   ],
+   "competing": "no",
+   "dh_override_kJ_mol": 0.0,
+   "dh_override_measured": false,
+   "dh_action": null,
+   "dh_reference_kJ_mol": 0.0,
+   "c0_heat_mol_L": 1.0,
+   "rho_cp_kJ_m3K": 1800.0,
+   "screening_vessel": {
+    "reactor": "TMA EasyMax-102",
+    "N_rpm": 525.0,
+    "V_L": 0.055,
+    "solvent": "MeOH",
+    "T_C": 30.0
+   }
+  },
+  "reaction_name": "Hydrogenation (Pd/C) TAK-279",
+  "project": {
+   "project_name": "",
+   "step_number": "",
+   "unit_operation": "",
+   "process_version": ""
+  },
+  "bourne_meta": {}
+ },
+ "vc_report": {
+  "reactors": [
+   "TMA EasyMax-102",
+   "TMA 15 L Buchi",
+   "Cambrex R-101",
+   "Cambrex R-B01"
+  ],
+  "fluid": {
+   "name": "Water",
+   "T_C": 25.0,
+   "P_atm": 1.0,
+   "rho_kg_m3": null,
+   "mu_Pa_s": null,
+   "D_mol_m2_s": null
+  },
+  "reaction": {
+   "order": "pseudo-1",
+   "k": 0.01,
+   "C0_mol_L": 0.3,
+   "t_rxn_s": 69.0,
+   "dH_kJ_mol": -100.0
+  },
+  "reaction_name": "Hydrogenation (Pd/C) TAK-279",
+  "corr_source": "Literature",
+  "gas": {
+   "present": true,
+   "v_s_m_s": 0.005,
+   "coalescing": true
+  },
+  "solids": {
+   "rho_p_kg_m3": 2500.0,
+   "d50_um": 100.0,
+   "sphericity": 1.0,
+   "loading_g_per_100g": 5.0,
+   "zwietering_S": 5.5,
+   "gmb_z": 3.0,
+   "clearance_ratio": 0.33
+  },
+  "feed": {
+   "location": "near_impeller",
+   "pipe_id_mm": {
+    "TMA EasyMax-102": 6.0,
+    "TMA 15 L Buchi": 0.0,
+    "Cambrex R-101": 58.42,
+    "Cambrex R-B01": 0.0
+   }
+  },
+  "T_coolant_C": 15.0,
+  "scale_param": "P/V (W/L)",
+  "scale_basis_reactor": "TMA EasyMax-102"
+ },
+ "bp_report": {
+  "reactor": "TMA EasyMax-102",
+  "fluid": "Water",
+  "T_C": 25.0,
+  "P_atm": 1.0,
+  "V_L": null,
+  "D_imp_m": null,
+  "Np": null,
+  "centre": "default",
+  "centre_pm_W_kg": 0.2,
+  "centre_rpm": null,
+  "fed_batch_volumes_L": [],
+  "feed_volume_mL": 100.0,
+  "feed_basis": "rate",
+  "feed_rate_mL_min": 5.0,
+  "feed_time_min": 20.0,
+  "surface_ratio": 0.1,
+  "mid_ratio": 1.0,
+  "impeller_ratio": 3.0,
+  "test1": [
+   {
+    "name": "Yield",
+    "unit": "%",
+    "low": 90.0,
+    "centre": 100.0,
+    "high": 112.0,
+    "std_dev": null,
+    "replicates": null
+   }
+  ],
+  "test2": [
+   {
+    "name": "Yield",
+    "unit": "%",
+    "low": 95.0,
+    "centre": 100.0,
+    "high": 108.0,
+    "std_dev": null,
+    "replicates": null
+   }
+  ],
+  "test3": [
+   {
+    "name": "Yield",
+    "unit": "%",
+    "low": 100.0,
+    "centre": 100.0,
+    "high": 101.0,
+    "std_dev": null,
+    "replicates": null
+   }
+  ],
+  "project": {
+   "project_name": "",
+   "step_number": "",
+   "unit_operation": "",
+   "process_version": ""
+  }
+ },
+ "ht_cool": {
+  "reactor": "TMA EasyMax-102",
+  "fluid": "Water",
+  "N_rpm": null,
+  "V_L": null,
+  "D_tank_m": null,
+  "D_imp_m": null,
+  "Np": null,
+  "A_ht_m2": null,
+  "T_start_C": 25.0,
+  "T_jacket_C": -10.0,
+  "htm": null,
+  "nusselt_correlation": null,
+  "v_jacket_m_s": 1.0,
+  "d_hyd_jacket_m": 0.05,
+  "m_dot_jacket_kg_s": 1.0,
+  "wall_material": null,
+  "wall_thickness_mm": null,
+  "lining_material": "None",
+  "fouling_m2K_W": 0.0002,
+  "include_agitator": true,
+  "mu_wall_Pa_s": 0.0,
+  "rho_kg_m3": null,
+  "mu_Pa_s": null,
+  "cp_J_kgK": null,
+  "k_W_mK": null,
+  "cp_jacket_J_kgK": null,
+  "wall_k_W_mK": null,
+  "lining_k_W_mK": null,
+  "lining_thickness_mm": null,
+  "time_unit": "Minutes",
+  "project": {
+   "project_name": "",
+   "step_number": "",
+   "unit_operation": "",
+   "process_version": ""
+  },
+  "T_target_C": 5.0,
+  "q_rxn_W": 0.0
+ },
+ "ht_rxn": {
+  "reactor": "TMA EasyMax-102",
+  "fluid": "Water",
+  "N_rpm": null,
+  "V_L": null,
+  "D_tank_m": null,
+  "D_imp_m": null,
+  "Np": null,
+  "A_ht_m2": null,
+  "T_start_C": 25.0,
+  "T_jacket_C": -10.0,
+  "htm": null,
+  "nusselt_correlation": null,
+  "v_jacket_m_s": 1.0,
+  "d_hyd_jacket_m": 0.05,
+  "m_dot_jacket_kg_s": 1.0,
+  "wall_material": null,
+  "wall_thickness_mm": null,
+  "lining_material": "None",
+  "fouling_m2K_W": 0.0002,
+  "include_agitator": true,
+  "mu_wall_Pa_s": 0.0,
+  "rho_kg_m3": null,
+  "mu_Pa_s": null,
+  "cp_J_kgK": null,
+  "k_W_mK": null,
+  "cp_jacket_J_kgK": null,
+  "wall_k_W_mK": null,
+  "lining_k_W_mK": null,
+  "lining_thickness_mm": null,
+  "time_unit": "Minutes",
+  "project": {
+   "project_name": "",
+   "step_number": "",
+   "unit_operation": "",
+   "process_version": ""
+  },
+  "reaction": {
+   "order": "pseudo-1",
+   "k": 0.01,
+   "C0_mol_L": 1.0,
+   "t_rxn_s": 0.0,
+   "dH_kJ_mol": -100.0
+  }
+ }
+}

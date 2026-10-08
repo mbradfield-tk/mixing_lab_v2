@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import { Chart } from "../components/Chart";
-import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { NumberField, Segmented, SelectField, SliderField, Switch } from "../components/Form";
 import {
   InsightCard, InsightGrid, Pill, Stages, StatGrid, TableDetails, ThresholdBar, VerdictBanner, stripIcon,
 } from "../components/Insights";
@@ -12,7 +12,7 @@ import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { useDebounced } from "../hooks";
-import { downloadBlob } from "./assessment/model";
+import { downloadBlob, sliderStep } from "./assessment/model";
 import {
   CENTRE_MODES, FEED_BASES, INITIAL, STATUS_LABEL, STATUS_TONE, TEST_TITLES, blankKpi, buildPlan, completeKpis,
   dominantTone, kpiStatus, kpiWarning, mirrorKpis, nextVolume, parse, round3, seedKpi, testKey, testScope, testStages,
@@ -226,6 +226,7 @@ export function BourneProtocol() {
   const [kpis, setKpis] = useState<Record<TestNo, KpiRow[]>>({ 1: [seedKpi()], 2: [seedKpi()], 3: [seedKpi()] });
   const [results, setResults] = useState<Partial<Record<TestNo, Assessed>>>({});
   const [limits, setLimits] = useState<Schemas["BourneDefaults"]["reactor_limits"] | null>(null);
+  const [vRange, setVRange] = useState<[number, number] | null>(null);
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
   const bourneOptions = useQuery({
@@ -241,6 +242,7 @@ export function BourneProtocol() {
     const d = unwrap(await api.GET("/api/v1/bourne/defaults/{name}", { params: { path: { name } } }));
     set({ reactor: name, V_L: String(round3(d.V_L)), rpmCentre: String(d.centre_rpm) });
     setLimits(d.reactor_limits);
+    setVRange([d.V_L_range[0], d.V_L_range[1]]);
   }
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
 
@@ -369,7 +371,20 @@ export function BourneProtocol() {
   );
   const tField = <NumberField label="Temperature (°C)" value={inputs.T} onChange={(T) => set({ T })} />;
   const pField = <NumberField label="Pressure (atm)" value={inputs.P} onChange={(P) => set({ P })} />;
-  const vField = <NumberField label="Working volume (L)" value={inputs.V_L} onChange={(V_L) => set({ V_L })} />;
+  const vField =
+    vRange && vRange[1] > vRange[0] ? (
+      <SliderField
+        label="Working volume (L)"
+        value={inputs.V_L}
+        onChange={(V_L) => set({ V_L })}
+        min={vRange[0]}
+        max={vRange[1]}
+        step={sliderStep(vRange[1] - vRange[0])}
+        unit="L"
+      />
+    ) : (
+      <NumberField label="Working volume (L)" value={inputs.V_L} onChange={(V_L) => set({ V_L })} />
+    );
   const centreFields = (
     <div className="form-row">
       <SelectField
@@ -412,6 +427,22 @@ export function BourneProtocol() {
   const inputError = "error" in built ? <p className="stale-note">{built.error}</p> : null;
   const conditions = (rows: Schemas["BournePlanTables"]["test1"] | undefined, csvName: string) =>
     rows ? <ResultTable rows={rows} csvName={csvName} stale={planStale} /> : plan.isFetching ? <p className="muted">Calculating…</p> : null;
+  const test1Conditions = (
+    <>
+      {conditions(tables?.test1_summary, "bourne_test_1_conditions.csv")}
+      {tables && (
+        <details>
+          <summary>All hydrodynamic parameters per condition</summary>
+          <p className="muted">
+            Literature correlations at each condition: power and torque, mean and maximum energy dissipation rate (EDR),
+            tip speed, Re, Froude number, pumping, circulation and blend times, micromixing times, Kolmogorov scale, shear
+            rates and stress, EDCF and surface kLa.
+          </p>
+          <ResultTable rows={tables.test1_detail} csvName="bourne_test_1_conditions_detail.csv" stale={planStale} />
+        </details>
+      )}
+    </>
+  );
 
   function kpiSection(n: TestNo) {
     const out = outOf(n);
@@ -521,15 +552,20 @@ export function BourneProtocol() {
                 Vary the specific power <strong>P/m</strong> over a 100× range (0.1× → 10× the centre) at fixed volume. If the
                 response barely moves, mixing is not rate-limiting.
               </p>
-              <p>
-                <strong>Centre-point selection</strong>
-              </p>
-              {centreFields}
-              {tables && <Markdown>{tables.centre_info}</Markdown>}
-              {conditions(tables?.test1, "bourne_test_1_conditions.csv")}
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">1.1</span> Centre point &amp; test conditions
+                </h3>
+                {centreFields}
+                {tables && <Markdown>{tables.centre_info}</Markdown>}
+                {test1Conditions}
+              </section>
 
-              <h3>Discrete speed adjustments (fed-batch)</h3>
-              <p>
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">1.2</span> Discrete speed adjustments (fed-batch)
+                </h3>
+                <p>
                 Step the impeller speed at volume milestones to hold <strong>P/m constant</strong> as the working volume grows.
                 Enter one row per milestone volume (L).
               </p>
@@ -584,8 +620,12 @@ export function BourneProtocol() {
                   </div>
                 </div>
               )}
+              </section>
 
-              <h3>Impeller speed vs fill volume</h3>
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">1.3</span> Impeller speed vs fill volume
+                </h3>
               {tables && !tables.has_speed_plan ? (
                 <p>
                   <em>This vessel has a single working volume, so the speed-vs-volume plot is not applicable.</em>
@@ -600,9 +640,13 @@ export function BourneProtocol() {
                   <Chart figure={chart.data} height={480} />
                 </>
               )}
+              </section>
 
-              <h3>Enter measured responses</h3>
-              <p>
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">1.4</span> Measured responses
+                </h3>
+                <p>
                 Track one or more KPIs — add a row per metric. A KPI counts as sensitive when it changes by more than its
                 threshold from the centre value (<strong>5%</strong> for yield / conversion / purity / selectivity,{" "}
                 <strong>10%</strong> for impurity levels and particle size) and the change exceeds twice the measurement noise
@@ -611,6 +655,7 @@ export function BourneProtocol() {
                 if none is, and <em>inconclusive</em> for a mixed signal.
               </p>
               {kpiSection(1)}
+              </section>
             </Card>
           )}
 
@@ -620,14 +665,23 @@ export function BourneProtocol() {
                 Hold P/m at the centre and vary the <strong>feed rate</strong> over a 9× range. Insensitivity means the reaction
                 is <strong>micromixing</strong>-controlled; sensitivity points to mesomixing.
               </p>
-              {feedFields}
-              {conditions(tables?.test2, "bourne_test_2_conditions.csv")}
-              <h3>Enter measured responses</h3>
-              <p>
-                KPIs carry over from Test 1 — edit the responses (columns: <strong>Slow feed / Centre / Fast feed</strong>), add
-                or remove rows as needed.
-              </p>
-              {kpiSection(2)}
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">2.1</span> Feed definition &amp; test conditions
+                </h3>
+                {feedFields}
+                {conditions(tables?.test2, "bourne_test_2_conditions.csv")}
+              </section>
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">2.2</span> Measured responses
+                </h3>
+                <p>
+                  KPIs carry over from Test 1 — edit the responses (columns: <strong>Slow feed / Centre / Fast feed</strong>),
+                  add or remove rows as needed.
+                </p>
+                {kpiSection(2)}
+              </section>
             </Card>
           )}
 
@@ -637,17 +691,26 @@ export function BourneProtocol() {
                 Hold P/m and feed rate; move the feed point between low- and high-dissipation zones. Insensitivity means{" "}
                 <strong>macromixing</strong> controls; sensitivity means mesomixing.
               </p>
-              <p>
-                The local dissipation ratios below are illustrative defaults. Replace them with measured or CFD-derived values when
-                available.
-              </p>
-              {ratioFields}
-              {conditions(tables?.test3, "bourne_test_3_conditions.csv")}
-              <h3>Enter measured responses</h3>
-              <p>
-                KPIs carry over from Test 2 — edit the responses (columns: <strong>Surface / Mid / Impeller</strong>).
-              </p>
-              {kpiSection(3)}
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">3.1</span> Feed locations &amp; test conditions
+                </h3>
+                <p>
+                  The local dissipation ratios below are illustrative defaults. Replace them with measured or CFD-derived values
+                  when available.
+                </p>
+                {ratioFields}
+                {conditions(tables?.test3, "bourne_test_3_conditions.csv")}
+              </section>
+              <section className="sub-section">
+                <h3>
+                  <span className="sub-step">3.2</span> Measured responses
+                </h3>
+                <p>
+                  KPIs carry over from Test 2 — edit the responses (columns: <strong>Surface / Mid / Impeller</strong>).
+                </p>
+                {kpiSection(3)}
+              </section>
             </Card>
           )}
 
@@ -692,7 +755,7 @@ export function BourneProtocol() {
           <Card title="Test 1: impeller speed">
             {centreFields}
             {tables && <Markdown>{tables.centre_info}</Markdown>}
-            {conditions(tables?.test1, "bourne_test_1_conditions.csv")}
+            {test1Conditions}
           </Card>
           <Card title="Test 2: feed rate / time">
             {feedFields}

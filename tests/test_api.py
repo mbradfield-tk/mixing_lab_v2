@@ -22,6 +22,7 @@ from core import services as sv  # noqa: E402
 from reports import charts  # noqa: E402
 
 import test_contracts as contracts  # noqa: E402
+from golden_helpers import PARITY  # noqa: E402
 
 V1 = "/api/v1"
 REACTOR = "TMA EasyMax-102"
@@ -120,6 +121,35 @@ def test_every_chart_kind_returns_plotly_json(client):
         assert res.status_code == 200, (kind, res.text)
         figs = res.json()["figures"]
         assert figs and all("data" in f and "layout" in f for f in figs.values()), kind
+
+
+def test_coolant_htf_sets_the_jacket_side_coefficient(client):
+    from core.heat_transfer import jacket_side_htc, load_csvs
+    from core.records import DATA_DIR
+    pt = {"reactor": REACTOR, "N_rpm": 400, "V_L": 0.05,
+          "reaction": {"order": "2", "k": 0.5, "C0_mol_L": 0.5, "dH_kJ_mol": -80},
+          "heat": {"T_process_C": 25, "T_coolant_C": 10}}
+    typical = client.post(f"{V1}/assessment/point", json=pt).json()
+    htm_db = load_csvs(DATA_DIR)[2]
+    u = {}
+    for name in ("Water", "Syltherm 800"):
+        r = client.post(f"{V1}/assessment/point",
+                        json={**pt, "heat": {**pt["heat"], "htm": name}}).json()
+        assert r["extra"]["h_o jacket (W/m²·K)"] == pytest.approx(
+            jacket_side_htc(htm_db[name], 1.0, 0.05))
+        assert r["Q_cool_W"] == pytest.approx(r["U_W_m2K"] * r["A_ht_m2"] * 15)
+        u[name] = r["U_W_m2K"]
+    assert u["Water"] > typical["U_W_m2K"] > u["Syltherm 800"]  # 1500 W/m²·K default in between
+
+    cold = {**pt, "heat": {**pt["heat"], "T_coolant_C": -20, "htm": "Water"}}
+    heat = {r["Parameter"]: r["Value"]
+            for r in client.post(f"{V1}/assessment/tables", json=cold).json()["heat"]}
+    assert heat["Coolant (HTF)"].startswith("Water ⚠️") and "Jacket-side h_o" in heat
+    temp = client.post(f"{V1}/assessment/temperature", json={"point": cold}).json()
+    assert temp["UA_W_K"][0] == pytest.approx(
+        client.post(f"{V1}/assessment/point", json=cold).json()["U_W_m2K"] * typical["A_ht_m2"])
+    bad = {**pt, "heat": {**pt["heat"], "htm": "Nope"}}
+    assert client.post(f"{V1}/assessment/point", json=bad).status_code == 404
 
 
 def test_feed_sensible_heat_enters_the_heat_balance(client):
@@ -345,25 +375,16 @@ def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
     assert saved["reaction"] == "Grignard" and saved["Da_macro"] == res["point"]["Da_macro"]
 
 
-def test_comparison_page_endpoints_match_the_taipy_page(client, temp_tables, monkeypatch):
+def test_comparison_page_endpoints_match_the_taipy_page(client, temp_tables):
     from types import SimpleNamespace
 
     from core.serialize import jsonable
-    from pages import vessel_comparison as vc
-    from test_golden_outputs import _VC_FULL, _state
 
-    monkeypatch.setattr(vc, "notify", lambda *_a, **_k: None)
-    st = _state(vc, **_VC_FULL)
-    vc._build_targets(st)
-    vc.on_vc_compute(st)
-    assert isinstance(st, SimpleNamespace) and st._vc_cache
-
+    st = SimpleNamespace(**PARITY["comparison"])
     names = list(st.vc_reactors)
     setup = client.post(f"{V1}/comparison/setup", json={"reactors": names}).json()
-    assert setup["feed_pipe_mm"] == {r["Reactor"]: r["Feed pipe ID (mm)"]
-                                     for r in st.vc_feed_pipe_df.to_dict("records")}
-    target_col = [c for c in st.vc_targets_df.columns if c != "Reactor"][0]
-    assert setup["fixed"] == {r["Reactor"]: r[target_col] for r in st.vc_targets_df.to_dict("records")}
+    assert setup["feed_pipe_mm"] == st.feed_pipe_mm
+    assert setup["fixed"] == st.fixed
 
     kin = client.get(f"{V1}/kinetics/defaults", params={"reaction": st.vc_reaction}).json()
     assert kin["order"] == st.vc_rxn_order and kin["k"] == st.vc_rxn_k
@@ -399,87 +420,39 @@ def test_comparison_page_endpoints_match_the_taipy_page(client, temp_tables, mon
     assert saved.status_code == 201 and saved.json() == {"saved": len(names), "count": len(names)}
 
 
-def _ht_body(st) -> dict:
-    """The HTTP request for a Taipy Heat Transfer state, every editable value sent explicitly."""
-    return {
-        "reactor": st.selected_reactor, "fluid": st.selected_fluid, "N_rpm": st.n_rpm,
-        "V_L": st.v_l, "D_tank_m": st.d_tank, "D_imp_m": st.d_imp, "Np": st.np_in,
-        "A_ht_m2": st.a_ht, "T_start_C": st.t_start, "T_jacket_C": st.t_jacket,
-        "htm": st.selected_htm, "nusselt_correlation": st.nusselt_correlation,
-        "v_jacket_m_s": st.v_jacket, "d_hyd_jacket_m": st.d_hyd_jacket,
-        "m_dot_jacket_kg_s": st.m_dot_jacket, "wall_material": st.wall_material,
-        "wall_thickness_mm": st.wall_thickness_mm, "lining_material": st.lining_material,
-        "fouling_m2K_W": st.fouling, "include_agitator": st.include_agitator == "On",
-        "mu_wall_Pa_s": st.mu_wall, "rho_kg_m3": st.rho, "mu_Pa_s": st.mu, "cp_J_kgK": st.cp,
-        "k_W_mK": st.k_fluid, "cp_jacket_J_kgK": st.cp_jacket, "wall_k_W_mK": st.wall_k,
-        "lining_k_W_mK": st.lining_k, "lining_thickness_mm": st.lining_thickness_mm,
-        "time_unit": st.time_unit,
-    }
-
-
-def test_heat_transfer_endpoints_match_the_taipy_page(client, monkeypatch):
+def test_heat_transfer_endpoints_match_the_taipy_page(client):
     from core.serialize import jsonable
-    from pages import heat_transfer as ht
-    from test_golden_outputs import _state
 
-    monkeypatch.setattr(ht, "notify", lambda *_a, **_k: None)
-    st = _state(ht, rho=1100.0, wall_k=20.0, cp_jacket=3000.0, lining_thickness_mm=0.0)
-    ht.on_compute(st)
-    d = client.get(f"{V1}/heat-transfer/defaults/{st.selected_reactor}").json()
-    assert (d["N_rpm"], d["V_L"], d["A_ht_m2"]) == (st.n_rpm, st.v_l, st.a_ht)
+    p = PARITY["heat_transfer"]
+    d = client.get(f"{V1}/heat-transfer/defaults/{p['reactor']}").json()
+    assert [d["N_rpm"], d["V_L"], d["A_ht_m2"]] == p["defaults"]
     assert client.get(f"{V1}/fluids/thermal", params={"name": "Water"}).json()["cp_J_kgK"] == 4182.0
 
-    res = client.post(f"{V1}/heat-transfer/heat-cool",
-                      json={**_ht_body(st), "T_target_C": st.t_target, "q_rxn_W": st.q_rxn}).json()
-    assert res["correlations"] == jsonable(st.corr_df)
-    assert res["media"] == jsonable(st.htm_compare_df)
-    assert res["summary"] == jsonable(st.summary_df)
-    kpi = {r["Metric"]: r["Value"] for r in st.kpi_df.to_dict("records")}
-    assert round(res["coefficients"]["U_W_m2K"], 2) == kpi["U (W/m2.K)"]
+    res = client.post(f"{V1}/heat-transfer/heat-cool", json=p["cool_body"]).json()
+    assert res["correlations"] == jsonable(p["corr_df"])
+    assert res["media"] == jsonable(p["htm_compare_df"])
+    assert res["summary"] == jsonable(p["summary_df"])
+    assert round(res["coefficients"]["U_W_m2K"], 2) == p["U_kpi"]
 
-    st = _state(ht, ht_mode=ht.HT_MODE_RXN)
-    ht.on_compute(st)
-    res = client.post(f"{V1}/heat-transfer/reaction-profile", json={
-        **_ht_body(st), "reaction": {"order": st.rxn_order, "k": st.rxn_k,
-                                     "C0_mol_L": st.rxn_c0, "dH_kJ_mol": st.rxn_dH}}).json()
-    assert res["summary"] == jsonable(st.rxn_summary_df)
+    res = client.post(f"{V1}/heat-transfer/reaction-profile", json=p["rxn_body"]).json()
+    assert res["summary"] == jsonable(p["rxn_summary_df"])
 
-    st = _state(ht, ht_mode=ht.HT_MODE_SWEEP, sweep_color_range_mode="Custom",
-                sweep_u_color_min=100.0, sweep_u_color_max=900.0)
-    ht._refresh_sweep_ranges(st)
-    ht.on_compute(st)
-    body = {**_ht_body(st), "x_parameter": "n_rpm", "y_parameter": "v_l",
-            "x_range": [st.sweep_x_min, st.sweep_x_max], "y_range": [st.sweep_y_min, st.sweep_y_max],
-            "U_color_range": [100.0, 900.0]}
-    surf = client.post(f"{V1}/heat-transfer/ua-surface", json=body).json()
-    assert surf["U_W_m2K"] == jsonable(st.sweep_u_fig.data[0].z)
-    chart = client.post(f"{V1}/charts/ua-surface", json=body).json()
+    surf = client.post(f"{V1}/heat-transfer/ua-surface", json=p["sweep_body"]).json()
+    assert surf["U_W_m2K"] == p["sweep_U"]
+    chart = client.post(f"{V1}/charts/ua-surface", json=p["sweep_body"]).json()
     assert chart["figures"]["U"]["data"][0]["cmin"] == 100.0
 
 
-def test_bourne_page_endpoints_match_the_taipy_page(client, monkeypatch):
-    import pandas as pd
+def test_bourne_page_endpoints_match_the_taipy_page(client):
+    from types import SimpleNamespace
 
     from core.serialize import jsonable
-    from pages import bourne_protocol as bp
-    from test_golden_outputs import _state
 
-    monkeypatch.setattr(bp, "notify", lambda *_a, **_k: None)
-    st = _state(bp, bp_t1_adj_mode="On", bp_t2_feed_vol=50.0, bp_t3_impeller_ratio=4.0,
-                bp_project_name="E2E", bp_step_text="3")
-    st.bp_t1_adj_vols_df = pd.DataFrame([{"Volume (L)": 0.08}, {"Volume (L)": 0.1}])
-    bp.on_bp_start(st)
-    bp._build_plan(st)
-
+    st = SimpleNamespace(**PARITY["bourne"])
     responses = {1: (80.0, 90.0, 95.0), 2: (80.0, 90.0, 95.0), 3: (89.0, 90.0, 90.5)}
     kpis = {}
     for n in (1, 2, 3):
-        low, ctr, high = bp.KPI_COLUMNS[n]
         lo, ce, hi = responses[n]
-        setattr(st, f"bp_t{n}_kpi_df", pd.DataFrame([{
-            "KPI": "Yield", "Unit": "%", low: lo, ctr: ce, high: hi, "Std dev": None,
-            "Replicates": None}]))
-        getattr(bp, f"on_bp_t{n}_assess")(st)
         kpis[f"test{n}"] = [{"name": "Yield", "unit": "%", "low": lo, "centre": ce, "high": hi}]
 
     req = {"reactor": st.bp_reactor, "fluid": st.bp_fluid, "V_L": st.bp_v_l,
@@ -488,10 +461,26 @@ def test_bourne_page_endpoints_match_the_taipy_page(client, monkeypatch):
     assert tables["test1"] == jsonable(st.bp_t1_hydro_df)
     assert tables["setpoints"] == jsonable(st.bp_t1_adj_result_df)
     assert tables["setpoints_caption"] == st.bp_t1_adj_caption
-    assert tables["test2"] == jsonable(st.bp_t2_cond_df)
-    assert tables["test3"] == jsonable(st.bp_t3_cond_df)
+    operating = ("T (°C)", "N (RPM)", "Fill volume (L)")
+    for key in ("test2", "test3"):
+        assert all(list(r)[1:4] == list(operating) for r in tables[key])
+        assert all(r["T (°C)"] == f"{st.bp_T:g}" and r["N (RPM)"] == tables["test1"][1]["N (RPM)"]
+                   for r in tables[key])
+    page_only = {k: [{c: v for c, v in r.items() if c not in operating} for r in tables[k]]
+                 for k in ("test2", "test3")}
+    assert page_only["test2"] == jsonable(st.bp_t2_cond_df)
+    assert page_only["test3"] == jsonable(st.bp_t3_cond_df)
     assert tables["reactor_limits"] == jsonable(st.bp_reactor_summary_df)
     assert tables["centre_info"] == st.bp_t1_ctr_info
+    summary, detail = tables["test1_summary"], tables["test1_detail"]
+    assert list(summary[0]) == ["Condition", "T (°C)", "N (RPM)", "Fill volume (L)", "P/V (W/L)",
+                                "P/m (W/kg)"]
+    assert list(detail[0])[:4] == ["Condition", "T (°C)", "N (RPM)", "Fill volume (L)"]
+    for s_row, full, d_row in zip(summary, tables["test1"], detail):
+        assert (s_row["N (RPM)"], s_row["P/m (W/kg)"]) == (full["N (RPM)"], full["P/m (W/kg)"])
+        assert d_row["N (RPM)"] == s_row["N (RPM)"] and d_row["Re"] == full["Re"]
+    assert {"EDR max ε_max (W/kg)", "Max shear rate (1/s)", "Blend time 95% (s)",
+            "Circulation time (s)", "Torque (N·m)"} <= set(detail[0])
 
     res = client.post(f"{V1}/bourne/assess", json={**req, **kpis}).json()
     assert [t["verdict"] for t in res["tests"]] == [st.bp_t1_verdict, st.bp_t2_verdict,
@@ -501,48 +490,39 @@ def test_bourne_page_endpoints_match_the_taipy_page(client, monkeypatch):
     assert res["summary"] == "\n".join(["### Decision-tree conclusion", ""]
                                        + ["- " + ln for ln in res["test_lines"]] + ["", res["conclusion"]])
     k1 = res["tests"][0]["kpi_details"][0]
-    assert k1["max_change_pct"] == pytest.approx(st.bp_t1_result["results"][0]["max_pct"])
+    assert k1["max_change_pct"] == pytest.approx(st.t1_max_pct)
     assert (k1["sensitive"], k1["threshold_pct"], k1["centre"]) == (True, 5.0, 90.0)
-    assert res["pm_span"] == pytest.approx(bp._test1_range_ratio(st))
+    assert res["pm_span"] == pytest.approx(st.range_ratio)
 
-    bp.on_bp_export_sens_csv(st)
     csv = client.post(f"{V1}/bourne/sensitivity-csv",
                       json={**req, **kpis, "project": {"project_name": "E2E", "step_number": "3"}})
     assert csv.status_code == 200 and csv.headers["content-type"].startswith("text/csv")
-    assert csv.content == st.bp_sens_csv_bytes
+    assert csv.content.decode("utf-8") == st.sens_csv
     opts = client.get(f"{V1}/bourne/options").json()
-    assert opts["kpi_columns"]["2"] == list(bp.KPI_COLUMNS[2])
+    assert opts["kpi_columns"]["2"] == st.kpi_columns_2
     d = client.get(f"{V1}/bourne/defaults/{st.bp_reactor}").json()
-    assert d["V_L"] == pytest.approx(bp.bp_v_l) and d["centre_rpm"] == pytest.approx(bp.bp_t1_rpm_center)
+    assert d["V_L"] == pytest.approx(st.default_v_l) and d["centre_rpm"] == pytest.approx(st.default_rpm_center)
     assert d["reactor_limits"] == jsonable(st.bp_reactor_summary_df)
+    assert d["V_L_range"][0] < d["V_L"] < d["V_L_range"][1]
 
 
-def test_sensitivity_page_endpoints_match_the_taipy_page(client, monkeypatch, tmp_path):
-    from core.options import BourneStatus, Competing, Kinetics, Phase
+def test_sensitivity_page_endpoints_match_the_taipy_page(client):
+    from types import SimpleNamespace
+
     from core.serialize import jsonable
-    from pages import mixing_sensitivity as ms
-    from test_golden_outputs import _state
 
-    monkeypatch.setattr(ms, "notify", lambda *_a, **_k: None)
+    st = SimpleNamespace(**PARITY["sensitivity"])
     yld = [{"name": "Yield", "unit": "%", "low": 80, "centre": 90, "high": 95}]
     csv = client.post(f"{V1}/bourne/sensitivity-csv", json={
         "reactor": REACTOR, "test1": yld, "test2": yld,
         "project": {"project_name": "E2E", "step_number": "3"}}).content
-    path = tmp_path / "bourne.csv"
-    path.write_bytes(csv)
-
-    st = _state(ms, ms_started=True, ms_bourne_upload=str(path), ms_semi_batch="On",
-                ms_phases=[Phase.LIQUID.label, Phase.GAS.label], ms_competing=Competing.YES.label,
-                ms_da_mode="On")
-    ms.on_ms_reaction_change(st)
-    ms.on_ms_bourne_import(st)
 
     imp = client.post(f"{V1}/sensitivity/bourne-import",
                       files={"file": ("bourne.csv", csv, "text/csv")}).json()
-    assert imp["status"] == BourneStatus.from_label(st.ms_bourne_status).value
+    assert imp["status"] == st.bourne_status
     assert imp["meta_caption"] == st.ms_bourne_meta_caption and imp["meta"] == st.ms_bourne_meta
     assert [{"Test": r["test"], "Finding": r["finding"], "Sensitive KPI(s)": r["sensitive_kpis"]}
-            for r in imp["findings"]] == st.ms_bourne_findings_df.to_dict("records")
+            for r in imp["findings"]] == st.bourne_findings
     bad = client.post(f"{V1}/sensitivity/bourne-import",
                       files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")})
     assert bad.status_code == 422 and "Not a Bourne results CSV" in bad.text
@@ -556,7 +536,7 @@ def test_sensitivity_page_endpoints_match_the_taipy_page(client, monkeypatch, tm
         "reaction": {"order": st.ms_rxn_order, "k": st.ms_rxn_k, "C0_mol_L": st.ms_rxn_c0,
                      "t_rxn_s": st.ms_rxn_trxn, "dH_kJ_mol": st.ms_rxn_dh},
         "reaction_type": d["reaction_type"],
-        "kinetics": Kinetics.from_label(st.ms_kinetics_avail).value,
+        "kinetics": st.kinetics,
         "bourne": imp["status"], "bourne_mechanism": imp["mechanism"],
         "bourne_tests_done": imp["tests_done"], "bourne_results": imp["findings"],
         "semi_batch": True, "phases": ["liquid", "gas"], "competing": "yes",
@@ -584,7 +564,7 @@ def test_sensitivity_page_endpoints_match_the_taipy_page(client, monkeypatch, tm
     assert page["t_rxn_s"] == pytest.approx(full["kinetics"]["t_rxn_s"])
 
     opts = client.get(f"{V1}/sensitivity/options").json()
-    assert sorted(opts["dh_references"]) == sorted(ms.dh_ref_options)
+    assert sorted(opts["dh_references"]) == st.dh_ref_options
     pdf = client.post(f"{V1}/reports/sensitivity", json={
         "protocol": req, "reaction_name": st.ms_reaction, "bourne_meta": imp["meta"]})
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")

@@ -1,7 +1,7 @@
 """Vessel media lookup: which 3D model / image file a reactor has and its static URL.
 
-The files are served from ``images/`` under :data:`IMAGES_URL_PREFIX` (Taipy
-``path_mapping`` in app.py, a static mount in the API); the viewer script from
+The files are served from ``images/`` under :data:`IMAGES_URL_PREFIX` (a static
+mount in the API); the viewer script from
 ``assets/`` under :data:`ASSETS_URL_PREFIX`.
 """
 from __future__ import annotations

@@ -254,6 +254,16 @@ export function VesselAssessment() {
     queryFn: async () => unwrap(await api.GET("/api/v1/assessment/parameters")),
     staleTime: Infinity,
   });
+  const htOptions = useQuery({
+    queryKey: ["heat-transfer-options"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/heat-transfer/options")),
+    staleTime: Infinity,
+  });
+  const htmList = Object.keys(htOptions.data?.media ?? {});
+  useEffect(() => {
+    if (htmList.length && !inputs.htm) set({ htm: htmList.includes("Water") ? "Water" : htmList[0] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htOptions.data]);
   const labelOf = useMemo(
     () => new Map((parameters.data ?? []).map((p) => [p.field, p.label])),
     [parameters.data],
@@ -635,6 +645,12 @@ export function VesselAssessment() {
               <NumberField label="Temperature (°C)" value={inputs.T} onChange={(T) => set({ T })} />
               <NumberField label="Pressure (atm)" value={inputs.P} onChange={(P) => set({ P })} />
               <NumberField label="Coolant temp (°C)" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} />
+              <SelectField
+                label="Coolant (HTF)"
+                value={inputs.htm}
+                options={[{ code: "", label: "Typical jacket (h_o 1500 W/m²·K)" }, ...htmList.map((m) => ({ code: m, label: m }))]}
+                onChange={(htm) => set({ htm })}
+              />
             </div>
             <div className="form-row">
               {ranges ? (

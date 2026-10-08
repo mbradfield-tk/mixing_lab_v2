@@ -18,7 +18,7 @@ from viz.vessel_schematic import build_vessel_schematic
 outputs = APIRouter(tags=["Reports & charts"])
 reference = APIRouter(tags=["Reference"])
 
-# The LaTeX source; equations_reference.json (pre-rendered PNGs) is only for the Taipy page.
+# The LaTeX source of the Equations Reference (rendered by the web app).
 EQUATIONS_JSON = records.DATA_DIR / "equations_source.json"
 
 

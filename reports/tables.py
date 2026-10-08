@@ -89,6 +89,11 @@ def assessment_tables(hydro: dict, n_rpm: float, t_rxn: float, *, solids_on: boo
                    if q_load > 0 or "Q_feed (W)" not in hydro
                    else "Net cooling by the feed - no heat to remove")
         heat = pd.DataFrame(rows + [
+            *([{"Parameter": "Coolant (HTF)",
+                "Value": hydro["Coolant (HTF)"] + (f" ⚠️ {hydro['HTF note']}" if hydro.get("HTF note") else ""),
+                "Units": "–"},
+               {"Parameter": "Jacket-side h_o", "Value": f"{hydro['h_o jacket (W/m²·K)']:,.0f}",
+                "Units": "W/m²·K"}] if "Coolant (HTF)" in hydro else []),
             {"Parameter": "Overall U", "Value": f"{hydro['U (W/m²·K)']:,.1f}", "Units": "W/m²·K"},
             {"Parameter": "Jacket area A", "Value": f"{hydro['A_ht (m²)']:,.4g}", "Units": "m²"},
             {"Parameter": "Cooling capacity Q_cool", "Value": f"{q_cool:,.1f}", "Units": "W"},

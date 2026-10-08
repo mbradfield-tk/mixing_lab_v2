@@ -40,31 +40,6 @@ def test_write_policy_protects_shared_tables_only():
     auth.authorize(ANON, "recorded_results")
 
 
-@pytest.mark.parametrize("module", ["pages.reaction_database", "pages.vessel_database",
-                                    "pages.particle_database", "pages.fluid_database"])
-def test_page_unlock_and_lock_handlers(monkeypatch, module):
-    import importlib
-    from types import SimpleNamespace
-
-    page = importlib.import_module(module)
-    monkeypatch.setattr(page, "notify", lambda *a, **k: None)
-    monkeypatch.setenv(auth.ADMIN_USER_ENV, "ops")
-    monkeypatch.setenv(auth.ADMIN_PW_ENV, "pw")
-    state = SimpleNamespace(admin_user="ops", admin_pw="bad", admin_authenticated=False,
-                            admin_status="")
-    page.on_admin_unlock(state)
-    assert not state.admin_authenticated and "Invalid" in state.admin_status
-    state.admin_pw = "pw"
-    page.on_admin_unlock(state)
-    assert state.admin_authenticated and state.admin_pw == "" and "unlocked" in state.admin_status
-    page.on_admin_lock(state)
-    assert not state.admin_authenticated and state.admin_user == ""
-    monkeypatch.delenv(auth.ADMIN_PW_ENV)
-    state.admin_user, state.admin_pw = "ops", "pw"
-    page.on_admin_unlock(state)
-    assert not state.admin_authenticated and "disabled" in state.admin_status
-
-
 # --- repositories (on temp copies of the CSVs) ------------------------------
 def _temp(repo, tmp_path):
     path = tmp_path / repo.path.name
@@ -218,9 +193,6 @@ def test_bourne_summary_for_incomplete_protocol():
 
 
 # --- import boundaries ------------------------------------------------------
-ENGINE = ("utils.calculations", "utils.rom_registry", "utils.solvent_properties")
-
-
 def _imports(path: Path) -> set[str]:
     mods = set()
     for node in ast.walk(ast.parse(path.read_text())):
@@ -232,7 +204,6 @@ def _imports(path: Path) -> set[str]:
 
 
 @pytest.mark.parametrize("folder,banned", [
-    ("pages", ENGINE + ("plotly", "matplotlib", "fastapi")),
     ("core", ("taipy", "plotly", "matplotlib", "pages", "viz", "reports", "api", "fastapi")),
     ("viz", ("taipy", "pages", "api", "fastapi")),
     ("reports", ("taipy", "pages", "api", "fastapi")),
@@ -246,5 +217,5 @@ def test_layer_boundaries(folder, banned):
 
 
 def test_no_default_admin_password_in_source():
-    for path in list((ROOT / "pages").glob("*.py")) + list((ROOT / "core").glob("*.py")):
+    for path in list((ROOT / "core").glob("*.py")) + list((ROOT / "api").rglob("*.py")):
         assert "admin_tak_2026" not in path.read_text(), path.name

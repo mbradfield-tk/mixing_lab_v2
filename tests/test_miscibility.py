@@ -11,7 +11,6 @@ Run with:  pytest tests/test_miscibility.py
 """
 
 import os
-import re
 import sys
 from itertools import combinations
 
@@ -246,31 +245,3 @@ def test_custom_fluid_hsp_lookup_tolerates_whitespace():
     m = solvent_miscibility("Water", "My Brine", custom_fluids=custom)
     assert m["source"] == "Hansen estimate"
     assert m["Ra"] is not None
-
-
-# --------------------------------------------------------------------------
-# Status-line helper in the blend page
-# --------------------------------------------------------------------------
-
-def _load_join_pairs():
-    """Import _join_pairs without importing taipy (which the page pulls in)."""
-    path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "pages", "fluid_database.py",
-    )
-    with open(path, encoding="utf-8") as fh:
-        src = fh.read()
-    match = re.search(r"^def _join_pairs.*?(?=^def |\Z)", src, re.S | re.M)
-    assert match, "_join_pairs not found in pages/fluid_database.py"
-    ns = {}
-    exec(match.group(0), ns)
-    return ns["_join_pairs"]
-
-
-def test_join_pairs_truncates_long_lists():
-    join = _load_join_pairs()
-    assert join(["a/b"]) == "a/b"
-    assert join(["a/b", "c/d"]) == "a/b; c/d"
-    assert join(["a/b", "c/d", "e/f"]) == "a/b; c/d; e/f"
-    assert join(["a/b", "c/d", "e/f", "g/h"]) == "a/b; c/d; e/f; +1 more"
-    assert join([f"p{i}" for i in range(10)]).endswith("+7 more")

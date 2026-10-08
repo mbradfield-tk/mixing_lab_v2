@@ -1,6 +1,6 @@
 """Database repositories: validated CRUD over the CSV tables, with the write policy.
 
-Each method takes the caller's working frame (a Taipy session's copy, or a fresh
+Each method takes the caller's working frame (usually a fresh
 :meth:`Repository.load` in an API handler), applies one change, persists it
 atomically and returns the new frame. Writes call :func:`core.auth.authorize`
 (``PermissionError``); invalid input raises ``ValueError`` with a readable message;

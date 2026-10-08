@@ -968,10 +968,6 @@ input.computed {
   border-radius: 8px;
 }
 
-.viewer-panel figcaption {
-  font-size: 0.85rem;
-}
-
 .spec-panel {
   display: flex;
   flex-direction: column;
@@ -1106,6 +1102,39 @@ input.computed {
 .phase-panel h3 {
   margin: 6px 0 10px;
   font-size: 1.05rem;
+}
+
+/* Numbered sub-steps inside a card (Bourne Test 1) */
+.sub-section {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 4px 16px 14px;
+  margin: 16px 0;
+  background: #fcfcfd;
+}
+
+.sub-section > h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.05rem;
+}
+
+.sub-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 label.switch {

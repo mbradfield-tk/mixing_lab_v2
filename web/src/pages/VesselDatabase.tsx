@@ -6,12 +6,14 @@ import { api, ApiError, unwrap, uploadFile } from "../api/client";
 import { tableUrl, useTable, type Row } from "../api/tables";
 import { AdminPanel, useIsAdmin } from "../components/Admin";
 import { AddForm, DatabaseTable, type Field } from "../components/Database";
+import { SliderField } from "../components/Form";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
+import { sliderStep } from "./assessment/model";
 
 type Run = ReturnType<typeof useNotice>["run"];
 
@@ -93,6 +95,15 @@ export function defaultFill(row: Row, totalL: number): number {
   const hi = num(row.V_L_max);
   const value = lo > 0 && hi > 0 ? (lo + hi) / 2 : totalL * 0.7;
   return Math.round(value * 100) / 100;
+}
+
+/** Fill slider span: the vessel's min-max volume (0 / brim-full when missing); null without a usable span. */
+export function fillSliderRange(row: Row, totalL: number): [number, number] | null {
+  const lo = num(row.V_L_min);
+  const hi = num(row.V_L_max);
+  const min = lo > 0 ? lo : 0;
+  const max = hi > 0 ? hi : totalL;
+  return max > min ? [min, max] : null;
 }
 
 /** One status line: volume band first, then the liquid-level / impeller warning. */
@@ -221,6 +232,7 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
       ? undefined
       : `/api/v1/media/vessels/${encodeURIComponent(vessel)}/schematic.png?fill_L=${debouncedFill}`;
   const status = row.data && fill.data && fillL !== null ? fillStatus(row.data, fillL, fill.data) : "";
+  const fillRange = row.data ? fillSliderRange(row.data, total) : null;
 
   return (
     <Card title="Explore Vessel">
@@ -236,10 +248,7 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
       <div className="explore-top">
         <figure className="viewer-panel">
           {media.data ? (
-            <>
-              <VesselViewer media={media.data} name={vessel} />
-              {media.data.caption && <figcaption className="muted">{media.data.caption}</figcaption>}
-            </>
+            <VesselViewer media={media.data} name={vessel} />
           ) : media.isSuccess ? (
             <p className="muted placeholder">No image or 3D model available for this vessel.</p>
           ) : null}
@@ -277,18 +286,30 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
         <div>
           <p>Enter a fill volume to draw the liquid surface on the vessel cross-section.</p>
           <div className="form-row">
-            <label>
-              Liquid fill volume (L)
-              <input
-                type="number"
-                step="any"
-                min="0"
-                max={total > 0 ? maxFill : undefined}
+            {fillRange ? (
+              <SliderField
+                label="Liquid fill volume (L)"
                 value={fillText}
-                onChange={(e) => setFillText(e.target.value)}
-                onBlur={() => fillL !== null && setFillText(String(fillL))}
+                onChange={setFillText}
+                min={fillRange[0]}
+                max={fillRange[1]}
+                step={sliderStep(fillRange[1] - fillRange[0])}
+                unit="L"
               />
-            </label>
+            ) : (
+              <label>
+                Liquid fill volume (L)
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  max={total > 0 ? maxFill : undefined}
+                  value={fillText}
+                  onChange={(e) => setFillText(e.target.value)}
+                  onBlur={() => fillL !== null && setFillText(String(fillL))}
+                />
+              </label>
+            )}
             <p className="fill-status">{status}</p>
           </div>
           {fill.isError && <ErrorNote error={fill.error} />}

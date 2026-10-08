@@ -2,10 +2,9 @@
 
 Records one row per app load (timestamp UTC, client IP, raw ``X-Forwarded-For``,
 user agent, and the requested page) into a local SQLite database at
-``data/usage.db``. The hook is installed on the Flask app that Taipy runs on
-(see ``install_usage_logging`` in ``app.py``); because Taipy is a single-page
-app, only the initial document GET is logged — client-side page navigation does
-not create rows, so each row ≈ one browser (re)load of the app.
+``data/usage.db``. The FastAPI middleware in ``api/main.py`` calls :func:`log_access`
+for web-app document loads; client-side navigation in the React app does not
+create rows, so each row ≈ one browser (re)load of the app.
 
 Behind a reverse proxy (nginx, gunicorn behind a load balancer, corporate
 gateway) the direct socket peer is the proxy, so the real client IP is read from
@@ -77,31 +76,6 @@ def log_access(*, client_ip: str | None, forwarded_for: str | None,
             )
     except Exception:
         pass
-
-
-def install_usage_logging(flask_app, page_names) -> None:
-    """Register a ``before_request`` hook that logs app-document GETs.
-
-    Only the SPA document requests count as accesses: the root path and the
-    per-page deep-link paths (``/Home``, ``/Vessel_Assessment``, ...). Static
-    assets, websocket traffic and Taipy's internal endpoints are ignored.
-    """
-    names = {str(p).strip("/") for p in page_names}
-
-    @flask_app.before_request
-    def _usage_hook():  # pragma: no cover - exercised via the running app
-        from flask import request
-
-        if request.method != "GET":
-            return
-        path = request.path.strip("/")
-        if path and path not in names:
-            return
-        xff = request.headers.get("X-Forwarded-For")
-        ip = xff.split(",")[0].strip() if xff else request.remote_addr
-        log_access(client_ip=ip, forwarded_for=xff,
-                   user_agent=request.headers.get("User-Agent"),
-                   page=path or "/")
 
 
 def fetch_access_log():

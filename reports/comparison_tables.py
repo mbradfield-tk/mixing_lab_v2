@@ -1,4 +1,4 @@
-"""Vessel Comparison result tables, formatted as on the page (shared by Taipy and the API)."""
+"""Vessel Comparison result tables, formatted as on the page and in the report."""
 from __future__ import annotations
 
 import numpy as np

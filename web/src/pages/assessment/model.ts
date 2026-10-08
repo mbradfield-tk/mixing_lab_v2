@@ -11,6 +11,7 @@ export interface Inputs {
   T: string;
   P: string;
   Tcool: string;
+  htm: string;
   N: string;
   V: string;
   fed: boolean;
@@ -58,6 +59,7 @@ export const INITIAL: Inputs = {
   T: "25",
   P: "1",
   Tcool: "15",
+  htm: "",
   N: "300",
   V: "1",
   fed: false,
@@ -174,7 +176,7 @@ export function buildRequest(i: Inputs): { request: PointRequest } | { error: st
             fluid: i.feedFluid || null,
           }
         : null,
-      heat: { T_process_C: n(i.T), T_coolant_C: n(i.Tcool) },
+      heat: { T_process_C: n(i.T), T_coolant_C: n(i.Tcool), htm: i.htm || null, v_jacket_m_s: 1, d_hyd_jacket_m: 0.05 },
       geometry: { D_tank_m: n(i.dTank), D_imp_m: n(i.dImp), Np: n(i.Np), Nq: n(i.Nq) },
     },
   };

@@ -33,7 +33,7 @@ from core.heat_transfer import (
     FOULING_DEFAULT, LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS,
     SWEEP_PARAMETERS, SWEEP_ZERO_VALUE_MAX, WALL_CONDUCTIVITY,
     compute_batch, compute_reaction_profile, find_best_material_key, heat_cool_setup_error,
-    load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
+    jacket_side_htc, load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
     sweep_range_defaults, u_ua_surface, ua_sweep_series,
 )
 from utils import bourne_kpi
@@ -82,10 +82,25 @@ def point_inputs(req: s.PointRequest, *, heat: bool = True
                           x_wt=sol.loading_g_per_100g, S_zw=sol.zwietering_S,
                           gmb_z=sol.gmb_z, cd=sol.clearance_ratio) if sol else None),
         feed=_feed(req) if req.feed else None,
-        heat=(op.Heat(req.heat.T_process_C, req.heat.T_coolant_C)
-              if heat and req.heat else None),
+        heat=_heat(req.heat) if heat and req.heat else None,
     )
     return inp, t_rxn, row
+
+
+def _heat(h: s.HeatSpec) -> op.Heat:
+    """Process / coolant temperatures and, with an HTF, its jacket-side h_o (as on the Heat
+    Transfer page: Dittus-Boelter / laminar Nu at the jacket velocity and hydraulic diameter)."""
+    if not h.htm:
+        return op.Heat(h.T_process_C, h.T_coolant_C)
+    _reactors, _fluids, htm_db = load_csvs(DATA_DIR)
+    if h.htm not in htm_db:
+        raise LookupError(f"Unknown heat-transfer medium '{h.htm}'.")
+    entry = htm_db[h.htm]
+    lo, hi = sf(entry.get("T_min_C")), sf(entry.get("T_max_C"))
+    note = (f"Coolant temperature {h.T_coolant_C:g} °C is outside the {h.htm} range "
+            f"({lo:g} to {hi:g} °C)." if (lo or hi) and not lo <= h.T_coolant_C <= hi else "")
+    return op.Heat(h.T_process_C, h.T_coolant_C, htm=h.htm,
+                   h_jacket=jacket_side_htc(entry, h.v_jacket_m_s, h.d_hyd_jacket_m), htm_note=note)
 
 
 def _feed(req: s.PointRequest) -> op.Feed:
@@ -556,7 +571,7 @@ def sensitivity_options() -> s.SensitivityOptions:
 
 def sensitivity_reaction_defaults(reaction: str, T_C: float | None = None
                                   ) -> s.SensitivityReactionDefaults:
-    """Database kinetics of a reaction plus its solvent's ρ·Cp (Taipy auto-fill)."""
+    """Database kinetics of a reaction plus its solvent's ρ·Cp (page auto-fill)."""
     row = reaction_row(reaction)
     if row.empty:
         raise LookupError(f"Unknown reaction '{reaction}'.")

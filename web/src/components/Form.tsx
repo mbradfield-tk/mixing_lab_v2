@@ -61,6 +61,56 @@ export function Switch({ label, checked, onChange }: { label: ReactNode; checked
   );
 }
 
+/** Number input paired with a range slider over [min, max]; typed values may leave the range. */
+export function SliderField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  unit = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+}) {
+  const x = Number(value);
+  const inRange = value.trim() !== "" && Number.isFinite(x) && x >= min && x <= max;
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+  const fmt = (v: number) => String(Number(v.toPrecision(4)));
+  return (
+    <div className="slider-field">
+      <label>
+        {label}
+        <input type="number" step="any" value={value} onChange={(e) => onChange(e.target.value)} />
+      </label>
+      <input
+        type="range"
+        aria-label={`${label} slider`}
+        min={min}
+        max={max}
+        step={step}
+        value={Number.isFinite(x) ? Math.min(Math.max(x, min), max) : min}
+        onChange={(e) => onChange(String(Number(Number(e.target.value).toFixed(decimals))))}
+      />
+      <div className="slider-scale">
+        <span>
+          {fmt(min)} {unit}
+        </span>
+        {!inRange && value.trim() !== "" && <span className="slider-out">outside vessel range</span>}
+        <span>
+          {fmt(max)} {unit}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** Segmented choice between a few coded options. */
 export function Segmented({
   label,

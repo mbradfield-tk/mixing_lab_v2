@@ -17,6 +17,7 @@ from core.heat_transfer import (
 from core.operating_point import evaluate_point
 from reports.service import assessment_envelope, figure_json
 from viz import bourne as viz_bourne
+from viz import filling as viz_filling
 from viz import fluids as viz_fluids
 from viz import heat_transfer as viz_ht
 from viz import vessel as viz_vessel
@@ -44,6 +45,25 @@ def assessment_surfaces_chart(req: s.AssessmentReportRequest) -> s.ChartResult:
                                                      SURFACE_N_PTS, SURFACE_V_PTS)
     return s.ChartResult(figures={"surfaces": figure_json(fig)}, captions={"surfaces": caption},
                          rows={"surfaces": rows})
+
+
+def assessment_filling_chart(req: s.FillingRequest) -> s.ChartResult:
+    res = services.filling(req)
+    groups: dict[str, list[dict]] = {}
+    for ser in res.series:
+        groups.setdefault(ser.group, []).append({"label": ser.label, "values": ser.values})
+    figs = {g: figure_json(viz_filling.filling_group(res.time_min, items, g))
+            for g, items in groups.items()}
+    caption = (f"Fill from **{req.point.V_L:.4g} L** to **{res.V_end_L:.4g} L** over "
+               f"**{req.dosing_time_h:.4g} h** ({res.feed_rate_mL_min:.4g} mL/min of "
+               f"{req.feed_fluid}), {req.n_steps} time steps at {req.point.N_rpm:.0f} RPM.")
+    caption += "".join(f"\n\n⚠️ {w}" for w in res.warnings)
+    return s.ChartResult(figures=figs, captions={"filling": caption})
+
+
+def assessment_temperature_chart(req: s.TemperatureRequest) -> s.ChartResult:
+    res = services.temperature(req).model_dump()
+    return s.ChartResult(figures={"temperature": figure_json(viz_filling.temperature_profile(res))})
 
 
 def comparison_envelope_chart(req: s.ComparisonChartRequest) -> s.ChartResult:
@@ -126,6 +146,8 @@ def blend_phases_chart(req: s.BlendRequest) -> s.ChartResult:
 CHARTS = {
     "assessment-envelope": (s.AssessmentReportRequest, assessment_envelope_chart),
     "assessment-surfaces": (s.AssessmentReportRequest, assessment_surfaces_chart),
+    "assessment-filling": (s.FillingRequest, assessment_filling_chart),
+    "assessment-temperature": (s.TemperatureRequest, assessment_temperature_chart),
     "comparison-envelope": (s.ComparisonChartRequest, comparison_envelope_chart),
     "heat-cool": (s.HeatCoolRequest, heat_cool_charts),
     "reaction-profile": (s.ReactionProfileRequest, reaction_profile_chart),

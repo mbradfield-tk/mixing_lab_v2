@@ -521,6 +521,43 @@ The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` 
     
     The roots table now appears only when there is more than one solution.
 - **Heat Transfer:** core KPIs and both summaries are shown as tiles.
+- **Vessel Assessment, inputs and fed-batch filling (React):**
+  - **Card 1** is renamed "1. Vessel".
+  - **Sliders:** agitation speed and **fill volume** (renamed from "working volume" on this page) have a slider next to the number box.
+    - The slider spans the vessel range from `GET /assessment/vessel-defaults`, which now returns `N_rpm_range` / `V_L_range` (the same fallbacks as the operating envelope).
+    - The slider increment is about 20 steps for spans under 10 and about 100 steps above that, rounded to 1/2/5. For example, a 100 mL span steps by 5 mL, a 1000 L span by 10 L, and 50–1000 RPM by 10 RPM.
+    - Typed values may go outside the range; the slider then shows "outside vessel range".
+  - **Fed-batch inputs:**
+    - **Dosing Time [h]** and **Dosing Amount [L]**. **Feed rate [mL/min]** is now calculated from them (read-only); it was an input that the calculation never used.
+    - **Dosed fluid**, chosen from the Fluids database.
+    - A **Simulate Filling** checkbox.
+  - **Filling simulation (new):** on Compute, `POST /assessment/filling` and the `assessment-filling` chart (`services.filling`, `viz/filling.py`) re-evaluate the operating point at 50 steps over the dosing time.
+    - The fill volume runs from V to V + dosing amount.
+    - At each step the liquid is a volume blend of the initial and dosed fluids, using the Fluid Database blend rules (new `fluids.volume_blend`).
+    - The **Filling Dynamics** section shows start → end tiles; plots against time for fill level and blended ρ/μ/ν/σ/D, hydrodynamics, mass transfer, Damköhler numbers (log axis, 0.1/1 thresholds) and heat transfer; and a data table / CSV.
+    - It warns when the final volume exceeds the vessel maximum, or when the two fluids are immiscible, reactive or of unknown miscibility.
+    - 51 point evaluations take milliseconds.
+  - **"3. Dosing" section:** the Fed-batch switch and all dosing inputs have moved out of "1. Vessel" into a new **3. Dosing** card after "2. Phases". Reaction and Correlations are now sections 4 and 5. The user switches on Fed-batch first, then defines the dosing.
+  - **Dosing temperature (°C), feed sensible heat (API contract change):**
+    - `FeedSpec` gained `rate_mL_min`, `T_C` and `fluid`. `PointResult` gained `Q_feed_W` ("Q_feed (W)") and `Q_load_W` ("Q_load (W)").
+    - When a rate and a temperature are given, `services._feed` computes Q_feed = ṁ·Cp·(T_feed − T_process). Here ṁ = rate × ρ, and ρ and Cp come from `thermal_props(dosed fluid, T_feed)`. Q_feed is negative when the feed is colder than the batch.
+    - `operating_point.evaluate` uses the net load Q_load = Q_gen + Q_feed for `Q_gen/Q_cool (%)` and for the heat-table balance. The heat balance now also runs when ΔH = 0 and the feed alone carries sensible heat.
+    - The heat table adds the rows "Feed sensible heat Q_feed" and "Net heat load Q_gen + Q_feed". If the net load is ≤ 0, the balance reads "Net cooling by the feed - no heat to remove".
+    - The filling simulation adds Q_feed and Q_load series.
+    - With no feed rate or temperature, the keys are absent and the outputs are unchanged, so the Taipy golden snapshots still pass.
+  - **Simulate Filling** is now a switch (same control as Fed-batch); the unused `.check-field` CSS was removed.
+  - **"No reaction" (API contract change):** "4. Reaction" offers *No reaction* as a reaction source; the request sends `reaction: null`.
+    - `PointRequest.reaction` is nullable. `op.Reaction.present = False` makes `evaluate_point` omit all Damköhler numbers (incl. Da_meso); `PointResult` Da fields default to `None` and `assessment` to `""`.
+    - The tables return empty Damköhler and mass-transfer screens and the line "No reaction selected - Damköhler screening does not apply". Envelope and PDF drop Da parameters; the PDF shows t_rxn as "n/a (no reaction)". Filling drops Da series (as before for t_rxn ≤ 0).
+    - `services.require_kinetics` replaces the four "t_rxn ≤ 0" checks: a *selected* reaction without usable kinetics is still rejected (422).
+    - The page hides the reaction picker and kinetics inputs, and filters Da parameters out of the envelope / Solve-for lists.
+  - **Temperature Profile (new):** `POST /assessment/temperature` (`TemperatureRequest` → `TemperatureResult`) and chart `assessment-temperature`, in the new `core/batch_temperature.py`.
+    - Same energy balance as the Heat Transfer reaction profile (fixed k, constant-temperature jacket, 99 % conversion stop), extended to a feed: C(t)·dT/dt = Q_rxn + ṁ_f·cp_f·(T_f − T) + UA(t)·(T_cool − T), C(t) = m0·cp0 + m_f(t)·cp_f. Integrated semi-implicitly (4000 steps; 201 points returned).
+    - **Batch scenario** (no dosing): both reagents charged at C0, run to 99 % conversion (24 h cap), UA at V. **Dosed scenario** (Fed-batch with dosing time and amount): reagent A charged at C0·V0, the stoichiometric co-reagent dosed at a constant rate with the feed (accumulates if the reaction is slower than the dosing), over the dosing time; UA(t) is interpolated from 26 points along the volume-blended fill.
+    - Results: start / peak / lowest / end temperature, the no-cooling end temperature (overall heat balance: all reagent reacted and all feed added, no jacket), conversion, time to 99 %, total reaction heat. The page runs it on Compute when dosing is defined, or when a reaction with ΔH ≠ 0 is selected.
+    - `operating_point.jacket_ua` is the shared U / A calculation (used by `evaluate_point`, the filling series and the temperature profile).
+  - **Filling Dynamics:** new **UA (W/K)** series in the Heat-transfer plots (whenever process/coolant temperatures are set). Constant series get a ±10 % axis so float noise is not magnified.
+- **Fluid Database, Blend:** the results table has a **kinematic viscosity ν = μ/ρ** column (mm²/s = cSt) for each component and for the blend. It is calculated in the page from the returned μ and ρ, so the API is unchanged.
 - **Vessel Database, Explore Vessel:**
   - **Layout:** the 3D viewer and a compact spec sheet sit side by side and stack on narrow screens. The spec sheet has a vessel-name header with the property picker and scrolling property/value rows, with units shown inline.
   - **Default properties:** now include Impeller 1 Diameter and two calculated ratios, marked "calc":

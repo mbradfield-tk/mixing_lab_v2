@@ -2685,18 +2685,194 @@
       "FeedSpec": {
         "additionalProperties": false,
         "properties": {
+          "T_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dosing-fluid temperature",
+            "title": "T C"
+          },
           "d_pipe_mm": {
             "default": 3.0,
             "exclusiveMinimum": 0.0,
             "title": "D Pipe Mm",
             "type": "number"
           },
+          "fluid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dosed fluid (default: the batch fluid)",
+            "title": "Fluid"
+          },
           "location": {
             "$ref": "#/components/schemas/FeedLocation",
             "default": "bulk"
+          },
+          "rate_mL_min": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dosing rate; with T_C adds the feed's sensible heat to the heat balance",
+            "title": "Rate Ml Min"
           }
         },
         "title": "FeedSpec",
+        "type": "object"
+      },
+      "FillingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dosing_amount_L": {
+            "exclusiveMinimum": 0.0,
+            "title": "Dosing Amount L",
+            "type": "number"
+          },
+          "dosing_time_h": {
+            "exclusiveMinimum": 0.0,
+            "title": "Dosing Time H",
+            "type": "number"
+          },
+          "feed_fluid": {
+            "description": "Library solvent or custom fluid dosed",
+            "minLength": 1,
+            "title": "Feed Fluid",
+            "type": "string"
+          },
+          "n_steps": {
+            "default": 50,
+            "description": "Time increments over the dosing time",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "N Steps",
+            "type": "integer"
+          },
+          "point": {
+            "$ref": "#/components/schemas/PointRequest",
+            "description": "Operating point; V_L is the starting fill volume"
+          }
+        },
+        "required": [
+          "point",
+          "dosing_time_h",
+          "dosing_amount_L",
+          "feed_fluid"
+        ],
+        "title": "FillingRequest",
+        "type": "object"
+      },
+      "FillingResult": {
+        "additionalProperties": false,
+        "properties": {
+          "V_L": {
+            "items": {
+              "type": "number"
+            },
+            "title": "V L",
+            "type": "array"
+          },
+          "V_end_L": {
+            "title": "V End L",
+            "type": "number"
+          },
+          "feed_rate_mL_min": {
+            "title": "Feed Rate Ml Min",
+            "type": "number"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/FillingSeries"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "time_min": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Time Min",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "time_min",
+          "V_L",
+          "V_end_L",
+          "feed_rate_mL_min",
+          "series",
+          "warnings"
+        ],
+        "title": "FillingResult",
+        "type": "object"
+      },
+      "FillingSeries": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "description": "PointResult field, or a fluid / fill key",
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "enum": [
+              "fluid",
+              "hydrodynamics",
+              "mass_transfer",
+              "damkohler",
+              "heat"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "group",
+          "values"
+        ],
+        "title": "FillingSeries",
         "type": "object"
       },
       "FindingOut": {
@@ -4271,7 +4447,15 @@
             ]
           },
           "reaction": {
-            "$ref": "#/components/schemas/ReactionSpec"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReactionSpec"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None = no reaction: a hydrodynamic / filling assessment without Damköhler numbers or reaction heat"
           },
           "reactor": {
             "description": "Vessel Database reactor_name",
@@ -4347,7 +4531,7 @@
                 "type": "null"
               }
             ],
-            "description": "Blend time / t_rxn (–)",
+            "description": "Blend time / t_rxn (–); None without a reaction",
             "title": "Da Macro"
           },
           "Da_meso": {
@@ -4470,6 +4654,18 @@
             "description": "Q_cool (W)",
             "title": "Q Cool W"
           },
+          "Q_feed_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Feed sensible heat into the batch, m·Cp·(T_feed − T_process); negative when the feed cools",
+            "title": "Q Feed W"
+          },
           "Q_gen_W": {
             "anyOf": [
               {
@@ -4491,8 +4687,20 @@
                 "type": "null"
               }
             ],
-            "description": "None when Q_cool = 0",
+            "description": "Net heat load / Q_cool; None when Q_cool = 0",
             "title": "Q Gen Over Q Cool Pct"
+          },
+          "Q_load_W": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net heat load Q_gen + Q_feed",
+            "title": "Q Load W"
           },
           "Re": {
             "anyOf": [
@@ -4531,6 +4739,7 @@
             "title": "U W M2K"
           },
           "assessment": {
+            "default": "",
             "description": "Text summary of the Damköhler regimes",
             "title": "Assessment",
             "type": "string"
@@ -4855,12 +5064,7 @@
           "edcf_W_kg_s",
           "volume_L",
           "kLa_1_s",
-          "kLa_surface_1_s",
-          "Da_macro",
-          "Da_micro",
-          "Da_GL",
-          "Da_SL",
-          "assessment"
+          "kLa_surface_1_s"
         ],
         "title": "PointResult",
         "type": "object"
@@ -6795,6 +6999,260 @@
         "title": "SweepResult",
         "type": "object"
       },
+      "TemperatureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dosing_amount_L": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dosing Amount L"
+          },
+          "dosing_time_h": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With point.feed: simulate the dosed scenario over this time (else the batch)",
+            "title": "Dosing Time H"
+          },
+          "point": {
+            "$ref": "#/components/schemas/PointRequest",
+            "description": "Operating point; heat gives the start (process) and coolant temperatures, feed.T_C / feed.fluid the dosed stream"
+          }
+        },
+        "required": [
+          "point"
+        ],
+        "title": "TemperatureRequest",
+        "type": "object"
+      },
+      "TemperatureResult": {
+        "additionalProperties": false,
+        "description": "Batch temperature against time from the jacketed energy balance.",
+        "properties": {
+          "Q_feed_W": {
+            "description": "Feed sensible heat ṁ·cp·(T_feed − T)",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Q Feed W",
+            "type": "array"
+          },
+          "Q_jacket_W": {
+            "description": "Jacket duty UA·(T_coolant − T) (+ into the batch)",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Q Jacket W",
+            "type": "array"
+          },
+          "Q_rxn_W": {
+            "description": "Reaction heat release (+ exothermic)",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Q Rxn W",
+            "type": "array"
+          },
+          "Q_rxn_total_kJ": {
+            "title": "Q Rxn Total Kj",
+            "type": "number"
+          },
+          "T_C": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "T C",
+            "type": "array"
+          },
+          "T_ad_C": {
+            "description": "Temperature once all reagent has reacted (and all feed is added) with no jacket heat transfer",
+            "title": "T Ad C",
+            "type": "number"
+          },
+          "T_coolant_C": {
+            "title": "T Coolant C",
+            "type": "number"
+          },
+          "T_end_C": {
+            "title": "T End C",
+            "type": "number"
+          },
+          "T_feed_C": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Feed C"
+          },
+          "T_max_C": {
+            "title": "T Max C",
+            "type": "number"
+          },
+          "T_min_C": {
+            "title": "T Min C",
+            "type": "number"
+          },
+          "T_start_C": {
+            "title": "T Start C",
+            "type": "number"
+          },
+          "UA_W_K": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Ua W K",
+            "type": "array"
+          },
+          "V_L": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "V L",
+            "type": "array"
+          },
+          "conversion": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Conversion",
+            "type": "array"
+          },
+          "dT_ad_K": {
+            "title": "Dt Ad K",
+            "type": "number"
+          },
+          "final_conversion": {
+            "title": "Final Conversion",
+            "type": "number"
+          },
+          "scenario": {
+            "description": "batch: all reagent charged, run to 99 % conversion; dosed: co-reagent dosed with the feed, run over the dosing time",
+            "enum": [
+              "batch",
+              "dosed"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "t_99_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Batch: time to 99 % conversion",
+            "title": "T 99 Min"
+          },
+          "t_T_max_min": {
+            "title": "T T Max Min",
+            "type": "number"
+          },
+          "t_T_min_min": {
+            "title": "T T Min Min",
+            "type": "number"
+          },
+          "time_min": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Time Min",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenario",
+          "time_min",
+          "T_C",
+          "conversion",
+          "Q_rxn_W",
+          "Q_feed_W",
+          "Q_jacket_W",
+          "UA_W_K",
+          "V_L",
+          "T_start_C",
+          "T_coolant_C",
+          "T_end_C",
+          "T_max_C",
+          "t_T_max_min",
+          "T_min_C",
+          "t_T_min_min",
+          "T_ad_C",
+          "dT_ad_K",
+          "final_conversion",
+          "Q_rxn_total_kJ"
+        ],
+        "title": "TemperatureResult",
+        "type": "object"
+      },
       "ThermalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -7595,6 +8053,21 @@
             "title": "N Rpm",
             "type": "number"
           },
+          "N_rpm_range": {
+            "description": "Speed range for the inputs (database, else a band around the default)",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "N Rpm Range",
+            "type": "array"
+          },
           "Np": {
             "title": "Np",
             "type": "number"
@@ -7606,6 +8079,21 @@
           "V_L": {
             "title": "V L",
             "type": "number"
+          },
+          "V_L_range": {
+            "description": "Fill-volume range for the inputs",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "V L Range",
+            "type": "array"
           },
           "corr_sources": {
             "items": {
@@ -7632,7 +8120,9 @@
           "Np",
           "Nq",
           "corr_sources",
-          "corr_status"
+          "corr_status",
+          "N_rpm_range",
+          "V_L_range"
         ],
         "title": "VesselDefaults",
         "type": "object"
@@ -7646,6 +8136,47 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/assessment/filling": {
+      "post": {
+        "operationId": "filling_api_v1_assessment_filling_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FillingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FillingResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operating point along a fed-batch fill (vs dosing time)",
+        "tags": [
+          "Vessel Assessment"
+        ]
+      }
+    },
     "/api/v1/assessment/parameters": {
       "get": {
         "operationId": "parameters_api_v1_assessment_parameters_get",
@@ -7916,6 +8447,47 @@
           }
         },
         "summary": "Result tables for one point, formatted as on the page and PDF",
+        "tags": [
+          "Vessel Assessment"
+        ]
+      }
+    },
+    "/api/v1/assessment/temperature": {
+      "post": {
+        "operationId": "temperature_api_v1_assessment_temperature_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemperatureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemperatureResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch temperature vs time (batch or dosed scenario)",
         "tags": [
           "Vessel Assessment"
         ]
@@ -8232,7 +8804,7 @@
     },
     "/api/v1/charts/{kind}": {
       "post": {
-        "description": "kind: assessment-envelope, assessment-surfaces, comparison-envelope, heat-cool, reaction-profile, ua-surface, bourne-speed-plan, solvent-properties, blend-phases",
+        "description": "kind: assessment-envelope, assessment-surfaces, assessment-filling, assessment-temperature, comparison-envelope, heat-cool, reaction-profile, ua-surface, bourne-speed-plan, solvent-properties, blend-phases",
         "operationId": "chart_api_v1_charts__kind__post",
         "parameters": [
           {

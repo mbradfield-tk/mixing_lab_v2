@@ -70,6 +70,10 @@ class SolidsSpec(Contract):
 class FeedSpec(Contract):
     location: FeedLocation = FeedLocation.BULK
     d_pipe_mm: float = Field(3.0, gt=0)
+    rate_mL_min: float | None = Field(None, ge=0, description="Dosing rate; with T_C adds the "
+                                      "feed's sensible heat to the heat balance")
+    T_C: float | None = Field(None, description="Dosing-fluid temperature")
+    fluid: str | None = Field(None, description="Dosed fluid (default: the batch fluid)")
 
 
 class HeatSpec(Contract):
@@ -90,7 +94,10 @@ class PointRequest(Contract):
     V_L: float = Field(gt=0)
     corr_source: CorrSource = CorrSource.LITERATURE
     fluid: FluidSpec = Field(default_factory=FluidSpec)
-    reaction: ReactionSpec = Field(default_factory=ReactionSpec)
+    reaction: ReactionSpec | None = Field(
+        default_factory=ReactionSpec,
+        description="None = no reaction: a hydrodynamic / filling assessment without Damköhler "
+                    "numbers or reaction heat")
     gas: GasSpec = Field(default_factory=GasSpec)
     solids: SolidsSpec | None = None
     feed: FeedSpec | None = None
@@ -132,11 +139,11 @@ class PointResult(Contract):
     volume_L: Num = _hydro("Volume (L)")
     kLa_1_s: Num = _hydro("kLa (1/s)")
     kLa_surface_1_s: Num = _hydro("kLa_surface (1/s)")
-    Da_macro: Num = _hydro("Da_macro", "Blend time / t_rxn (–)")
-    Da_micro: Num = _hydro("Da_micro", "Engulfment time / t_rxn (–)")
-    Da_GL: Num = _hydro("Da_GL", "Gas–liquid: (1/kLa) / t_rxn (–)")
-    Da_SL: Num = _hydro("Da_SL", "Solid–liquid: (1/kLa_SL) / t_rxn (–)")
-    assessment: str = _hydro("Assessment", "Text summary of the Damköhler regimes")
+    Da_macro: Num = _hydro("Da_macro", "Blend time / t_rxn (–); None without a reaction", None)
+    Da_micro: Num = _hydro("Da_micro", "Engulfment time / t_rxn (–)", None)
+    Da_GL: Num = _hydro("Da_GL", "Gas–liquid: (1/kLa) / t_rxn (–)", None)
+    Da_SL: Num = _hydro("Da_SL", "Solid–liquid: (1/kLa_SL) / t_rxn (–)", None)
+    assessment: str = _hydro("Assessment", "Text summary of the Damköhler regimes", "")
     N_js_rpm: Num = _hydro("N_js (RPM)", "Just-suspended speed, max(Zwietering, GMB)", None)
     N_over_N_js: Num = _hydro("N/N_js", "", None)
     v_t_m_s: Num = _hydro("v_t (m/s)", "Particle settling velocity", None)
@@ -148,7 +155,11 @@ class PointResult(Contract):
     Q_cool_W: Num = _hydro("Q_cool (W)", "", None)
     U_W_m2K: Num = _hydro("U (W/m²·K)", "", None)
     A_ht_m2: Num = _hydro("A_ht (m²)", "", None)
-    Q_gen_over_Q_cool_pct: Num = _hydro("Q_gen/Q_cool (%)", "None when Q_cool = 0", None)
+    Q_gen_over_Q_cool_pct: Num = _hydro("Q_gen/Q_cool (%)", "Net heat load / Q_cool; None when "
+                                        "Q_cool = 0", None)
+    Q_feed_W: Num = _hydro("Q_feed (W)", "Feed sensible heat into the batch, m·Cp·(T_feed − "
+                           "T_process); negative when the feed cools", None)
+    Q_load_W: Num = _hydro("Q_load (W)", "Net heat load Q_gen + Q_feed", None)
     extra: dict[str, float | str | None] = Field(
         default_factory=dict, description="Correlation-specific values without a fixed field")
 
@@ -280,6 +291,70 @@ class VesselDefaults(Contract):
     Nq: float
     corr_sources: list["OptionItem"]
     corr_status: str
+    N_rpm_range: tuple[float, float] = Field(description="Speed range for the inputs (database, "
+                                             "else a band around the default)")
+    V_L_range: tuple[float, float] = Field(description="Fill-volume range for the inputs")
+
+
+class FillingRequest(Contract):
+    point: PointRequest = Field(description="Operating point; V_L is the starting fill volume")
+    dosing_time_h: float = Field(gt=0)
+    dosing_amount_L: float = Field(gt=0)
+    feed_fluid: str = Field(min_length=1, description="Library solvent or custom fluid dosed")
+    n_steps: int = Field(50, ge=2, le=200, description="Time increments over the dosing time")
+
+
+class FillingSeries(Contract):
+    field: str = Field(description="PointResult field, or a fluid / fill key")
+    label: str
+    group: Literal["fluid", "hydrodynamics", "mass_transfer", "damkohler", "heat"]
+    values: list[Num]
+
+
+class FillingResult(Contract):
+    time_min: list[float]
+    V_L: list[float]
+    V_end_L: float
+    feed_rate_mL_min: float
+    series: list[FillingSeries]
+    warnings: list[str]
+
+
+class TemperatureRequest(Contract):
+    point: PointRequest = Field(description="Operating point; heat gives the start (process) and "
+                                "coolant temperatures, feed.T_C / feed.fluid the dosed stream")
+    dosing_time_h: float | None = Field(None, gt=0, description="With point.feed: simulate the "
+                                        "dosed scenario over this time (else the batch)")
+    dosing_amount_L: float | None = Field(None, gt=0)
+
+
+class TemperatureResult(Contract):
+    """Batch temperature against time from the jacketed energy balance."""
+    scenario: Literal["batch", "dosed"] = Field(
+        description="batch: all reagent charged, run to 99 % conversion; dosed: co-reagent "
+                    "dosed with the feed, run over the dosing time")
+    time_min: list[float]
+    T_C: Series
+    conversion: Series
+    Q_rxn_W: Series = Field(description="Reaction heat release (+ exothermic)")
+    Q_feed_W: Series = Field(description="Feed sensible heat ṁ·cp·(T_feed − T)")
+    Q_jacket_W: Series = Field(description="Jacket duty UA·(T_coolant − T) (+ into the batch)")
+    UA_W_K: Series
+    V_L: Series
+    T_start_C: float
+    T_coolant_C: float
+    T_feed_C: Num = None
+    T_end_C: float
+    T_max_C: float
+    t_T_max_min: float
+    T_min_C: float
+    t_T_min_min: float
+    T_ad_C: float = Field(description="Temperature once all reagent has reacted (and all feed is "
+                          "added) with no jacket heat transfer")
+    dT_ad_K: float
+    final_conversion: float
+    t_99_min: Num = Field(None, description="Batch: time to 99 % conversion")
+    Q_rxn_total_kJ: float
 
 
 class FluidProperties(Contract):

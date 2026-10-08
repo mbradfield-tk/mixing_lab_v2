@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/v1/assessment/filling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Operating point along a fed-batch fill (vs dosing time) */
+        post: operations["filling_api_v1_assessment_filling_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessment/parameters": {
         parameters: {
             query?: never;
@@ -117,6 +134,23 @@ export interface paths {
         put?: never;
         /** Result tables for one point, formatted as on the page and PDF */
         post: operations["tables_api_v1_assessment_tables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/assessment/temperature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch temperature vs time (batch or dosed scenario) */
+        post: operations["temperature_api_v1_assessment_temperature_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -270,7 +304,7 @@ export interface paths {
         put?: never;
         /**
          * Plotly figure JSON for react-plotly.js
-         * @description kind: assessment-envelope, assessment-surfaces, comparison-envelope, heat-cool, reaction-profile, ua-surface, bourne-speed-plan, solvent-properties, blend-phases
+         * @description kind: assessment-envelope, assessment-surfaces, assessment-filling, assessment-temperature, comparison-envelope, heat-cool, reaction-profile, ua-surface, bourne-speed-plan, solvent-properties, blend-phases
          */
         post: operations["chart_api_v1_charts__kind__post"];
         delete?: never;
@@ -2355,12 +2389,79 @@ export interface components {
         /** FeedSpec */
         FeedSpec: {
             /**
+             * T C
+             * @description Dosing-fluid temperature
+             */
+            T_C?: number | null;
+            /**
              * D Pipe Mm
              * @default 3
              */
             d_pipe_mm: number;
+            /**
+             * Fluid
+             * @description Dosed fluid (default: the batch fluid)
+             */
+            fluid?: string | null;
             /** @default bulk */
             location: components["schemas"]["FeedLocation"];
+            /**
+             * Rate Ml Min
+             * @description Dosing rate; with T_C adds the feed's sensible heat to the heat balance
+             */
+            rate_mL_min?: number | null;
+        };
+        /** FillingRequest */
+        FillingRequest: {
+            /** Dosing Amount L */
+            dosing_amount_L: number;
+            /** Dosing Time H */
+            dosing_time_h: number;
+            /**
+             * Feed Fluid
+             * @description Library solvent or custom fluid dosed
+             */
+            feed_fluid: string;
+            /**
+             * N Steps
+             * @description Time increments over the dosing time
+             * @default 50
+             */
+            n_steps: number;
+            /** @description Operating point; V_L is the starting fill volume */
+            point: components["schemas"]["PointRequest"];
+        };
+        /** FillingResult */
+        FillingResult: {
+            /** V L */
+            V_L: number[];
+            /** V End L */
+            V_end_L: number;
+            /** Feed Rate Ml Min */
+            feed_rate_mL_min: number;
+            /** Series */
+            series: components["schemas"]["FillingSeries"][];
+            /** Time Min */
+            time_min: number[];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** FillingSeries */
+        FillingSeries: {
+            /**
+             * Field
+             * @description PointResult field, or a fluid / fill key
+             */
+            field: string;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "fluid" | "hydrodynamics" | "mass_transfer" | "damkohler" | "heat";
+            /** Label */
+            label: string;
+            /** Values */
+            values: (number | null)[];
         };
         /** FindingOut */
         FindingOut: {
@@ -3001,7 +3102,8 @@ export interface components {
             gas?: components["schemas"]["GasSpec"];
             geometry?: components["schemas"]["GeometryOverrides"];
             heat?: components["schemas"]["HeatSpec"] | null;
-            reaction?: components["schemas"]["ReactionSpec"];
+            /** @description None = no reaction: a hydrodynamic / filling assessment without Damköhler numbers or reaction heat */
+            reaction?: components["schemas"]["ReactionSpec"] | null;
             /**
              * Reactor
              * @description Vessel Database reactor_name
@@ -3023,17 +3125,17 @@ export interface components {
              * Da Gl
              * @description Gas–liquid: (1/kLa) / t_rxn (–)
              */
-            Da_GL: number | null;
+            Da_GL?: number | null;
             /**
              * Da Sl
              * @description Solid–liquid: (1/kLa_SL) / t_rxn (–)
              */
-            Da_SL: number | null;
+            Da_SL?: number | null;
             /**
              * Da Macro
-             * @description Blend time / t_rxn (–)
+             * @description Blend time / t_rxn (–); None without a reaction
              */
-            Da_macro: number | null;
+            Da_macro?: number | null;
             /**
              * Da Meso
              * @description Feed mesomixing time / t_rxn (–)
@@ -3043,7 +3145,7 @@ export interface components {
              * Da Micro
              * @description Engulfment time / t_rxn (–)
              */
-            Da_micro: number | null;
+            Da_micro?: number | null;
             /**
              * N Js Rpm
              * @description Just-suspended speed, max(Zwietering, GMB)
@@ -3085,15 +3187,25 @@ export interface components {
              */
             Q_cool_W?: number | null;
             /**
+             * Q Feed W
+             * @description Feed sensible heat into the batch, m·Cp·(T_feed − T_process); negative when the feed cools
+             */
+            Q_feed_W?: number | null;
+            /**
              * Q Gen W
              * @description Q_gen (W)
              */
             Q_gen_W?: number | null;
             /**
              * Q Gen Over Q Cool Pct
-             * @description None when Q_cool = 0
+             * @description Net heat load / Q_cool; None when Q_cool = 0
              */
             Q_gen_over_Q_cool_pct?: number | null;
+            /**
+             * Q Load W
+             * @description Net heat load Q_gen + Q_feed
+             */
+            Q_load_W?: number | null;
             /**
              * Re
              * @description Impeller Reynolds number (–)
@@ -3112,6 +3224,7 @@ export interface components {
             /**
              * Assessment
              * @description Text summary of the Damköhler regimes
+             * @default
              */
             assessment: string;
             /**
@@ -3996,6 +4109,87 @@ export interface components {
                 number
             ];
         };
+        /** TemperatureRequest */
+        TemperatureRequest: {
+            /** Dosing Amount L */
+            dosing_amount_L?: number | null;
+            /**
+             * Dosing Time H
+             * @description With point.feed: simulate the dosed scenario over this time (else the batch)
+             */
+            dosing_time_h?: number | null;
+            /** @description Operating point; heat gives the start (process) and coolant temperatures, feed.T_C / feed.fluid the dosed stream */
+            point: components["schemas"]["PointRequest"];
+        };
+        /**
+         * TemperatureResult
+         * @description Batch temperature against time from the jacketed energy balance.
+         */
+        TemperatureResult: {
+            /**
+             * Q Feed W
+             * @description Feed sensible heat ṁ·cp·(T_feed − T)
+             */
+            Q_feed_W: (number | null)[];
+            /**
+             * Q Jacket W
+             * @description Jacket duty UA·(T_coolant − T) (+ into the batch)
+             */
+            Q_jacket_W: (number | null)[];
+            /**
+             * Q Rxn W
+             * @description Reaction heat release (+ exothermic)
+             */
+            Q_rxn_W: (number | null)[];
+            /** Q Rxn Total Kj */
+            Q_rxn_total_kJ: number;
+            /** T C */
+            T_C: (number | null)[];
+            /**
+             * T Ad C
+             * @description Temperature once all reagent has reacted (and all feed is added) with no jacket heat transfer
+             */
+            T_ad_C: number;
+            /** T Coolant C */
+            T_coolant_C: number;
+            /** T End C */
+            T_end_C: number;
+            /** T Feed C */
+            T_feed_C?: number | null;
+            /** T Max C */
+            T_max_C: number;
+            /** T Min C */
+            T_min_C: number;
+            /** T Start C */
+            T_start_C: number;
+            /** Ua W K */
+            UA_W_K: (number | null)[];
+            /** V L */
+            V_L: (number | null)[];
+            /** Conversion */
+            conversion: (number | null)[];
+            /** Dt Ad K */
+            dT_ad_K: number;
+            /** Final Conversion */
+            final_conversion: number;
+            /**
+             * Scenario
+             * @description batch: all reagent charged, run to 99 % conversion; dosed: co-reagent dosed with the feed, run over the dosing time
+             * @enum {string}
+             */
+            scenario: "batch" | "dosed";
+            /**
+             * T 99 Min
+             * @description Batch: time to 99 % conversion
+             */
+            t_99_min?: number | null;
+            /** T T Max Min */
+            t_T_max_min: number;
+            /** T T Min Min */
+            t_T_min_min: number;
+            /** Time Min */
+            time_min: number[];
+        };
         /** ThermalProperties */
         ThermalProperties: {
             /** Cp J Kgk */
@@ -4293,12 +4487,28 @@ export interface components {
             D_tank_m: number;
             /** N Rpm */
             N_rpm: number;
+            /**
+             * N Rpm Range
+             * @description Speed range for the inputs (database, else a band around the default)
+             */
+            N_rpm_range: [
+                number,
+                number
+            ];
             /** Np */
             Np: number;
             /** Nq */
             Nq: number;
             /** V L */
             V_L: number;
+            /**
+             * V L Range
+             * @description Fill-volume range for the inputs
+             */
+            V_L_range: [
+                number,
+                number
+            ];
             /** Corr Sources */
             corr_sources: components["schemas"]["OptionItem"][];
             /** Corr Status */
@@ -4315,6 +4525,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    filling_api_v1_assessment_filling_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FillingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FillingResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     parameters_api_v1_assessment_parameters_get: {
         parameters: {
             query?: never;
@@ -4522,6 +4765,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssessmentTables"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    temperature_api_v1_assessment_temperature_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemperatureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemperatureResult"];
                 };
             };
             /** @description Validation Error */

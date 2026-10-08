@@ -905,6 +905,37 @@ label.narrow {
   font-size: 0.9rem;
 }
 
+/* Slider + number input (components/Form.tsx SliderField) */
+.slider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.slider-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.slider-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.slider-out {
+  color: #b54708;
+  font-weight: 600;
+}
+
+input.computed {
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 600;
+}
+
 /* Vessel explorer */
 .grid-2.explore {
   margin-top: 12px;

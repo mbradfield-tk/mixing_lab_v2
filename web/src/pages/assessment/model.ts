@@ -14,7 +14,11 @@ export interface Inputs {
   N: string;
   V: string;
   fed: boolean;
-  feedRate: string;
+  dosingTime: string;
+  dosingAmount: string;
+  feedFluid: string;
+  feedT: string;
+  simulateFilling: boolean;
   feedDiam: string;
   feedLocation: string;
   dTank: string;
@@ -39,7 +43,7 @@ export interface Inputs {
   gasTransfer: string;
   vs: string;
   coalescing: string;
-  reactionSource: "measured" | "classes";
+  reactionSource: "measured" | "classes" | "none";
   reaction: string;
   order: ReactionOrder;
   k: string;
@@ -57,7 +61,11 @@ export const INITIAL: Inputs = {
   N: "300",
   V: "1",
   fed: false,
-  feedRate: "5",
+  dosingTime: "1",
+  dosingAmount: "0.1",
+  feedFluid: "Water",
+  feedT: "25",
+  simulateFilling: false,
   feedDiam: "3",
   feedLocation: "bulk",
   dTank: "0.1",
@@ -110,22 +118,24 @@ export const asOrder = (value: unknown): ReactionOrder =>
 
 /** The API request for the current inputs, or the name of the first unusable number. */
 export function buildRequest(i: Inputs): { request: PointRequest } | { error: string } {
+  const noReaction = i.reactionSource === "none";
   const required: [string, string][] = [
     ["Temperature", i.T], ["Pressure", i.P], ["Coolant temp", i.Tcool], ["Agitation speed", i.N],
-    ["Working volume", i.V], ["D_tank", i.dTank], ["D_imp", i.dImp], ["Np", i.Np], ["Nq", i.Nq],
-    ["ρ", i.rho], ["μ", i.mu], ["D_mol", i.dmol], ["k", i.k], ["C0", i.c0], ["t_rxn", i.trxn],
-    ["ΔH_rxn", i.dH],
+    ["Fill volume", i.V], ["D_tank", i.dTank], ["D_imp", i.dImp], ["Np", i.Np], ["Nq", i.Nq],
+    ["ρ", i.rho], ["μ", i.mu], ["D_mol", i.dmol],
   ];
+  if (!noReaction) required.push(["k", i.k], ["C0", i.c0], ["t_rxn", i.trxn], ["ΔH_rxn", i.dH]);
   if (i.solids)
     required.push(["ρ_p", i.rhoP], ["d50", i.d50], ["φ", i.phi], ["Solids loading", i.xWt],
       ["Zwietering S", i.szw], ["GMB z", i.gmbZ], ["C/D", i.cd]);
-  if (i.fed) required.push(["Feed pipe ID", i.feedDiam]);
+  if (i.fed) required.push(["Feed pipe ID", i.feedDiam], ["Dosing temperature", i.feedT]);
   if (i.gas && i.gasTransfer === "sparging") required.push(["v_s", i.vs]);
   const bad = required.find(([, v]) => !Number.isFinite(n(v)));
   if (bad) return { error: `Enter a number for ${bad[0]}.` };
   if (!i.reactor) return { error: "Select a vessel." };
 
   const sparged = i.gas && i.gasTransfer === "sparging";
+  const rate = feedRateMlMin(i.dosingAmount, i.dosingTime);
   return {
     request: {
       reactor: i.reactor,
@@ -140,7 +150,9 @@ export function buildRequest(i: Inputs): { request: PointRequest } | { error: st
         mu_Pa_s: n(i.mu),
         D_mol_m2_s: n(i.dmol),
       },
-      reaction: { order: i.order, k: n(i.k), C0_mol_L: n(i.c0), t_rxn_s: n(i.trxn), dH_kJ_mol: n(i.dH) },
+      reaction: noReaction
+        ? null
+        : { order: i.order, k: n(i.k), C0_mol_L: n(i.c0), t_rxn_s: n(i.trxn), dH_kJ_mol: n(i.dH) },
       gas: { present: i.gas, v_s_m_s: sparged ? n(i.vs) : 0, coalescing: sparged ? i.coalescing === "coalescing" : true },
       solids: i.solids
         ? {
@@ -153,11 +165,132 @@ export function buildRequest(i: Inputs): { request: PointRequest } | { error: st
             clearance_ratio: n(i.cd),
           }
         : null,
-      feed: i.fed ? { location: i.feedLocation as "bulk", d_pipe_mm: n(i.feedDiam) } : null,
+      feed: i.fed
+        ? {
+            location: i.feedLocation as "bulk",
+            d_pipe_mm: n(i.feedDiam),
+            rate_mL_min: Number.isFinite(rate) ? rate : null,
+            T_C: n(i.feedT),
+            fluid: i.feedFluid || null,
+          }
+        : null,
       heat: { T_process_C: n(i.T), T_coolant_C: n(i.Tcool) },
       geometry: { D_tank_m: n(i.dTank), D_imp_m: n(i.dImp), Np: n(i.Np), Nq: n(i.Nq) },
     },
   };
+}
+
+export type FillingRequest = Schemas["FillingRequest"];
+export type FillingResult = Schemas["FillingResult"];
+
+/** Feed rate (mL/min) from the dosing amount (L) and time (h); NaN when either is unusable. */
+export function feedRateMlMin(dosingAmountL: string, dosingTimeH: string): number {
+  const amount = n(dosingAmountL);
+  const time = n(dosingTimeH);
+  return amount > 0 && time > 0 ? (amount * 1000) / (time * 60) : Number.NaN;
+}
+
+const nice125 = (x: number): number => {
+  const e = Math.floor(Math.log10(x));
+  const f = x / 10 ** e;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * 10 ** e;
+};
+
+/** Slider increment for a span: about 20 steps below a span of 10, about 100 above, rounded to 1/2/5. */
+export function sliderStep(span: number): number {
+  if (!(span > 0)) return 1;
+  return Number(nice125(span < 10 ? span / 20 : span / 100).toPrecision(1));
+}
+
+/** Default dosing amount: half the headroom to the vessel maximum, else 20 % of the fill. */
+export function defaultDose(vL: number, vMax: number): number {
+  const amount = vMax > vL ? (vMax - vL) / 2 : vL * 0.2;
+  return Number(amount.toPrecision(2));
+}
+
+/** The filling-simulation request, null when not requested, or the first unusable input. */
+export function buildFilling(i: Inputs, point: PointRequest): { filling: FillingRequest | null } | { error: string } {
+  if (!i.fed || !i.simulateFilling) return { filling: null };
+  if (!(n(i.dosingTime) > 0)) return { error: "Enter a dosing time above 0 h." };
+  if (!(n(i.dosingAmount) > 0)) return { error: "Enter a dosing amount above 0 L." };
+  if (!i.feedFluid) return { error: "Select the dosed fluid." };
+  return {
+    filling: {
+      point,
+      dosing_time_h: n(i.dosingTime),
+      dosing_amount_L: n(i.dosingAmount),
+      feed_fluid: i.feedFluid,
+      n_steps: 50,
+    },
+  };
+}
+
+const g3 = (x: number | null | undefined) => (x === null || x === undefined ? "—" : formatG(x, 3));
+
+export type TemperatureRequest = Schemas["TemperatureRequest"];
+export type TemperatureResult = Schemas["TemperatureResult"];
+
+/** Damköhler parameters are meaningless without a reaction. */
+export const isDamkohler = (field: string) => field.startsWith("Da_");
+
+/**
+ * Batch-temperature request: the dosed scenario when fed-batch dosing is defined, else the
+ * batch scenario when the reaction releases or absorbs heat; null when nothing heats the batch.
+ */
+export function buildTemperature(i: Inputs, point: PointRequest): TemperatureRequest | null {
+  if (i.fed && n(i.dosingTime) > 0 && n(i.dosingAmount) > 0)
+    return { point, dosing_time_h: n(i.dosingTime), dosing_amount_L: n(i.dosingAmount) };
+  if (point.reaction && point.reaction.dH_kJ_mol) return { point };
+  return null;
+}
+
+/** Headline tiles of a temperature profile. */
+export function temperatureTiles(r: TemperatureResult): { label: string; value: string; unit?: string }[] {
+  const reaction = r.Q_rxn_total_kJ !== 0;
+  const tiles = [
+    { label: "Start temperature", value: formatG(r.T_start_C, 4), unit: "°C" },
+    { label: `Peak temperature (at ${g3(r.t_T_max_min)} min)`, value: formatG(r.T_max_C, 4), unit: "°C" },
+  ];
+  if (r.T_min_C < r.T_start_C - 0.05)
+    tiles.push({ label: `Lowest temperature (at ${g3(r.t_T_min_min)} min)`, value: formatG(r.T_min_C, 4), unit: "°C" });
+  tiles.push(
+    { label: r.scenario === "dosed" ? "End of dosing" : "End (99 % conversion)", value: formatG(r.T_end_C, 4), unit: "°C" },
+    {
+      label: "No-cooling end temperature",
+      value: `${formatG(r.T_ad_C, 4)} (${r.dT_ad_K >= 0 ? "+" : ""}${formatG(r.dT_ad_K, 3)} K)`,
+      unit: "°C",
+    },
+  );
+  if (reaction) {
+    tiles.push(
+      { label: "Reaction heat (total)", value: formatG(r.Q_rxn_total_kJ, 3), unit: "kJ" },
+      { label: r.scenario === "dosed" ? "Conversion at end of dosing" : "Final conversion", value: formatG(r.final_conversion * 100, 3), unit: "%" },
+    );
+    if (r.t_99_min !== null && r.t_99_min !== undefined)
+      tiles.push({ label: "Time to 99 % conversion", value: formatG(r.t_99_min, 3), unit: "min" });
+  }
+  return tiles;
+}
+
+// Series summarised as start -> end tiles above the Filling Dynamics charts.
+const FILLING_TILES = ["V_L", "rho_kg_m3", "mu_Pa_s", "Re", "P_V_W_L", "blend_time_95_s", "Da_macro", "Da_micro"];
+
+/** "start → end" tiles for the headline filling series that are present. */
+export function fillingTiles(res: FillingResult): { label: string; value: string; unit?: string }[] {
+  return FILLING_TILES.flatMap((field) => {
+    const s = res.series.find((x) => x.field === field);
+    if (!s) return [];
+    const m = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(s.label);
+    return [{ label: m ? m[1] : s.label, value: `${g3(s.values[0])} → ${g3(s.values[s.values.length - 1])}`, unit: m?.[2] }];
+  });
+}
+
+/** One row per time step (time, then every series) for the data table and CSV. */
+export function fillingRows(res: FillingResult): Record<string, string>[] {
+  return res.time_min.map((t, k) => ({
+    "Time (min)": formatG(t, 4),
+    ...Object.fromEntries(res.series.map((s) => [s.label, g3(s.values[k])])),
+  }));
 }
 
 /** "Order 2 · k = 0.5 L/(mol·s) · exothermic (ΔH = -80 kJ/mol)" (pages/vessel_assessment._kinetic_model). */
@@ -258,12 +391,12 @@ export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: numb
   const gives = achieved === null || achieved === undefined ? "" : ` · gives ${g4(achieved)}`;
   const headline: SolveTile =
     res.status === "solved"
-      ? { label: solveN ? "Agitation speed N" : "Working volume V", value: g4(res.best as number), unit, tone: "ok",
+      ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: g4(res.best as number), unit, tone: "ok",
           hint: res.solutions.length > 1 ? `${res.solutions.length} solutions (see table)` : `Solution found${gives}` }
       : res.status === "outside_vessel_range"
-        ? { label: solveN ? "Agitation speed N" : "Working volume V", value: g4(res.solutions[0].value), unit,
+        ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: g4(res.solutions[0].value), unit,
             tone: "warning", hint: `Outside the vessel window${gives}` }
-        : { label: solveN ? "Agitation speed N" : "Working volume V", value: "No solution", tone: "critical",
+        : { label: solveN ? "Agitation speed N" : "Fill volume V", value: "No solution", tone: "critical",
             hint: res.achievable_span && res.achievable_span[0] !== null && res.achievable_span[1] !== null
               ? `Achievable ${label}: ${g4(res.achievable_span[0])}–${g4(res.achievable_span[1])}`
               : "Target not reachable" };
@@ -271,7 +404,7 @@ export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: numb
     headline,
     { label: `Target ${label}`, value: formatG(res.target) },
     solveN
-      ? { label: "Held: working volume V", value: formatG(fixed.V_L, 3), unit: "L" }
+      ? { label: "Held: fill volume V", value: formatG(fixed.V_L, 3), unit: "L" }
       : { label: "Held: agitation speed N", value: fixed.N_rpm.toFixed(0), unit: "RPM" },
     { label: "Vessel window", value: `${g4(wlo)}–${g4(whi)}`, unit },
   ];
@@ -289,7 +422,7 @@ export function suspensionTone(state: string): Tone {
 export function heatBalanceTone(balance: string): Tone {
   if (balance.includes("🔴")) return "critical";
   if (balance.includes("⚠️") || /^moderate/i.test(balance)) return "warning";
-  if (/^(easily|comfortable)/i.test(balance)) return "ok";
+  if (/^(easily|comfortable|net cooling)/i.test(balance)) return "ok";
   return "info";
 }
 

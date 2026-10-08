@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
-import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { NumberField, Segmented, SelectField, SliderField, Switch } from "../components/Form";
 import {
   InsightCard, InsightGrid, StatGrid, TableDetails, statsFromRows, stripIcon, toneOf, type Stat,
 } from "../components/Insights";
@@ -15,9 +15,32 @@ import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
 import {
-  HYDRO_FEATURED, INITIAL, asOrder, autoTrxn, buildRequest, downloadBlob, heatBalanceTone, kineticModel, solveMessage,
-  solveTiles, suspensionTone, transferTone, type Inputs, type PointRequest, type SolveResult,
+  HYDRO_FEATURED, INITIAL, asOrder, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, downloadBlob,
+  feedRateMlMin, fillingRows, fillingTiles, heatBalanceTone, isDamkohler, kineticModel, sliderStep, solveMessage,
+  solveTiles, suspensionTone, temperatureTiles, transferTone, type FillingRequest, type FillingResult, type Inputs,
+  type PointRequest, type SolveResult, type TemperatureRequest, type TemperatureResult,
 } from "./assessment/model";
+
+const FILLING_GROUPS: [string, string][] = [
+  ["fluid", "Fill level & blended fluid properties"],
+  ["hydrodynamics", "Hydrodynamics"],
+  ["mass_transfer", "Mass transfer & suspension"],
+  ["damkohler", "Damköhler numbers"],
+  ["heat", "Heat transfer"],
+];
+
+type Figures = Schemas["ChartResult"]["figures"];
+interface Filling {
+  request: FillingRequest;
+  result: FillingResult;
+  figures: Figures;
+  caption: string;
+}
+interface Temperature {
+  request: TemperatureRequest;
+  result: TemperatureResult;
+  figures: Figures;
+}
 
 type Tables = Schemas["AssessmentTables"];
 type OptionItem = Schemas["OptionItem"];
@@ -44,19 +67,25 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
   return (
     <>
       <h3>Mixing sensitivity (Damköhler)</h3>
-      <InsightGrid>
-        {t.damkohler.map((r, i) => {
-          const regime = String(r.Regime ?? "");
-          return (
-            <InsightCard key={i} tone={toneOf(regime)} title={String(r.Type)} status={stripIcon(regime)}>
-              <div className="kpi-change">
-                {String(r["Damköhler"])} = {String(r.Value)}
-              </div>
-            </InsightCard>
-          );
-        })}
-      </InsightGrid>
-      <TableDetails rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />
+      {t.damkohler.length === 0 ? (
+        <p className="muted">No reaction selected — Damköhler numbers do not apply (hydrodynamic assessment).</p>
+      ) : (
+        <>
+          <InsightGrid>
+            {t.damkohler.map((r, i) => {
+              const regime = String(r.Regime ?? "");
+              return (
+                <InsightCard key={i} tone={toneOf(regime)} title={String(r.Type)} status={stripIcon(regime)}>
+                  <div className="kpi-change">
+                    {String(r["Damköhler"])} = {String(r.Value)}
+                  </div>
+                </InsightCard>
+              );
+            })}
+          </InsightGrid>
+          <TableDetails rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />
+        </>
+      )}
 
       <h3>Hydrodynamics</h3>
       <StatGrid stats={featured} />
@@ -104,7 +133,8 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
         </>
       ) : (
         <p className="muted">
-          No heat of reaction set (ΔH = 0) — enter ΔH<sub>rxn</sub> in Section 3 to run the heat-balance check.
+          No heat load — enter ΔH<sub>rxn</sub> in Section 4, or a dosing temperature different from the process
+          temperature in Section 3, to run the heat-balance check.
         </p>
       )}
     </>
@@ -138,6 +168,72 @@ function RateLaw({ order }: { order: string }) {
 
 const md = (text: string) => <ReactMarkdown>{text}</ReactMarkdown>;
 
+function TemperatureProfile({ temp, stale }: { temp: Temperature; stale: boolean }) {
+  const r = temp.result;
+  const reaction = r.Q_rxn_total_kJ !== 0;
+  return (
+    <Card title="Temperature Profile">
+      {r.scenario === "dosed" ? (
+        <p>
+          <strong>Dosed scenario</strong> over the {formatG(r.time_min[r.time_min.length - 1], 3)} min dosing time
+          {reaction ? (
+            <>
+              : reagent A is charged at C<sub>0</sub> and the stoichiometric co-reagent is dosed with the feed at a
+              constant rate, so heat is released as it is dosed and reacts (unreacted feed accumulates when the reaction
+              is slower than the dosing). The balance includes the reaction heat,
+            </>
+          ) : (
+            <>, without reaction heat. The balance includes</>
+          )}{" "}
+          the feed's sensible heat ṁ·c<sub>p</sub>·(T<sub>feed</sub> − T) and the jacket duty UA(t)·(T<sub>coolant</sub> −
+          T), with UA and the heat capacity growing as the vessel fills.
+        </p>
+      ) : (
+        <p>
+          <strong>Batch scenario</strong>: all reagent is charged at C<sub>0</sub> and reacts until 99 % conversion. The
+          reaction heat is balanced against the jacket duty UA·(T<sub>coolant</sub> − T), as on the{" "}
+          <PageLink pageKey="Heat_Transfer" /> page (rate constant fixed; activation energy not modelled).
+        </p>
+      )}
+      <p className="muted">
+        The <em>no-cooling end temperature</em> is the overall heat balance once
+        {reaction ? " all reagent has reacted" : ""}
+        {reaction && r.scenario === "dosed" ? " and" : ""}
+        {r.scenario === "dosed" ? " all feed is added" : ""}, with no heat removed by the jacket.
+      </p>
+      {stale && (
+        <p className="stale-note">⚠️ Inputs changed since the simulation — click <em>Compute Assessment</em> to refresh.</p>
+      )}
+      <StatGrid size="sm" stats={temperatureTiles(r)} />
+      <Chart figure={temp.figures.temperature} />
+    </Card>
+  );
+}
+
+function FillingDynamics({ filling, stale }: { filling: Filling; stale: boolean }) {
+  const rows = fillingRows(filling.result);
+  return (
+    <Card title="Filling Dynamics">
+      <p>
+        Every parameter is recomputed at {filling.request.n_steps} time steps while the vessel fills at constant speed. The
+        liquid at each step is a volume blend of the initial fluid and the dosed fluid (Fluid Database blend rules).
+      </p>
+      {stale && (
+        <p className="stale-note">⚠️ Inputs changed since the simulation — click <em>Compute Assessment</em> to refresh.</p>
+      )}
+      {md(filling.caption)}
+      <StatGrid size="sm" stats={fillingTiles(filling.result)} />
+      {FILLING_GROUPS.filter(([g]) => filling.figures[g]).map(([g, title]) => (
+        <section key={g}>
+          <h3>{title}</h3>
+          <Chart figure={filling.figures[g]} />
+        </section>
+      ))}
+      <TableDetails rows={rows} csvName="vessel_assessment_filling_dynamics.csv" stale={stale} summary="Show data table" />
+    </Card>
+  );
+}
+
 export function VesselAssessment() {
   const { notice, setNotice, run } = useNotice();
   const [inputs, setInputs] = useState<Inputs>(INITIAL);
@@ -147,6 +243,7 @@ export function VesselAssessment() {
   const [rxnInfo, setRxnInfo] = useState<{ model: string; scheme: string } | null>(null);
   const [fluidLibrary, setFluidLibrary] = useState(true);
   const [fluidNote, setFluidNote] = useState("");
+  const [ranges, setRanges] = useState<{ N: [number, number]; V: [number, number] } | null>(null);
 
   const options = useQuery({
     queryKey: ["options"],
@@ -162,8 +259,13 @@ export function VesselAssessment() {
     [parameters.data],
   );
   const enums = options.data?.enums ?? {};
+  const rxnOn = inputs.reactionSource !== "none";
   const reactionList =
-    (inputs.reactionSource === "classes" ? options.data?.reaction_classes : options.data?.reactions_measured) ?? [];
+    (inputs.reactionSource === "classes"
+      ? options.data?.reaction_classes
+      : rxnOn
+        ? options.data?.reactions_measured
+        : []) ?? [];
 
   // --- loaders (each mirrors a Taipy on_change handler) -----------------------
   async function loadVessel(name: string) {
@@ -178,8 +280,10 @@ export function VesselAssessment() {
       V: String(d.V_L),
       Np: String(d.Np),
       Nq: String(d.Nq),
+      dosingAmount: String(defaultDose(d.V_L, d.V_L_range[1])),
       corr: sources.some((s) => s.code === i.corr) ? i.corr : sources[0].code,
     }));
+    setRanges({ N: [d.N_rpm_range[0], d.N_rpm_range[1]], V: [d.V_L_range[0], d.V_L_range[1]] });
     setCorrSources(sources);
     setCorrStatus(d.corr_status);
   }
@@ -287,14 +391,66 @@ export function VesselAssessment() {
 
   // --- compute ------------------------------------------------------------
   const built = useMemo(() => buildRequest(inputs), [inputs]);
-  const currentKey = "request" in built ? JSON.stringify(built.request) : null;
-  const [last, setLast] = useState<{ key: string; request: PointRequest; reaction: string; tables: Tables } | null>(null);
+  const builtFilling = useMemo(
+    () => ("request" in built ? buildFilling(inputs, built.request) : { filling: null }),
+    [inputs, built],
+  );
+  const builtTemperature = useMemo(
+    () => ("request" in built ? buildTemperature(inputs, built.request) : null),
+    [inputs, built],
+  );
+  const currentKey =
+    "request" in built && "filling" in builtFilling
+      ? JSON.stringify({ point: built.request, filling: builtFilling.filling, temperature: builtTemperature })
+      : null;
+  const [last, setLast] = useState<{
+    key: string;
+    request: PointRequest;
+    reaction: string;
+    tables: Tables;
+    filling: Filling | null;
+    temperature: Temperature | null;
+  } | null>(null);
   const stale = !!last && currentKey !== last.key;
   const corrLabel = (code: string) => corrSources.find((c) => c.code === code)?.label ?? code;
 
   const compute = useMutation({
-    mutationFn: async (request: PointRequest) =>
-      unwrap(await api.POST("/api/v1/assessment/tables", { body: request })),
+    mutationFn: async ({
+      request,
+      filling,
+      temperature,
+    }: {
+      request: PointRequest;
+      filling: FillingRequest | null;
+      temperature: TemperatureRequest | null;
+    }) => {
+      const [tables, sim, temp] = await Promise.all([
+        api.POST("/api/v1/assessment/tables", { body: request }).then(unwrap),
+        filling
+          ? Promise.all([
+              api.POST("/api/v1/assessment/filling", { body: filling }).then(unwrap),
+              api
+                .POST("/api/v1/charts/{kind}", { params: { path: { kind: "assessment-filling" } }, body: filling })
+                .then(unwrap),
+            ])
+          : null,
+        temperature
+          ? Promise.all([
+              api.POST("/api/v1/assessment/temperature", { body: temperature }).then(unwrap),
+              api
+                .POST("/api/v1/charts/{kind}", { params: { path: { kind: "assessment-temperature" } }, body: temperature })
+                .then(unwrap),
+            ])
+          : null,
+      ]);
+      const sim2: Filling | null =
+        filling && sim
+          ? { request: filling, result: sim[0], figures: sim[1].figures, caption: sim[1].captions?.filling ?? "" }
+          : null;
+      const temp2: Temperature | null =
+        temperature && temp ? { request: temperature, result: temp[0], figures: temp[1].figures } : null;
+      return { tables, filling: sim2, temperature: temp2 };
+    },
   });
 
   function onCompute() {
@@ -302,9 +458,27 @@ export function VesselAssessment() {
       setNotice({ kind: "error", text: built.error });
       return;
     }
+    if ("error" in builtFilling) {
+      setNotice({ kind: "error", text: builtFilling.error });
+      return;
+    }
     const request = built.request;
-    void run(compute.mutateAsync(request), "Assessment computed.")
-      .then((tables) => setLast({ key: JSON.stringify(request), request, reaction: inputs.reaction, tables }))
+    const filling = builtFilling.filling;
+    const temperature = builtTemperature;
+    void run(
+      compute.mutateAsync({ request, filling, temperature }),
+      filling ? "Assessment and filling simulation computed." : "Assessment computed.",
+    )
+      .then((res) =>
+        setLast({
+          key: JSON.stringify({ point: request, filling, temperature }),
+          request,
+          reaction: rxnOn ? inputs.reaction : "No reaction",
+          tables: res.tables,
+          filling: res.filling,
+          temperature: res.temperature,
+        }),
+      )
       .catch(() => undefined);
   }
 
@@ -319,7 +493,9 @@ export function VesselAssessment() {
 
   // --- envelope and surfaces ------------------------------------------------
   const [envParams, setEnvParams] = useState<string[] | null>(null);
-  const envSelected = envParams ?? (parameters.data ?? []).filter((p) => p.default).map((p) => p.field);
+  const envSelected = (envParams ?? (parameters.data ?? []).filter((p) => p.default).map((p) => p.field)).filter(
+    (f) => rxnOn || !isDamkohler(f),
+  );
   const envKey = envSelected.join("|");
   const envelope = useQuery({
     queryKey: ["chart", "assessment-envelope", last?.key, envKey],
@@ -433,7 +609,9 @@ export function VesselAssessment() {
   }
 
   const t = last?.tables;
-  const paramOptions = (parameters.data ?? []).map((p) => ({ code: p.field, label: p.label }));
+  const paramOptions = (parameters.data ?? [])
+    .filter((p) => rxnOn || !isDamkohler(p.field))
+    .map((p) => ({ code: p.field, label: p.label }));
 
   return (
     <>
@@ -441,7 +619,7 @@ export function VesselAssessment() {
       <p>{status}</p>
       {options.isError && <ErrorNote error={options.error} />}
 
-      <Card title="1. Vessel & System">
+      <Card title="1. Vessel">
         <div className="grid-2 va-top">
           <div>
             <SelectField
@@ -459,27 +637,34 @@ export function VesselAssessment() {
               <NumberField label="Coolant temp (°C)" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} />
             </div>
             <div className="form-row">
-              <NumberField label="Agitation speed N (RPM)" value={inputs.N} onChange={(N) => set({ N })} />
-              <NumberField label="Working volume (L)" value={inputs.V} onChange={(V) => set({ V })} />
-            </div>
-            <Switch label="Fed-batch" checked={inputs.fed} onChange={(fed) => set({ fed })} />
-            {inputs.fed && (
-              <>
-                <p className="muted">
-                  Feed inputs unlock the <strong>mesomixing</strong> assessment (feed-plume dispersion).
-                </p>
-                <div className="form-row">
-                  <NumberField label="Feed rate (mL/min)" value={inputs.feedRate} onChange={(feedRate) => set({ feedRate })} />
-                  <NumberField label="Feed pipe ID (mm)" value={inputs.feedDiam} onChange={(feedDiam) => set({ feedDiam })} />
-                  <SelectField
-                    label="Feed location"
-                    value={inputs.feedLocation}
-                    options={enums.FeedLocation ?? []}
-                    onChange={(feedLocation) => set({ feedLocation })}
+              {ranges ? (
+                <>
+                  <SliderField
+                    label="Agitation speed N (RPM)"
+                    value={inputs.N}
+                    onChange={(N) => set({ N })}
+                    min={ranges.N[0]}
+                    max={ranges.N[1]}
+                    step={sliderStep(ranges.N[1] - ranges.N[0])}
+                    unit="RPM"
                   />
-                </div>
-              </>
-            )}
+                  <SliderField
+                    label="Fill volume (L)"
+                    value={inputs.V}
+                    onChange={(V) => set({ V })}
+                    min={ranges.V[0]}
+                    max={ranges.V[1]}
+                    step={sliderStep(ranges.V[1] - ranges.V[0])}
+                    unit="L"
+                  />
+                </>
+              ) : (
+                <>
+                  <NumberField label="Agitation speed N (RPM)" value={inputs.N} onChange={(N) => set({ N })} />
+                  <NumberField label="Fill volume (L)" value={inputs.V} onChange={(V) => set({ V })} />
+                </>
+              )}
+            </div>
             <details>
               <summary>Advanced: vessel geometry overrides</summary>
               <div className="form-row">
@@ -590,7 +775,72 @@ export function VesselAssessment() {
         </div>
       </Card>
 
-      <Card title="3. Reaction">
+      <Card title="3. Dosing">
+        <Switch label="Fed-batch" checked={inputs.fed} onChange={(fed) => set({ fed })} />
+        {inputs.fed ? (
+          <>
+            <p className="muted">
+              Feed inputs unlock the <strong>mesomixing</strong> assessment (feed-plume dispersion). The feed's sensible
+              heat, ṁ·C<sub>p</sub>·(T<sub>feed</sub> − T<sub>process</sub>), is added to the heat balance.
+            </p>
+            <div className="form-row">
+              <NumberField label="Dosing Time [h]" value={inputs.dosingTime} onChange={(dosingTime) => set({ dosingTime })} />
+              <NumberField
+                label="Dosing Amount [L]"
+                value={inputs.dosingAmount}
+                onChange={(dosingAmount) => set({ dosingAmount })}
+              />
+              <label>
+                Feed rate [mL/min]
+                <input
+                  readOnly
+                  className="computed"
+                  value={(() => {
+                    const r = feedRateMlMin(inputs.dosingAmount, inputs.dosingTime);
+                    return Number.isFinite(r) ? formatG(r, 4) : "—";
+                  })()}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <SelectField
+                label="Dosed fluid"
+                value={inputs.feedFluid}
+                options={options.data?.fluids ?? []}
+                onChange={(feedFluid) => set({ feedFluid })}
+              />
+              <NumberField label="Dosing temperature (°C)" value={inputs.feedT} onChange={(feedT) => set({ feedT })} />
+              <NumberField label="Feed pipe ID (mm)" value={inputs.feedDiam} onChange={(feedDiam) => set({ feedDiam })} />
+              <SelectField
+                label="Feed location"
+                value={inputs.feedLocation}
+                options={enums.FeedLocation ?? []}
+                onChange={(feedLocation) => set({ feedLocation })}
+              />
+            </div>
+            <Switch
+              label="Simulate Filling"
+              checked={inputs.simulateFilling}
+              onChange={(simulateFilling) => set({ simulateFilling })}
+            />
+            {inputs.simulateFilling && (
+              <p className="muted">
+                On <em>Compute Assessment</em>, every hydrodynamic, mass- and heat-transfer parameter is computed at 50
+                steps over the dosing time, from {inputs.V || "?"} L to{" "}
+                {(() => {
+                  const end = Number(inputs.V) + Number(inputs.dosingAmount);
+                  return Number.isFinite(end) ? formatG(end, 4) : "?";
+                })()}{" "}
+                L, with the blended fluid properties at each step.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="muted">Enable for a semi-batch process to define the dosing (feeding) of a second fluid.</p>
+        )}
+      </Card>
+
+      <Card title="4. Reaction">
         <div className="form-row">
           <SelectField
             label="Reaction source"
@@ -598,48 +848,61 @@ export function VesselAssessment() {
             options={[
               { code: "measured", label: "Measured kinetics" },
               { code: "classes", label: "Reaction classes" },
+              { code: "none", label: "No reaction" },
             ]}
             onChange={(v) => {
               const source = v as Inputs["reactionSource"];
-              const list = (source === "classes" ? options.data?.reaction_classes : options.data?.reactions_measured) ?? [];
               set({ reactionSource: source });
+              if (source === "none") return;
+              const list = (source === "classes" ? options.data?.reaction_classes : options.data?.reactions_measured) ?? [];
               const next = list.includes(inputs.reaction) ? inputs.reaction : list[0];
               if (next) report(loadReaction(next, true));
             }}
           />
-          <SelectField
-            label="Reaction"
-            value={inputs.reaction}
-            options={reactionList}
-            onChange={(v) => {
-              report(loadReaction(v, true));
-              setNotice({ kind: "info", text: "Reaction kinetics loaded." });
-            }}
-          />
+          {rxnOn && (
+            <SelectField
+              label="Reaction"
+              value={inputs.reaction}
+              options={reactionList}
+              onChange={(v) => {
+                report(loadReaction(v, true));
+                setNotice({ kind: "info", text: "Reaction kinetics loaded." });
+              }}
+            />
+          )}
         </div>
-        {rxnInfo ? (
-          <>
-            <p>
-              <strong>{rxnInfo.model.split(" · ")[0]}</strong> · {rxnInfo.model.split(" · ").slice(1).join(" · ")}
-            </p>
-            <p>
-              <strong>Rate law:</strong> <RateLaw order={inputs.order} />
-            </p>
-            {rxnInfo.scheme && <p className="scheme-box">{rxnInfo.scheme}</p>}
-          </>
+        {!rxnOn ? (
+          <p className="muted">
+            No reaction: a hydrodynamic (and, with dosing, filling and heat) assessment. Damköhler numbers and reaction
+            heat are not computed.
+          </p>
         ) : (
-          <p className="muted">No reaction selected.</p>
+          <>
+            {rxnInfo ? (
+              <>
+                <p>
+                  <strong>{rxnInfo.model.split(" · ")[0]}</strong> · {rxnInfo.model.split(" · ").slice(1).join(" · ")}
+                </p>
+                <p>
+                  <strong>Rate law:</strong> <RateLaw order={inputs.order} />
+                </p>
+                {rxnInfo.scheme && <p className="scheme-box">{rxnInfo.scheme}</p>}
+              </>
+            ) : (
+              <p className="muted">No reaction selected.</p>
+            )}
+            <h4>Kinetics (editable)</h4>
+            <div className="form-row">
+              <NumberField label="Rate constant k" value={inputs.k} onChange={(k) => set({ k })} />
+              <NumberField label="C0 (mol/L)" value={inputs.c0} onChange={(c0) => set({ c0 })} />
+              <NumberField label="t_rxn (s, 0 = auto)" value={inputs.trxn} onChange={(trxn) => set({ trxn })} />
+              <NumberField label="ΔH_rxn (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
+            </div>
+          </>
         )}
-        <h4>Kinetics (editable)</h4>
-        <div className="form-row">
-          <NumberField label="Rate constant k" value={inputs.k} onChange={(k) => set({ k })} />
-          <NumberField label="C0 (mol/L)" value={inputs.c0} onChange={(c0) => set({ c0 })} />
-          <NumberField label="t_rxn (s, 0 = auto)" value={inputs.trxn} onChange={(trxn) => set({ trxn })} />
-          <NumberField label="ΔH_rxn (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
-        </div>
       </Card>
 
-      <Card title="4. Correlations">
+      <Card title="5. Correlations">
         <p>
           Choose the correlation source used for the assessment. Only sources registered for the
           selected vessel are offered.
@@ -669,6 +932,10 @@ export function VesselAssessment() {
           <Card title="Results">
             <AssessmentInsights t={t} solids={!!last.request.solids} stale={stale} />
           </Card>
+
+          {last.temperature && <TemperatureProfile temp={last.temperature} stale={stale} />}
+
+          {last.filling && <FillingDynamics filling={last.filling} stale={stale} />}
 
           <Card title="Operating Envelope">
             <p>
@@ -758,7 +1025,7 @@ export function VesselAssessment() {
 
       <Card title="Solve for">
         <p>
-          Find the agitation speed (or working volume) that gives a target value of a hydrodynamic or
+          Find the agitation speed (or fill volume) that gives a target value of a hydrodynamic or
           mass-transfer parameter in the selected vessel. The other variable is held at its Section 1 input;
           fluid, phase, reaction and correlation settings above are used. Speed is scanned from 0.25× the minimum
           to 2× the maximum rated speed; volume is scanned across the vessel fill range.
@@ -769,7 +1036,7 @@ export function VesselAssessment() {
             value={solveFor}
             options={[
               { code: "N_rpm", label: "Agitation speed N (RPM)" },
-              { code: "V_L", label: "Working volume V (L)" },
+              { code: "V_L", label: "Fill volume V (L)" },
             ]}
             onChange={(v) => setSolveFor(v as "N_rpm" | "V_L")}
           />

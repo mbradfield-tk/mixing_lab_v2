@@ -2026,7 +2026,9 @@ def build_vessel_assessment_pdf(snap: dict) -> bytes:
     pdf.kv("Working volume", f"{snap.get('V_L', 0):.3g} L")
     pdf.kv("Correlation source", str(snap.get("corr_mode", "")))
     pdf.kv("Reaction", str(snap.get("reaction", "")), bold_val=True)
-    pdf.kv("Characteristic reaction time", f"{snap.get('t_rxn', 0):.4g} s")
+    t_rxn_val = snap.get("t_rxn", 0) or 0
+    pdf.kv("Characteristic reaction time",
+           f"{t_rxn_val:.4g} s" if t_rxn_val > 0 else "n/a (no reaction)")
     if snap.get("dH"):
         pdf.kv("Heat of reaction", f"{snap.get('dH', 0):.1f} kJ/mol")
     pdf.ln(3)

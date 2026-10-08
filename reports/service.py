@@ -42,6 +42,8 @@ def assessment_envelope(req: s.AssessmentReportRequest) -> tuple[go.Figure, str]
     """(operating-envelope figure, caption) for the requested parameters."""
     inp, _t_rxn, row = services.point_inputs(req.point, heat=False)
     keys = [s.core_key(p) for p in req.envelope_parameters]
+    if not inp.reaction.present:
+        keys = [k for k in keys if not k.startswith("Da_")] or ["P/V (W/L)"]
     p = req.point
     d = envelope_data(lambda n_rpm, v_l: evaluate_point(inp, n_rpm / 60.0, v_l), row,
                       p.N_rpm, p.V_L, keys)
@@ -54,9 +56,7 @@ def assessment_envelope(req: s.AssessmentReportRequest) -> tuple[go.Figure, str]
 def assessment_result(req: s.PointRequest) -> s.AssessmentTables:
     """The Vessel Assessment result tables for one operating point (page / PDF formatting)."""
     inp, t_rxn, row = services.point_inputs(req)
-    if t_rxn <= 0:
-        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
-                         "Damköhler numbers.")
+    services.require_kinetics(req, t_rxn)
     hydro = evaluate_point(inp, req.N_rpm / 60.0, req.V_L)
     solids_on, gas_on = req.solids is not None, req.gas.present
     tables = assessment_tables(hydro, req.N_rpm, t_rxn, solids_on=solids_on, gas_on=gas_on,
@@ -72,18 +72,19 @@ def assessment_result(req: s.PointRequest) -> s.AssessmentTables:
 def assessment_snapshot(req: s.AssessmentReportRequest) -> dict:
     p = req.point
     inp, t_rxn, _row = services.point_inputs(p)
-    if t_rxn <= 0:
-        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
-                         "Damköhler numbers.")
+    services.require_kinetics(p, t_rxn)
     hydro = evaluate_point(inp, p.N_rpm / 60.0, p.V_L)
     tables = assessment_tables(hydro, p.N_rpm, t_rxn, solids_on=p.solids is not None,
                                gas_on=p.gas.present, fed_on=p.feed is not None)
     fig, caption = assessment_envelope(req)
     return snapshots.assessment_snapshot(
         reactor=p.reactor, fluid=p.fluid.name, T_C=p.fluid.T_C, P_atm=p.fluid.P_atm, N_rpm=p.N_rpm,
-        V_L=p.V_L, corr_label=CorrSource(p.corr_source).label, reaction=req.reaction_name,
-        t_rxn=t_rxn, dH=p.reaction.dH_kJ_mol, tables=tables, env_fig=fig, env_caption=caption,
-        env_params=[s.core_key(k) for k in req.envelope_parameters])
+        V_L=p.V_L, corr_label=CorrSource(p.corr_source).label,
+        reaction=req.reaction_name or ("" if p.reaction else "No reaction"),
+        t_rxn=t_rxn, dH=p.reaction.dH_kJ_mol if p.reaction else 0.0, tables=tables, env_fig=fig,
+        env_caption=caption,
+        env_params=[k for k in (s.core_key(k) for k in req.envelope_parameters)
+                    if p.reaction or not k.startswith("Da_")])
 
 
 def assessment_report(req: s.AssessmentReportRequest) -> ReportFile:

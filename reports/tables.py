@@ -48,10 +48,11 @@ def assessment_tables(hydro: dict, n_rpm: float, t_rxn: float, *, solids_on: boo
     else:
         solids = pd.DataFrame(columns=TABLE_COLUMNS)
 
+    reaction_on = "Da_macro" in hydro
     paths = []
-    if gas_on:
+    if gas_on and reaction_on:
         paths.append(("Gas-liquid", hydro["kLa (1/s)"]))
-    if solids_on:
+    if solids_on and reaction_on:
         paths.append(("Solid-liquid", kla_sl))
     mass_transfer = pd.DataFrame(rules.mass_transfer_screen(paths, t_rxn), columns=MT_COLUMNS)
 
@@ -63,28 +64,42 @@ def assessment_tables(hydro: dict, n_rpm: float, t_rxn: float, *, solids_on: boo
     da_meso = hydro.get("Da_meso", 0.0)
     gl_type = ("Gas–liquid mass transfer" if gas_on
                else "Gas–liquid mass transfer (surface aeration)")
-    dam_rows = [
-        {"Type": "Macromixing (bulk blending)", "Damköhler": "Da_macro", "Value": f"{hydro['Da_macro']:.3g}", "Regime": regime(hydro["Da_macro"])},
-    ]
-    if fed_on:
-        dam_rows.append({"Type": "Mesomixing (feed dispersion)", "Damköhler": "Da_meso", "Value": f"{da_meso:.3g}", "Regime": regime(da_meso)})
-    dam_rows.append({"Type": "Micromixing (engulfment)", "Damköhler": "Da_micro", "Value": f"{hydro['Da_micro']:.3g}", "Regime": regime(hydro["Da_micro"])})
-    dam_rows.append({"Type": gl_type, "Damköhler": "Da_GL", "Value": f"{hydro['Da_GL']:.3g}", "Regime": regime(hydro["Da_GL"])})
-    if solids_on:
-        dam_rows.append({"Type": "Solid–liquid mass transfer", "Damköhler": "Da_SL", "Value": f"{hydro['Da_SL']:.3g}", "Regime": regime(hydro["Da_SL"])})
+    dam_rows = []
+    if reaction_on:
+        dam_rows.append({"Type": "Macromixing (bulk blending)", "Damköhler": "Da_macro", "Value": f"{hydro['Da_macro']:.3g}", "Regime": regime(hydro["Da_macro"])})
+        if fed_on:
+            dam_rows.append({"Type": "Mesomixing (feed dispersion)", "Damköhler": "Da_meso", "Value": f"{da_meso:.3g}", "Regime": regime(da_meso)})
+        dam_rows.append({"Type": "Micromixing (engulfment)", "Damköhler": "Da_micro", "Value": f"{hydro['Da_micro']:.3g}", "Regime": regime(hydro["Da_micro"])})
+        dam_rows.append({"Type": gl_type, "Damköhler": "Da_GL", "Value": f"{hydro['Da_GL']:.3g}", "Regime": regime(hydro["Da_GL"])})
+        if solids_on:
+            dam_rows.append({"Type": "Solid–liquid mass transfer", "Damköhler": "Da_SL", "Value": f"{hydro['Da_SL']:.3g}", "Regime": regime(hydro["Da_SL"])})
 
     if "Q_gen (W)" in hydro:
         q_gen, q_cool = hydro["Q_gen (W)"], hydro["Q_cool (W)"]
-        heat = pd.DataFrame([
-            {"Parameter": "Heat generation Q_gen", "Value": f"{q_gen:,.1f}", "Units": "W"},
+        rows = [{"Parameter": "Heat generation Q_gen", "Value": f"{q_gen:,.1f}", "Units": "W"}]
+        q_load = q_gen
+        if "Q_feed (W)" in hydro:
+            q_load = hydro["Q_load (W)"]
+            rows += [
+                {"Parameter": "Feed sensible heat Q_feed", "Value": f"{hydro['Q_feed (W)']:,.1f}",
+                 "Units": "W"},
+                {"Parameter": "Net heat load Q_gen + Q_feed", "Value": f"{q_load:,.1f}", "Units": "W"},
+            ]
+        balance = (heat_balance_assessment(q_load, q_cool)
+                   if q_load > 0 or "Q_feed (W)" not in hydro
+                   else "Net cooling by the feed - no heat to remove")
+        heat = pd.DataFrame(rows + [
             {"Parameter": "Overall U", "Value": f"{hydro['U (W/m²·K)']:,.1f}", "Units": "W/m²·K"},
             {"Parameter": "Jacket area A", "Value": f"{hydro['A_ht (m²)']:,.4g}", "Units": "m²"},
             {"Parameter": "Cooling capacity Q_cool", "Value": f"{q_cool:,.1f}", "Units": "W"},
-            {"Parameter": "Balance", "Value": heat_balance_assessment(q_gen, q_cool), "Units": "–"},
+            {"Parameter": "Balance", "Value": balance, "Units": "–"},
         ])
     else:
         heat = pd.DataFrame(columns=TABLE_COLUMNS)
 
-    return {"hydro": hydro_df, "damkohler": pd.DataFrame(dam_rows), "solids": solids,
-            "heat": heat, "mass_transfer": mass_transfer,
-            "assessment": f"**Assessment:** {hydro['Assessment']}"}
+    return {"hydro": hydro_df,
+            "damkohler": pd.DataFrame(dam_rows, columns=["Type", "Damköhler", "Value", "Regime"]),
+            "solids": solids, "heat": heat, "mass_transfer": mass_transfer,
+            "assessment": (f"**Assessment:** {hydro['Assessment']}" if reaction_on else
+                           "**Assessment:** No reaction selected - Damköhler screening does "
+                           "not apply (hydrodynamic assessment).")}

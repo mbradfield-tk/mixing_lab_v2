@@ -84,6 +84,16 @@ def mixing_rules(comp_props: list[dict]) -> dict:
     }
 
 
+def volume_blend(parts: list[tuple[dict, float]]) -> dict:
+    """Mixing-rule properties of liquids given as (properties, volume) pairs."""
+    total = sum(v for _, v in parts if v > 0)
+    if total <= 0:
+        raise ValueError("Total volume must be > 0.")
+    comps = [{**p, "input": v / total} for p, v in parts if v > 0]
+    _fractions(comps, True)
+    return mixing_rules(comps)
+
+
 def _dispersion(comp_props: list[dict], pairs: list[dict], speed: float, d_imp: float,
                 h_liquid: float, sigma_ll: float) -> list[dict]:
     """Preliminary dispersion screen for each immiscible pair (continuous = larger volume)."""

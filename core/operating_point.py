@@ -53,6 +53,7 @@ class Reaction:
     C0: float
     t_rxn: float
     dH: float = 0.0  # kJ/mol
+    present: bool = True  # False: no reaction - hydrodynamic / filling assessment only
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ class Solids:
 class Feed:
     location: FeedLocation
     d_pipe_m: float
+    sensible_W: float = 0.0  # feed sensible heat into the batch; > 0 when the feed is warmer
 
 
 @dataclass(frozen=True)
@@ -149,8 +151,21 @@ def feed_dissipation(h: dict, location: FeedLocation) -> float:
     return pv
 
 
+def jacket_ua(inp: PointInputs, N_rps: float, V_L: float) -> tuple[float, float]:
+    """(overall U in W/m²·K, wetted jacket area in m²) at (N, V)."""
+    g = inp.geometry
+    area = estimate_jacket_area(g.D_tank, g.liquid_height(V_L), g.bottom_dish,
+                                g.bottom_dish_height)
+    u_val, _warn = estimate_U_detailed(
+        N_rps=N_rps, D_imp=g.D_imp, D_tank=g.D_tank, rho=inp.fluid.rho, mu=inp.fluid.mu,
+        material=g.shell_material, lining_material=g.lining_material,
+        wall_thickness_mm=g.wall_thickness_mm, fluid_name=inp.fluid.name)
+    return u_val, area
+
+
 def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
-    """Hydro + Damköhler (+ solids, mesomixing, heat balance) at one (N, V) point."""
+    """Hydro + Damköhler (+ solids, mesomixing, heat balance) at one (N, V) point.
+    Without a reaction (``reaction.present`` False) the Damköhler numbers are omitted."""
     h = hydro(inp, N_rps, V_L)
     out = dict(h)
     t_rxn = inp.reaction.t_rxn
@@ -166,30 +181,30 @@ def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
             "k_SL (m/s)": s["k_SL"], "kLa_SL (1/s)": kla_sl,
         })
 
-    out.update(compute_damkohler_numbers(
-        h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
-        kLa=h.get("kLa (1/s)", 0.0), kLa_surface=h.get("kLa_surface (1/s)", 0.0),
-        kLa_SL=kla_sl))
+    if inp.reaction.present:
+        out.update(compute_damkohler_numbers(
+            h["Blend time 95% (s)"], h["Micromix time t_E (s)"], t_rxn,
+            kLa=h.get("kLa (1/s)", 0.0), kLa_surface=h.get("kLa_surface (1/s)", 0.0),
+            kLa_SL=kla_sl))
 
-    if inp.feed is not None:
+    if inp.feed is not None and inp.reaction.present:
         t_meso = mesomixing_time(feed_dissipation(h, inp.feed.location), inp.feed.d_pipe_m)
         out["Da_meso"] = t_meso / t_rxn if t_rxn > 0 and np.isfinite(t_meso) else 0.0
 
-    if inp.heat is not None and inp.reaction.dH != 0.0:
-        g, rx = inp.geometry, inp.reaction
+    q_feed = inp.feed.sensible_W if inp.feed is not None else 0.0
+    if inp.heat is not None and (inp.reaction.dH != 0.0 or q_feed != 0.0):
+        rx = inp.reaction
         q_gen = heat_generation_rate(rx.dH, reaction_rate_mol_per_s(rx.order, rx.k, rx.C0, V_L))
-        area = estimate_jacket_area(g.D_tank, g.liquid_height(V_L), g.bottom_dish,
-                                    g.bottom_dish_height)
-        u_val, _warn = estimate_U_detailed(
-            N_rps=N_rps, D_imp=g.D_imp, D_tank=g.D_tank, rho=inp.fluid.rho, mu=inp.fluid.mu,
-            material=g.shell_material, lining_material=g.lining_material,
-            wall_thickness_mm=g.wall_thickness_mm, fluid_name=inp.fluid.name)
+        u_val, area = jacket_ua(inp, N_rps, V_L)
         # Signed driving force: a coolant warmer than the batch provides no cooling.
         q_cool = heat_removal_capacity(u_val, area, inp.heat.T_process - inp.heat.T_coolant)
+        q_load = q_gen + q_feed
         out.update({
             "Q_gen (W)": q_gen, "Q_cool (W)": q_cool, "U (W/m²·K)": u_val, "A_ht (m²)": area,
-            "Q_gen/Q_cool (%)": q_gen / q_cool * 100.0 if q_cool > 0 else np.inf,
+            "Q_gen/Q_cool (%)": q_load / q_cool * 100.0 if q_cool > 0 else np.inf,
         })
+        if q_feed != 0.0:
+            out.update({"Q_feed (W)": q_feed, "Q_load (W)": q_load})
     return out
 
 

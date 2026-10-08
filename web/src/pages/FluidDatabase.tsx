@@ -256,10 +256,19 @@ export function blendStatus(res: BlendResult): Notice {
   }
 }
 
+/** Kinematic viscosity ν = μ/ρ in mm²/s (cSt); NaN when either property is missing. */
+export function kinematicViscosity(r: Row): number {
+  const mu = Number(r.mu_Pa_s);
+  const rho = Number(r.rho_kg_m3);
+  return mu > 0 && rho > 0 ? (mu / rho) * 1e6 : Number.NaN;
+}
+
 function propertyCells(r: Row) {
+  const nu = kinematicViscosity(r);
   return [
     formatF(r.rho_kg_m3, 1),
     formatF(r.mu_Pa_s, 6),
+    Number.isFinite(nu) ? formatG(nu, 4) : "—",
     formatF(r.surface_tension_N_m, 4),
     formatE(r.D_mol_m2_s, 3),
     formatF(r.Cp_J_per_kgK, 1),
@@ -424,7 +433,7 @@ function BlendTab() {
             <table className="results">
               <thead>
                 <tr>
-                  {["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)", "σ (N/m)", "D (m²/s)", "Cp (J/kg·K)", "k (W/m·K)"].map(
+                  {["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)", "ν (mm²/s = cSt)", "σ (N/m)", "D (m²/s)", "Cp (J/kg·K)", "k (W/m·K)"].map(
                     (h) => (
                       <th key={h}>{h}</th>
                     ),

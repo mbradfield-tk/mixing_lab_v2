@@ -46,6 +46,16 @@ def surface(req: s.SurfaceRequest) -> s.SurfaceResult:
     return cache.cached("surface", req, lambda: sv.surface(req))
 
 
+@assessment.post("/filling", summary="Operating point along a fed-batch fill (vs dosing time)")
+def filling(req: s.FillingRequest) -> s.FillingResult:
+    return cache.cached("filling", req, lambda: sv.filling(req))
+
+
+@assessment.post("/temperature", summary="Batch temperature vs time (batch or dosed scenario)")
+def temperature(req: s.TemperatureRequest) -> s.TemperatureResult:
+    return cache.cached("temperature", req, lambda: sv.temperature(req))
+
+
 @assessment.post("/tables", summary="Result tables for one point, formatted as on the page and PDF")
 def tables(req: s.PointRequest) -> s.AssessmentTables:
     return assessment_result(req)

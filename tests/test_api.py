@@ -99,6 +99,10 @@ def test_every_chart_kind_returns_plotly_json(client):
         "assessment-envelope": {"point": _json(contracts._va_request())},
         "assessment-surfaces": {"point": _json(contracts._va_request()),
                                 "envelope_parameters": ["P_V_W_L"]},
+        "assessment-filling": {"point": _json(contracts._va_request()), "dosing_time_h": 1,
+                               "dosing_amount_L": 0.02, "feed_fluid": "Water", "n_steps": 5},
+        "assessment-temperature": {"point": {**_json(contracts._va_request()),
+                                             "heat": {"T_process_C": 25, "T_coolant_C": 15}}},
         "comparison-envelope": {"comparison": {"reactors": [REACTOR, "Cambrex R-101"]},
                                 "parameters": ["P_V_W_L"]},
         "heat-cool": {"reactor": REACTOR, "T_jacket_C": -10, "T_target_C": 5},
@@ -116,6 +120,117 @@ def test_every_chart_kind_returns_plotly_json(client):
         assert res.status_code == 200, (kind, res.text)
         figs = res.json()["figures"]
         assert figs and all("data" in f and "layout" in f for f in figs.values()), kind
+
+
+def test_feed_sensible_heat_enters_the_heat_balance(client):
+    pt = {"reactor": REACTOR, "N_rpm": 400, "V_L": 0.05,
+          "reaction": {"order": "2", "k": 0.5, "C0_mol_L": 0.5, "dH_kJ_mol": -80},
+          "heat": {"T_process_C": 25, "T_coolant_C": 10},
+          "feed": {"location": "bulk", "d_pipe_mm": 3}}
+    base = client.post(f"{V1}/assessment/point", json=pt).json()
+    assert base["Q_feed_W"] is None and base["Q_load_W"] is None
+
+    from core.records import thermal_props
+    tp = thermal_props("Toluene", 60)
+    hot = {**pt, "feed": {**pt["feed"], "rate_mL_min": 2.0, "T_C": 60, "fluid": "Toluene"}}
+    r = client.post(f"{V1}/assessment/point", json=hot).json()
+    expected = 2.0e-6 / 60 * tp["rho"] * tp["cp"] * (60 - 25)
+    assert r["Q_feed_W"] == pytest.approx(expected) and r["Q_feed_W"] > 0
+    assert r["Q_load_W"] == pytest.approx(r["Q_gen_W"] + expected)
+    assert r["Q_gen_W"] == pytest.approx(base["Q_gen_W"])
+    assert r["Q_gen_over_Q_cool_pct"] == pytest.approx(r["Q_load_W"] / r["Q_cool_W"] * 100)
+    heat = {row["Parameter"]: row["Value"]
+            for row in client.post(f"{V1}/assessment/tables", json=hot).json()["heat"]}
+    assert "Feed sensible heat Q_feed" in heat and "Net heat load Q_gen + Q_feed" in heat
+
+    # No reaction heat: a cold feed alone still produces a heat balance (net cooling).
+    cold = {**hot, "reaction": {"order": "1", "k": 0.01},
+            "feed": {**hot["feed"], "T_C": 5, "fluid": "Water"}}
+    heat = {row["Parameter"]: row["Value"]
+            for row in client.post(f"{V1}/assessment/tables", json=cold).json()["heat"]}
+    assert heat["Balance"].startswith("Net cooling by the feed")
+
+
+def test_batch_and_dosed_temperature_profiles_close_the_heat_balance(client):
+    from core.records import thermal_props
+    rx = {"order": "2", "k": 0.05, "C0_mol_L": 1.0, "dH_kJ_mol": -100}
+    pt = {"reactor": REACTOR, "N_rpm": 400, "V_L": 0.05, "reaction": rx,
+          "heat": {"T_process_C": 25, "T_coolant_C": 15}}
+    cp = thermal_props("Water", 25)["cp"]
+    batch = client.post(f"{V1}/assessment/temperature", json={"point": pt}).json()
+    assert batch["scenario"] == "batch" and batch["final_conversion"] >= 0.99
+    assert batch["t_99_min"] is not None
+    # Adiabatic rise -dH*C0/(rho*cp) with the looked-up density.
+    from core.records import fluid_props
+    dT = 100e3 * 1.0 * 1000 / (fluid_props("Water", 25, 1)["rho"] * cp)
+    assert batch["dT_ad_K"] == pytest.approx(dT, rel=1e-6)
+    assert 25 < batch["T_max_C"] < batch["T_ad_C"]          # the jacket removes part of it
+    assert len(set(batch["UA_W_K"])) == 1                    # fixed volume: constant UA
+
+    fed = {**pt, "feed": {"location": "bulk", "d_pipe_mm": 3, "T_C": 5, "fluid": "Water"}}
+    dosed = client.post(f"{V1}/assessment/temperature",
+                        json={"point": fed, "dosing_time_h": 1, "dosing_amount_L": 0.03}).json()
+    assert dosed["scenario"] == "dosed" and dosed["time_min"][-1] == pytest.approx(60)
+    assert dosed["V_L"][-1] == pytest.approx(0.08) and dosed["UA_W_K"][-1] > dosed["UA_W_K"][0]
+    assert dosed["T_feed_C"] == 5 and dosed["Q_feed_W"][1] < 0
+    assert dosed["T_ad_C"] < batch["T_ad_C"]               # the cold feed absorbs heat
+
+    none = client.post(f"{V1}/assessment/temperature", json={"point": {**pt, "reaction": None}})
+    assert none.status_code == 422
+
+
+def test_no_reaction_is_a_hydrodynamic_assessment(client):
+    pt = {"reactor": REACTOR, "N_rpm": 400, "V_L": 0.05, "reaction": None,
+          "gas": {"present": True}, "heat": {"T_process_C": 25, "T_coolant_C": 15}}
+    point = client.post(f"{V1}/assessment/point", json=pt).json()
+    assert point["Da_macro"] is None and point["Re"] > 0 and point["Q_gen_W"] is None
+    t = client.post(f"{V1}/assessment/tables", json=pt).json()
+    assert t["damkohler"] == [] and t["mass_transfer"] == [] and t["heat"] == []
+    assert "No reaction" in t["assessment"]
+    env = client.post(f"{V1}/charts/assessment-envelope", json={"point": pt})
+    assert env.status_code == 200
+    # A selected reaction without kinetics is still rejected.
+    bad = client.post(f"{V1}/assessment/tables", json={**pt, "reaction": {"order": "1"}})
+    assert bad.status_code == 422
+    fill = client.post(f"{V1}/assessment/filling", json={
+        "point": pt, "dosing_time_h": 1, "dosing_amount_L": 0.03, "feed_fluid": "Water",
+        "n_steps": 5}).json()
+    fields = [x["field"] for x in fill["series"]]
+    assert not any(f.startswith("Da_") for f in fields) and "UA_W_K" in fields
+
+
+def test_filling_profile_matches_point_evaluations_with_blended_fluid(client):
+    pt = {"reactor": REACTOR, "N_rpm": 400, "V_L": 0.05, "fluid": {"name": "Water"},
+          "reaction": {"order": "2", "k": 0.5, "C0_mol_L": 0.5, "dH_kJ_mol": -80},
+          "gas": {"present": True}, "feed": {"location": "bulk", "d_pipe_mm": 3},
+          "heat": {"T_process_C": 25, "T_coolant_C": 10}}
+    body = {"point": pt, "dosing_time_h": 2, "dosing_amount_L": 0.04, "feed_fluid": "Toluene"}
+    res = client.post(f"{V1}/assessment/filling", json=body).json()
+    assert len(res["time_min"]) == 51 and res["time_min"][-1] == pytest.approx(120)
+    assert res["V_L"][0] == pytest.approx(0.05) and res["V_end_L"] == pytest.approx(0.09)
+    assert res["feed_rate_mL_min"] == pytest.approx(40 / 120)
+    assert any("immiscible" in w for w in res["warnings"])
+    assert any("exceeds the vessel maximum" in w for w in client.post(
+        f"{V1}/assessment/filling", json={**body, "dosing_amount_L": 1.0}).json()["warnings"])
+    series = {s_["field"]: s_ for s_ in res["series"]}
+    assert {"rho_kg_m3", "mu_Pa_s", "surface_tension_N_m", "Re", "Da_macro", "Da_meso",
+            "kLa_surface_1_s", "U_W_m2K"} <= set(series)
+
+    blend = client.post(f"{V1}/fluids/blend", json={
+        "components": [{"name": "Water", "amount": 0.05}, {"name": "Toluene", "amount": 0.04}],
+        "basis": "volume"}).json()["blend"]
+    assert series["rho_kg_m3"]["values"][-1] == pytest.approx(blend["rho_kg_m3"])
+    assert series["mu_Pa_s"]["values"][-1] == pytest.approx(blend["mu_Pa_s"])
+    end = client.post(f"{V1}/assessment/point", json={
+        **pt, "V_L": 0.09, "fluid": {"name": "Water", "rho_kg_m3": blend["rho_kg_m3"],
+                                     "mu_Pa_s": blend["mu_Pa_s"],
+                                     "D_mol_m2_s": blend["D_mol_m2_s"]}}).json()
+    start = client.post(f"{V1}/assessment/point", json=pt).json()
+    for fld in ("Re", "P_V_W_L", "blend_time_95_s", "Da_macro", "Da_meso", "Q_cool_W"):
+        assert series[fld]["values"][0] == pytest.approx(start[fld]), fld
+        assert series[fld]["values"][-1] == pytest.approx(end[fld]), fld
+    assert client.post(f"{V1}/assessment/filling",
+                       json={**body, "feed_fluid": "Nope"}).status_code == 404
 
 
 def test_assessment_envelope_chart_matches_report_figure(client):
@@ -203,6 +318,8 @@ def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
 
     d = client.get(f"{V1}/assessment/vessel-defaults/{REACTOR}").json()
     assert d["corr_sources"][0]["code"] == "Literature" and d["N_rpm"] > 0
+    assert d["N_rpm_range"][0] <= d["N_rpm"] <= d["N_rpm_range"][1]
+    assert d["V_L_range"][0] <= d["V_L"] <= d["V_L_range"][1]
     assert client.get(f"{V1}/assessment/vessel-defaults/Nope").status_code == 404
 
     fp = client.get(f"{V1}/fluids/properties", params={"name": "toluene", "T_C": 40}).json()

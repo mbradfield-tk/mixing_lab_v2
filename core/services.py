@@ -5,9 +5,12 @@ the calculations cannot use (map to HTTP 404 / 422).
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 
+from core import batch_temperature as bt
 from core import bourne_io
 from core import bourne_plan as plan
 from core import catalog, envelope, fluids, kinetics, scale_up, tables, units
@@ -62,23 +65,47 @@ def point_inputs(req: s.PointRequest, *, heat: bool = True
 
     f, rx = req.fluid, req.reaction
     props = fluid_props(f.name, f.T_C, f.P_atm)
-    t_rxn = kinetics.effective_t_rxn(rx.order, rx.k, rx.C0_mol_L, rx.t_rxn_s)
+    if rx is None:
+        reaction, t_rxn = op.Reaction("1", 0.0, 0.0, 0.0, 0.0, present=False), 0.0
+    else:
+        t_rxn = kinetics.effective_t_rxn(rx.order, rx.k, rx.C0_mol_L, rx.t_rxn_s)
+        reaction = op.Reaction(rx.order, rx.k, rx.C0_mol_L, t_rxn, rx.dH_kJ_mol)
     sol = req.solids
     inp = op.PointInputs(
         reactor=req.reactor, geometry=geometry,
         fluid=op.Fluid(f.name, f.rho_kg_m3 or props["rho"], f.mu_Pa_s or props["mu"],
                        f.D_mol_m2_s or props["D_mol"]),
-        reaction=op.Reaction(rx.order, rx.k, rx.C0_mol_L, t_rxn, rx.dH_kJ_mol),
+        reaction=reaction,
         corr_mode=req.corr_source,
         gas=op.Gas(req.gas.v_s_m_s, req.gas.coalescing),
         solids=(op.Solids(rho_p=sol.rho_p_kg_m3, d50_um=sol.d50_um, phi=sol.sphericity,
                           x_wt=sol.loading_g_per_100g, S_zw=sol.zwietering_S,
                           gmb_z=sol.gmb_z, cd=sol.clearance_ratio) if sol else None),
-        feed=op.Feed(req.feed.location, req.feed.d_pipe_mm / 1000.0) if req.feed else None,
+        feed=_feed(req) if req.feed else None,
         heat=(op.Heat(req.heat.T_process_C, req.heat.T_coolant_C)
               if heat and req.heat else None),
     )
     return inp, t_rxn, row
+
+
+def _feed(req: s.PointRequest) -> op.Feed:
+    """Feed inputs; with a rate and temperature, the feed's sensible heat
+    m·Cp·(T_feed − T_process) (W) enters the heat balance."""
+    fd = req.feed
+    q = 0.0
+    if fd.rate_mL_min and fd.T_C is not None:
+        t_process = req.heat.T_process_C if req.heat else req.fluid.T_C
+        tp = thermal_props(fd.fluid or req.fluid.name, fd.T_C)
+        m_dot = fd.rate_mL_min * 1e-6 / 60.0 * tp["rho"]
+        q = m_dot * tp["cp"] * (fd.T_C - t_process)
+    return op.Feed(fd.location, fd.d_pipe_mm / 1000.0, sensible_W=q)
+
+
+def require_kinetics(req: s.PointRequest, t_rxn: float) -> None:
+    """A selected reaction needs a usable t_rxn; "no reaction" (``reaction=None``) is allowed."""
+    if req.reaction is not None and t_rxn <= 0:
+        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
+                         "Damköhler numbers, or select no reaction.")
 
 
 def _require_t_rxn(t_rxn: float, fields: list[str]) -> None:
@@ -100,9 +127,7 @@ def point_result(values: dict) -> s.PointResult:
 
 def evaluate(req: s.PointRequest) -> s.PointResult:
     inp, t_rxn, _row = point_inputs(req)
-    if t_rxn <= 0:
-        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
-                         "Damköhler numbers.")
+    require_kinetics(req, t_rxn)
     return point_result(op.evaluate_point(inp, req.N_rpm / 60.0, req.V_L))
 
 
@@ -170,13 +195,179 @@ def vessel_defaults(reactor: str) -> s.VesselDefaults:
     """The Vessel Assessment inputs a vessel loads when selected."""
     row = _reactor(reactor)
     modes, status = correlation_status(reactor)
+    n_rpm = range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0)
+    v_l = range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0))
+    n_arr, v_min, v_max = envelope.operating_window(row, n_rpm, v_l, n_pts=2)
     return s.VesselDefaults(
         reactor=reactor, D_tank_m=sf(row.get("D_tank_m"), 0.1), D_imp_m=sf(row.get("D_imp_m"), 0.05),
-        N_rpm=range_midpoint(row, "N_rpm_min", "N_rpm_max", 300.0),
-        V_L=range_midpoint(row, "V_L_min", "V_L_max", sf(row.get("V_L"), 1.0)),
+        N_rpm=n_rpm, V_L=v_l,
         Np=sf(row.get("Np"), 1.27), Nq=sf(row.get("Nq"), 0.79),
         corr_sources=[s.OptionItem(code=m.value, label=m.label) for m in modes],
-        corr_status=status)
+        corr_status=status, N_rpm_range=(float(n_arr[0]), float(n_arr[-1])),
+        V_L_range=(float(v_min), float(v_max)))
+
+
+# (PointResult field, group) plotted against dosing time; series without data are dropped.
+FILLING_SERIES = [
+    ("Re", "hydrodynamics"), ("P_V_W_L", "hydrodynamics"), ("P_V_W_kg", "hydrodynamics"),
+    ("froude", "hydrodynamics"), ("blend_time_95_s", "hydrodynamics"),
+    ("circulation_time_s", "hydrodynamics"), ("t_E_s", "hydrodynamics"),
+    ("kolmogorov_um", "hydrodynamics"), ("avg_shear_rate_1_s", "hydrodynamics"),
+    ("max_shear_rate_1_s", "hydrodynamics"),
+    ("kLa_1_s", "mass_transfer"), ("kLa_surface_1_s", "mass_transfer"),
+    ("N_over_N_js", "mass_transfer"), ("kLa_SL_1_s", "mass_transfer"),
+    ("Da_macro", "damkohler"), ("Da_micro", "damkohler"), ("Da_meso", "damkohler"),
+    ("Da_GL", "damkohler"), ("Da_SL", "damkohler"),
+    ("U_W_m2K", "heat"), ("A_ht_m2", "heat"), ("Q_gen_W", "heat"), ("Q_feed_W", "heat"),
+    ("Q_load_W", "heat"), ("Q_cool_W", "heat"), ("Q_gen_over_Q_cool_pct", "heat"),
+]
+
+
+def _liquid(name: str, T_C: float, P_atm: float, custom: pd.DataFrame) -> dict | None:
+    """Mixing-rule properties of a library solvent or custom fluid (None when unknown)."""
+    resolved = (catalog.resolve_solvent_name(name) or name) if catalog.is_known_solvent(name) else name
+    props = fluids.component_props(resolved, custom, T_C)
+    if props is not None and catalog.is_known_solvent(resolved):
+        p = fluid_props(resolved, T_C, P_atm)  # pressure-corrected where the library supports it
+        props.update(rho_kg_m3=p["rho"], mu_Pa_s=p["mu"], D_mol_m2_s=p["D_mol"],
+                     surface_tension_N_m=p["sigma"])
+    return props
+
+
+def _blend_path(p: s.PointRequest, inp: op.PointInputs, feed_fluid: str, volumes
+                ) -> tuple[list[tuple[float, dict, op.PointInputs]], pd.DataFrame]:
+    """(fill volume, blended liquid, point inputs with the blend) at each volume - the initial
+    fluid volume-blended with the dosed fluid - and the custom-fluid table."""
+    custom = repos.fluids.load()
+    f = p.fluid
+    base = _liquid(f.name, f.T_C, f.P_atm, custom)
+    if base is None:
+        pr = fluid_props(f.name, f.T_C, f.P_atm)
+        base = {"rho_kg_m3": pr["rho"], "mu_Pa_s": pr["mu"], "D_mol_m2_s": pr["D_mol"],
+                "surface_tension_N_m": pr["sigma"], "Cp_J_per_kgK": 4182.0, "k_W_per_mK": 0.607}
+    base.update(rho_kg_m3=inp.fluid.rho, mu_Pa_s=inp.fluid.mu, D_mol_m2_s=inp.fluid.D_mol)
+    feed = _liquid(feed_fluid, f.T_C, f.P_atm, custom)
+    if feed is None:
+        raise LookupError(f"Unknown dosed fluid '{feed_fluid}'.")
+    path = []
+    for v in volumes:
+        mix = fluids.volume_blend([(base, p.V_L), (feed, v - p.V_L)])
+        path.append((v, mix, replace(inp, fluid=replace(
+            inp.fluid, rho=mix["rho_kg_m3"], mu=mix["mu_Pa_s"], D_mol=mix["D_mol_m2_s"]))))
+    return path, custom
+
+
+def filling(req: s.FillingRequest) -> s.FillingResult:
+    """Operating point along a fed-batch fill: volume rises linearly from ``point.V_L`` by
+    ``dosing_amount_L`` over ``dosing_time_h``; the liquid is a volume blend of the initial
+    fluid and the dosed fluid at every step."""
+    p = req.point
+    inp, t_rxn, row = point_inputs(p)
+    f = p.fluid
+    v0, dose, n = p.V_L, req.dosing_amount_L, req.n_steps
+    times = np.linspace(0.0, req.dosing_time_h * 60.0, n + 1)
+    volumes = v0 + dose * times / times[-1]
+    path, custom = _blend_path(p, inp, req.feed_fluid, volumes)
+
+    warnings = []
+    v_end = v0 + dose
+    v_max = sf(row.get("V_L_max"))
+    if v_max > 0 and v_end > v_max:
+        warnings.append(f"The final fill volume ({v_end:.4g} L) exceeds the vessel maximum "
+                        f"({v_max:.4g} L); results beyond it are extrapolated.")
+    if req.feed_fluid != f.name:
+        m = fluids.solvent_miscibility(f.name, req.feed_fluid, custom_fluids=custom)
+        if m.get("reactive"):
+            warnings.append(f"{f.name} and {req.feed_fluid} react on mixing - blended properties "
+                            "do not apply.")
+        elif m["miscible"] is False:
+            warnings.append(f"{f.name} and {req.feed_fluid} are immiscible / partially miscible - "
+                            "averaged properties may not apply.")
+        elif m["miscible"] is None:
+            warnings.append(f"Miscibility of {f.name} and {req.feed_fluid} is unknown (no HSP "
+                            "data); properties assume a single-phase blend.")
+
+    fields = [(fld, grp) for fld, grp in FILLING_SERIES
+              if not (grp == "damkohler" and t_rxn <= 0)]
+    fluid_keys = [("V_L", "Fill volume (L)"), ("H_m", "Liquid height (m)"),
+                  ("rho_kg_m3", "Density ρ (kg/m³)"), ("mu_Pa_s", "Viscosity μ (Pa·s)"),
+                  ("nu_mm2_s", "Kinematic viscosity ν (mm²/s)"),
+                  ("surface_tension_N_m", "Surface tension σ (N/m)"),
+                  ("D_mol_m2_s", "Diffusivity D (m²/s)")]
+    fluid_cols = {k: [] for k, _ in fluid_keys}
+    point_cols = {fld: [] for fld, _ in fields}
+    ua_col = []
+    for v, mix, step in path:
+        fluid_cols["V_L"].append(v)
+        fluid_cols["H_m"].append(inp.geometry.liquid_height(v))
+        for k in ("rho_kg_m3", "mu_Pa_s", "surface_tension_N_m", "D_mol_m2_s"):
+            fluid_cols[k].append(mix[k])
+        fluid_cols["nu_mm2_s"].append(mix["mu_Pa_s"] / mix["rho_kg_m3"] * 1e6)
+        res = point_result(op.evaluate_point(step, p.N_rpm / 60.0, v))
+        for fld, _ in fields:
+            point_cols[fld].append(getattr(res, fld))
+        if p.heat is not None:
+            u_val, area = op.jacket_ua(step, p.N_rpm / 60.0, v)
+            ua_col.append(u_val * area)
+
+    def present(values: list) -> bool:
+        return any(x is not None and np.isfinite(x) and x != 0 for x in values)
+
+    series = [s.FillingSeries(field=k, label=label, group="fluid", values=jsonable(fluid_cols[k]))
+              for k, label in fluid_keys]
+    for fld, grp in fields:
+        if fld == "Q_gen_W" and present(ua_col):
+            series.append(s.FillingSeries(field="UA_W_K", label="UA (W/K)", group="heat",
+                                          values=jsonable(ua_col)))
+        if present(point_cols[fld]):
+            series.append(s.FillingSeries(field=fld, label=s.core_key(fld), group=grp,
+                                          values=jsonable(point_cols[fld])))
+    return s.FillingResult(time_min=jsonable(times), V_L=jsonable(volumes), V_end_L=v_end,
+                           feed_rate_mL_min=dose * 1000.0 / (req.dosing_time_h * 60.0),
+                           series=series, warnings=warnings)
+
+
+def temperature(req: s.TemperatureRequest) -> s.TemperatureResult:
+    """Batch temperature against time (core.batch_temperature): the batch scenario without
+    dosing, else the dosed scenario over the dosing time with UA(t) along the fill."""
+    p = req.point
+    if p.heat is None:
+        raise ValueError("Set the process and coolant temperatures to simulate the batch "
+                         "temperature.")
+    inp, t_rxn, _row = point_inputs(p)
+    require_kinetics(p, t_rxn)
+    rx = p.reaction
+    kin = (bt.Kinetics(rx.order, rx.k, rx.C0_mol_L, rx.dH_kJ_mol) if rx is not None
+           else bt.Kinetics("1", 0.0, 0.0, 0.0))
+    T0, n_rps = p.heat.T_process_C, p.N_rpm / 60.0
+    cp0 = thermal_props(p.fluid.name, T0)["cp"]
+    dosing, T_f = None, None
+    if p.feed is not None and req.dosing_time_h and req.dosing_amount_L:
+        feed_fluid = p.feed.fluid or p.fluid.name
+        T_f = p.feed.T_C if p.feed.T_C is not None else T0
+        tpf = thermal_props(feed_fluid, T_f)
+        t_dose = req.dosing_time_h * 3600.0
+        times = np.linspace(0.0, t_dose, 26)
+        path, _custom = _blend_path(p, inp, feed_fluid,
+                                    p.V_L + req.dosing_amount_L * times / t_dose)
+        ua_grid = [float(np.prod(op.jacket_ua(step, n_rps, v))) for v, _mix, step in path]
+        dosing = bt.Dosing(t_dose, req.dosing_amount_L, tpf["rho"], tpf["cp"], T_f)
+
+        def ua(t: float) -> float:
+            return float(np.interp(t, times, ua_grid))
+    else:
+        if not kin.active:
+            raise ValueError("Nothing to simulate: select a reaction, or a fed-batch dosing "
+                             "(time, amount and temperature).")
+        ua_const = float(np.prod(op.jacket_ua(inp, n_rps, p.V_L)))
+
+        def ua(t: float) -> float:
+            return ua_const
+    res = bt.profile(T0=T0, T_cool=p.heat.T_coolant_C, V0_L=p.V_L, rho0=inp.fluid.rho, cp0=cp0,
+                     kin=kin, ua=ua, dosing=dosing)
+    return s.TemperatureResult.model_validate(
+        {k: jsonable(v) for k, v in res.items()} | {"T_coolant_C": p.heat.T_coolant_C,
+                                                    "T_feed_C": T_f})
 
 
 def fluid_properties(name: str, T_C: float = 25.0, P_atm: float = 1.0) -> s.FluidProperties:
@@ -219,9 +410,7 @@ def save_assessment(req: s.AssessmentReportRequest) -> int:
     """Evaluate the point and append it to Recorded Results; returns the record count."""
     p = req.point
     inp, t_rxn, _row = point_inputs(p)
-    if t_rxn <= 0:
-        raise ValueError("Provide a reaction time or rate constant (> 0) to compute "
-                         "Damköhler numbers.")
+    require_kinetics(p, t_rxn)
     hydro = op.evaluate_point(inp, p.N_rpm / 60.0, p.V_L)
     row = recorded_result_row(hydro, reactor=p.reactor, reaction=req.reaction_name,
                               fluid=p.fluid.name, T_C=p.fluid.T_C, N_rpm=p.N_rpm, V_L=p.V_L,

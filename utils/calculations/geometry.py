@@ -8,11 +8,12 @@ D_tank, H, heights in m; dish volume in m^3; fill volume input in litres
 REFERENCES (per function)
 -------------------------
     dish_geometry, estimate jacket dish factors
-        Torispherical coefficients (h = 0.1935 D, V = 0.0847 D^3) and conical/
-        2:1 semi-ellipsoidal (h = D/4, V = pi D^3/24) forms are standard
-        dished-head geometry.
-        Ref: DIN 28011 (torispherical) / DIN 28013 (semi-ellipsoidal) heads;
-        ASME F&D head geometry.  [NOT in context/ - verify]
+        Torispherical = Klöpper head (DIN 28011: crown radius D, knuckle 0.1 D):
+        h = 0.1938 D, V = 0.0990 D^3 (exact integration of the profile; the
+        earlier 0.0847 D^3 under-stated the volume by 14 %).  2:1 semi-ellipsoidal
+        (DIN 28013 Korbbogen is close): h = D/4, V = pi D^3/24.  Hemispherical
+        h = D/2, V = pi D^3/12.  Cone: V = pi D^2 h/12.
+        Ref: DIN 28011 / DIN 28013 head geometry; Perry's Handbook 9th ed. Sec. 10.
     liquid_height_from_volume
         Geometric volume-to-height inversion.  [definition]
     parse_cone_angle_deg, cone_depth
@@ -83,7 +84,7 @@ def dish_geometry(D_tank: float, dish_type: str = "",
         V_dish = np.pi * h_dish * (3 * (D_tank / 2) ** 2 + h_dish**2) / 6
     elif "torisph" in dish or "din" in dish:
         h_dish = 0.1935 * D_tank
-        V_dish = 0.0847 * D_tank**3
+        V_dish = 0.0990 * D_tank**3
     else:
         h_dish = D_tank / 4
         V_dish = np.pi * D_tank**3 / 24

@@ -1,31 +1,24 @@
-"""Liquid-liquid dispersion: Weber number, drop size, phase separation, mass transfer.
+"""Liquid-liquid dispersion screen: Weber number, drop size, phase separation,
+minimum dispersion speed (used by the Fluid Database blend tab).
 
 UNIT CONVENTION
 ---------------
 N in rev/s, lengths in m, densities in kg/m^3, mu in Pa.s, interfacial tension
-sigma_LL in N/m, dissipation epsilon_kg in W/kg.  Drop sizes returned in m,
-velocities in m/s, times in s.
-
+sigma_LL in N/m.  Drop sizes returned in m, velocities in m/s, times in s.
 
 REFERENCES (per function)
 -------------------------
-None of these correlations are in the context source (Myerson 2019).
-
     weber_number (We = rho_c N^2 D^3 / sigma)
         Standard impeller Weber number.  [definition]
     sauter_drop_diameter (d32/D = 0.053 We^-0.6 (1 + 3 phi_d))
-        Ref: Hinze (1955), AIChE J. 1, 289; Chen & Middleman (1967),
-        AIChE J. 13, 989.  [NOT in context/ - verify]
-    phase_separation_check (Stokes drop settling -> separation time)
-        Ref: Stokes' law; standard sedimentation.  [textbook - verify H_est=D_tank assumption]
+        Ref: Chen & Middleman (1967), AIChE J. 13, 989 (doi:10.1002/aic.690130529);
+        holdup term as in Calabrese et al. (1986), AIChE J. 32, 657.
+    phase_separation_check (Stokes / Schiller-Naumann drop settling -> separation time)
+        Settling over one tank diameter; bands are heuristic.
     minimum_dispersion_speed
         Critical impeller Weber number criterion, N_min ~ sqrt(sigma/(rho_c D^3)),
-        with a linear holdup correction.  Simplified heuristic — NOT the
-        published Skelland & Seksaria (1978) correlation (which includes
-        (T/D), viscosity and buoyancy groups).  [heuristic - verify]
-    liquid_liquid_mass_transfer (Sh = 2 + 0.6 Re^0.5 Sc^(1/3))
-        Ref: Calderbank & Moo-Young (1961), Chem. Eng. Sci. 16, 39;
-        Ranz & Marshall (1952).  [NOT in context/ - verify]
+        with a linear holdup correction.  Simplified heuristic - NOT the
+        published Skelland & Seksaria (1978) correlation.
 """
 
 import numpy as np
@@ -121,53 +114,3 @@ def minimum_dispersion_speed(D_imp: float, sigma_LL: float,
     C = 1.03
     holdup = min(max(float(phi_d), 0.0), 0.95)
     return C * (sigma_LL / (rho_c * D_imp**3))**0.5 * (1.0 + 2.5 * holdup)
-
-
-def n_min_van_heuven_beek(d_imp: float, phi: float, rho_c: float,
-                          rho_d: float, mu_c: float, sigma: float) -> float:
-    """Van Heuven & Beek (1971) minimum emulsification speed, rev/s."""
-    d_rho = abs(rho_d - rho_c)
-    if not all(_positive_finite(v) for v in (d_imp, rho_c, mu_c, sigma)) or d_rho <= 0:
-        return np.nan
-    holdup = min(max(float(phi), 0.0), 0.95)
-    rho_m = holdup * rho_d + (1.0 - holdup) * rho_c
-    return (3.28 * (DEFAULT_GRAVITY * d_rho)**0.385 * mu_c**0.0769 * sigma**0.0769
-            * (1.0 + 2.5 * holdup)**0.897
-            / (d_imp**0.769 * rho_m**0.538))
-
-
-
-def liquid_liquid_mass_transfer(d32: float, D_mol: float,
-                                rho_c: float, mu_c: float,
-                                epsilon_kg: float) -> float:
-    """Liquid-liquid mass-transfer coefficient — Calderbank & Moo-Young (1961)."""
-    if not all(_positive_finite(v) for v in (d32, D_mol, mu_c, rho_c)):
-        return 0.0
-    v_slip = (max(float(epsilon_kg), 1e-12) * d32) ** (1.0 / 3.0)
-    Re_d = rho_c * v_slip * d32 / mu_c
-    Sc = mu_c / (rho_c * D_mol)
-    Sh = 2.0 + 0.6 * Re_d**0.5 * Sc**(1.0 / 3.0)
-    return Sh * D_mol / d32
-
-
-def liquid_liquid_capacity_ratio(kLa: float, t_rxn: float) -> float:
-    """Return transfer capacity divided by first-order kinetic demand."""
-    if not _positive_finite(kLa) or not _positive_finite(t_rxn):
-        return 0.0
-    return float(kLa * t_rxn)
-
-
-def dispersion_screen(N: float, D_imp: float, D_tank: float,
-                      rho_c: float, rho_d: float, mu_c: float,
-                      sigma_LL: float, phi_d: float, D_mol: float,
-                      epsilon_kg: float) -> dict:
-    """Return a consolidated liquid-liquid dispersion and transfer screen."""
-    separation = phase_separation_check(
-        N, D_imp, D_tank, rho_c, rho_d, mu_c, sigma_LL, phi_d)
-    kLa = liquid_liquid_mass_transfer(
-        separation["d32 (m)"], D_mol, rho_c, mu_c, epsilon_kg)
-    separation.update({
-        "N_min (1/s)": minimum_dispersion_speed(D_imp, sigma_LL, rho_c, phi_d),
-        "kLa (1/s)": kLa,
-    })
-    return separation

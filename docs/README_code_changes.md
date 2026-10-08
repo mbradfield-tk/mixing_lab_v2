@@ -594,3 +594,94 @@ The Taipy app is unchanged; its menu icons now come from `core.media.thumbnail` 
 - **Regression coverage kept without Taipy:** the page inputs and page-side values that the API, contract and report tests compared against were frozen (while Taipy was still installed) into `tests/golden/requests.json` and `tests/golden/page_parity.json`. `tests/golden_helpers.py` holds the comparison helpers. `test_contracts`, `test_reports` and the parity tests in `test_api` now read these fixtures. The KPI-rule and reaction-time tests that did not need a page moved to `tests/test_bourne_kpi.py`; `test_bottom_dish_height` now uses `core.records.bottom_dish_height`. The Taipy admin-unlock and blend-page `_join_pairs` tests were archived.
 - **Other clean-up:** `requirements.txt` drops taipy-gui, Flask, Flask-SocketIO, flask-compress, gunicorn and gevent. `utils.usage.install_usage_logging` (the Flask hook) is removed; the FastAPI middleware logs usage. Docstrings no longer refer to Taipy. Python suite: 760 tests (853 before; the difference is the archived Taipy tests).
 - **Bourne Protocol:** Tests 2 and 3 have numbered sub-sections like Test 1 (2.1 Feed definition & test conditions, 2.2 Measured responses; 3.1 Feed locations & test conditions, 3.2 Measured responses).
+
+**16o. Calculation accuracy review (equations, units, sources).**
+
+Every equation, its variables, code location, source and verification status is listed in [EQUATIONS_REGISTRY.md](EQUATIONS_REGISTRY.md). Numeric corrections:
+
+- **Specific power uses the actual fill volume.** `hydro_basics` / `compute_reactor_hydro` / `compute_reactor_hydro_with_mode` take an optional `V_m3`. The VA/VC operating point, the Sensitivity screening vessel and the Bourne Test 1 detail table pass the entered volume. Before this change V = πD²H/4, which over-stated the volume of dished vessels by about 12 % (up to 37 %). P/V, ε, t_c, η, t_E, γ̇_avg and kLa_surface all move accordingly, and "Volume (L)" now equals the entered fill. The fallback without `V_m3` is unchanged.
+- **Klöpper (torispherical) head volume** is now 0.0990 D³ (was 0.0847 D³, 14 % low). The value is checked by profile integration.
+- **Heat generation is signed:** Q_gen = −ΔH·r (positive when exothermic). Endothermic reactions no longer count as heat load. Zero-order kinetics now give r = k (previously 0).
+- **Hausen laminar jacket Nu:** the constant is 0.0668 (was 0.065), in both copies. The flow length L = 1 m is now the named constant `JACKET_PATH_L_M`.
+- **Heat Transfer "Initial dT/dt"** = |UA(T_j − T₀) + P_ag|/(ρVc_p). The old form (q_max − P_ag) was wrong for heating.
+- **Unit converter:** US gal/h is 1.0515e-6 m³/s (was 10× too large).
+- **VA:** the ΔH field label states the sign convention ("− = exothermic").
+
+Equations Reference page (`data/equations_source.json`):
+
+- **New entries:**
+  - liquid height and dish volumes;
+  - feed-point ε rules and the mesomixing reference (Bałdyga, Bourne & Hearn 1997);
+  - zero-order t_rxn and rate;
+  - feed sensible heat / Q_load;
+  - the VA batch/dosed temperature-profile balance;
+  - liquid–liquid dispersion screen;
+  - blend mixing rules;
+  - Cp(T) and k(T);
+  - scale-up matching;
+  - Bourne planning;
+  - ROM demo-correlation warning.
+- **Corrected entries:**
+  - wall and lining k now match the code (SS 15, glass 1.2);
+  - Da_SL slip velocity (the code uses v_t only);
+  - process-side Nu attribution (Chilton–Drew–Jebens);
+  - ε_max form and reference consistency;
+  - EDCF variant note (Jüsten et al. 1996);
+  - van 't Riet ungassed P/V and validity range;
+  - blend-time validity;
+  - heuristic labels on the Da / heat-balance / suspension / miscibility bands;
+  - dish-area references (DIN 28011/28013) and Perry/TEMA references.
+- **Hyperlinks:** all 24 DOI / ISBN links were verified (Crossref / Open Library) to resolve to the cited work, and the NIST link returns 200. The ResearchGate link (Grenville et al. 2017) blocks automated clients (HTTP 403) and is labelled "opens in a browser only".
+
+Code docstrings were corrected: the blend-time form, the ε_max / mesomixing / EDCF references, and the signed heat generation. The golden baselines (`tests/golden/*.json`) were rewritten after confirming that every diff traces to the corrections above. New regression tests are in `tests/test_calculation_review.py`.
+
+**16p. Heat-transfer data sources, dead-code removal and Equations Reference redesign.**
+
+- **Nusselt options (Heat Transfer tool):** only the three traceable correlations remain: Chilton–Drew–Jebens (the new default), flat-blade turbine and Brooks–Su. Removed:
+  - "DIN 28131": that standard covers agitator types and did not define these constants; they duplicated CDJ.
+  - "Lehrer (anchor/helical)": Lehrer (1970), doi:10.1021/i260036a010, is a jacket-side correlation.
+  - "Stein–Schmidt": the cited *Chem. Eng. Process.* 32:305 is a filtration paper.
+  - "Nagata 0.18": not traceable.
+- **Coolants (`data/HTM.csv`):** checked against vendor datasheets, now stored in `data/HTM_datasheets`.
+  - **Dowtherm A** (Dow TDS 176-01472): μ corrected from 2.5 to 3.8 mPa·s.
+  - **Dowtherm Q** (Dow TDS 176-01467): corrected ρ 962, μ 3.5 mPa·s, k 0.121.
+  - **Therminol 66** (Eastman bulletin TF-8695): Cp 1680 → 1580.
+  - **Marlotherm SH** (Eastman guide MT-10741): the fluid is dibenzyltoluene, not benzyltoluene. New values: range −15–325 °C, ρ 1039, Cp 1580, μ 2.8 → 36 mPa·s, k 0.130.
+  
+  Every entry now cites its datasheet.
+- **One home for the heat-transfer primitives:** `utils/calculations/heat_transfer.py` now holds the Nusselt and material tables (with their source dicts) and these functions: `nusselt_jacket`, `jacket_side_htc(htm, v, d_h)`, `estimate_U_from_resistances`, `estimate_jacket_area` and `time_to_cool_or_heat`.
+  - `core/heat_transfer.py` imports them and keeps only the Heat Transfer tool simulations.
+  - Removed duplicates: core copies of `estimate_jacket_area`, the cone helpers, `impeller_power`, `nusselt_jacket`, `jacket_side_htc`, `estimate_U_from_resistances` and `time_to_cool_or_heat`.
+  - Removed from utils: the name-based `jacket_side_htc`, `load_htm_db` / `HTM_DB`, and the unused `JACKET_HTC` table.
+  - `estimate_U_detailed` now uses the shared CDJ correlation and the 15 W/m·K stainless default (was 16).
+- **Unused calculations removed:**
+  - gas–liquid: `gas_holdup_calderbank`, `gas_flooding_speed` / `_flow_rate`, `complete_dispersion_speed` / `_flow_rate`;
+  - liquid–liquid: `n_min_van_heuven_beek`, `liquid_liquid_mass_transfer`, `liquid_liquid_capacity_ratio`, `dispersion_screen`;
+  - ROM registry: the demo correlations (never applied, untraceable sources), `get_all_registered_reactors`, `get_all_correlations`, `available_param_modes`, `has_any_alt_correlations`, `PARAM_DISPLAY`;
+  - ROM templates: `templates_for_param`, `compatible_templates`;
+  - kinetics: the `timescale_profile` alias.
+  
+  The ROM parity test now registers its own correlation.
+- **Equations Reference:**
+  - **Source:** now `data/equations.md`, readable Markdown. Each `#` heading is a section and each `##` heading an entry. An entry has an optional `Used in:` line, a body whose first `$$` block is the headline equation, and a `Sources:` list. `core/equations.py` parses it. `data/equations_source.json` is removed.
+  - **API:** `GET /equations` returns `sections[] → {id, title, intro, entries[] → {id, title, used_in, equation, body, sources}}`.
+  - **Content:** reorganised into 13 sections and 47 entries, with the overlaps between "Heat Balance" and "Heat Transfer Tool" merged (jacket area, batch time, U, Nusselt, wall k, impeller power).
+  - **Page:**
+    - a sticky search / "Expand all" / "Collapse all" bar;
+    - a sticky table of contents with deep links (`#section--entry`, honoured on load);
+    - one card per entry: title, "used in" chips, headline equation, and a collapsible "Variables, notes & sources" panel;
+    - search matches titles, LaTeX, notes, sources and pages, and shows "N of M entries".
+  
+  The stray "; search matches…" text inside each section is gone.
+- **Tests:** 764 Python and 101 web tests pass. The golden Heat Transfer entries were refreshed: 3 correlations, corrected HTF data, and Marlotherm now in range at −10 °C.
+
+**16q. Vortex at an agitation rate (Vessel Database).**
+
+- **Model (`core/vortex.py`):** Nagata combined Rankine vortex. Solid-body rotation applies inside the impeller radius and a free vortex outside it. The centre height is found by bisection so the liquid volume equals the static fill, including flat, conical and dished bottoms.
+  - Baffles: ≥ 3 → flat surface; 1–2 → unbaffled profile shown as an upper bound; blank → treated as unbaffled with a note.
+  - Warnings: vortex reaching the bottom or the top impeller, surface rising above the tangent line or brim at the wall. A note is added when Re < 10⁴.
+- **API:** `/media/vessels/{name}/fill` and `/schematic.png` take an optional `rpm`. The fill response gains `vortex` (rpm, regime, depth, centre and wall heights, Re, Fr, warnings).
+- **Schematic:** the liquid is drawn up to the vortex surface, with the rest level shown dashed, and the label reads "V L @ N rpm".
+- **Page:** a "Show vortex at an agitation rate" switch adds an rpm slider (over the vessel's rated speed range, defaulting to the midpoint) and a caption with the vortex depth and model notes.
+- **Docs:** a new "Free-surface vortex (Nagata)" entry in `data/equations.md` and row G9 in `docs/EQUATIONS_REGISTRY.md`.
+- **Tests:** `tests/test_vortex.py` and the rpm helpers in `VesselDatabase.test.ts`. 771 Python and 103 web tests pass.

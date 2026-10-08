@@ -2609,70 +2609,80 @@
         "title": "DhAction",
         "type": "string"
       },
-      "EquationItem": {
+      "EquationEntry": {
         "additionalProperties": false,
         "properties": {
-          "latex": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "latex: a display equation",
-            "title": "Latex"
-          },
-          "level": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "header: 3 or 4",
-            "title": "Level"
-          },
-          "text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "header / md: Markdown with inline $LaTeX$",
-            "title": "Text"
-          },
-          "type": {
-            "enum": [
-              "header",
-              "latex",
-              "md"
-            ],
-            "title": "Type",
+          "body": {
+            "description": "Markdown with $inline$ / $$display$$ LaTeX",
+            "title": "Body",
             "type": "string"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Headline display equation (raw LaTeX)",
+            "title": "Equation"
+          },
+          "id": {
+            "description": "Stable anchor id (section--entry)",
+            "title": "Id",
+            "type": "string"
+          },
+          "sources": {
+            "description": "Markdown references, one per source",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "used_in": {
+            "description": "Pages that use this equation",
+            "items": {
+              "type": "string"
+            },
+            "title": "Used In",
+            "type": "array"
           }
         },
         "required": [
-          "type"
+          "id",
+          "title",
+          "used_in",
+          "body",
+          "sources"
         ],
-        "title": "EquationItem",
+        "title": "EquationEntry",
         "type": "object"
       },
       "EquationSection": {
         "additionalProperties": false,
         "properties": {
-          "items": {
+          "entries": {
             "items": {
-              "$ref": "#/components/schemas/EquationItem"
+              "$ref": "#/components/schemas/EquationEntry"
             },
-            "title": "Items",
+            "title": "Entries",
             "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "intro": {
+            "description": "Markdown shown above the section's entries",
+            "title": "Intro",
+            "type": "string"
           },
           "title": {
             "title": "Title",
@@ -2680,8 +2690,10 @@
           }
         },
         "required": [
+          "id",
           "title",
-          "items"
+          "intro",
+          "entries"
         ],
         "title": "EquationSection",
         "type": "object"
@@ -10275,6 +10287,23 @@
               ],
               "title": "Fill L"
             }
+          },
+          {
+            "in": "query",
+            "name": "rpm",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rpm"
+            }
           }
         ],
         "responses": {
@@ -10301,7 +10330,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Liquid level and warnings at a fill volume",
+        "summary": "Liquid level and warnings at a fill volume (and the vortex at rpm)",
         "tags": [
           "Reference"
         ]
@@ -10335,6 +10364,23 @@
                 }
               ],
               "title": "Fill L"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rpm",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rpm"
             }
           }
         ],

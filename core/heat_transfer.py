@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,148 +8,12 @@ import numpy as np
 import pandas as pd
 
 from core.records import bottom_dish_height
-
-# Process-side Nusselt correlations for jacketed agitated vessels:
-#   Nu = C * Re^a * Pr^b * (mu/mu_wall)^c
-# Each entry carries a `ref` so the constants can be audited by hand. Entries
-# flagged UNVERIFIED were inherited from the original tool and could not be traced
-# to a primary source in the 2026-09 review; confirm before relying on them.
-NUSSELT_CORRELATIONS: dict[str, dict[str, float | str]] = {
-    "Chilton–Drew–Jebens (paddle)": {
-        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "Chilton, Drew & Jebens (1944), Ind. Eng. Chem. 36(6):510. "
-               "Jacketed vessel, paddle impeller, turbulent (Re > 400).",
-    },
-    "Flat-blade turbine (baffled)": {
-        "C": 0.74, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "Uhl & Gray, Mixing: Theory and Practice Vol. 1 (1966); Perry's "
-               "Chemical Engineers' Handbook 9th ed., Sec. 11. Baffled vessel with "
-               "a flat-blade (Rushton) turbine, turbulent regime.",
-    },
-    "Brooks–Su (retreat blade, glass-lined)": {
-        "C": 0.33, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "Brooks & Su (1959), Chem. Eng. Prog. 55(10):54. Retreat-curve blade "
-               "impeller in a glass-lined vessel.",
-    },
-    "DIN 28131 (standard)": {
-        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "DIN 28131:1979. UNVERIFIED — constants are identical to "
-               "Chilton–Drew–Jebens; confirm against the standard.",
-    },
-    "Lehrer (anchor/helical)": {
-        "C": 0.54, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "Lehrer (1970), Chem. Eng. Sci. 25:1397. UNVERIFIED — Lehrer's "
-               "published form is not a simple power law; confirm C/a/b/c.",
-    },
-    "Stein–Schmidt (high Re)": {
-        "C": 0.50, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
-        "ref": "Stein & Schmidt (1993), Chem. Eng. Process. 32:305. UNVERIFIED — "
-               "constants not traced to the paper.",
-    },
-    "Nagata (paddle)": {
-        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.18,
-        "ref": "Nagata (1975), Mixing: Principles and Applications. UNVERIFIED — "
-               "viscosity exponent 0.18 not traced to the source.",
-    },
-}
-
-# Thermal conductivity at ~20-25 C. Alloy conductivity varies with grade, temper
-# and temperature, so check the cited source or a mill certificate for critical duty.
-WALL_CONDUCTIVITY: dict[str, float] = {
-    "stainless steel": 15.0,
-    "stainless": 15.0,
-    "ss316": 13.4,
-    "ss304": 14.4,
-    "hastelloy": 12.0,
-    "hastelloy c-276": 12.0,
-    "inconel": 15.0,
-    "incoloy": 12.0,
-    "monel": 26.0,
-    "nickel": 61.0,
-    "carbon steel": 50.0,
-    "glass": 1.2,
-    "glass-lined": 1.2,
-    "titanium": 22.0,
-    "zirconium": 23.0,
-    "tantalum": 57.0,
-    "copper": 390.0,
-}
-
-WALL_CONDUCTIVITY_REF: dict[str, str] = {
-    "stainless steel": "Generic austenitic grade; midpoint of 304/316 (13-16 W/m.K). "
-                       "Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
-    "ss316": "316/316L at 20-100 C. ASM Handbook Vol. 1; confirm per mill certificate.",
-    "ss304": "Type 304 at 20 C. Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
-    "hastelloy": "Hastelloy C at 0-25 C. Engineering ToolBox. Haynes C-276 datasheets "
-                 "quote ~10 W/m.K at 25 C — verify for critical duty.",
-    "hastelloy c-276": "See 'hastelloy'.",
-    "inconel": "Inconel (600) at 21-100 C. Engineering ToolBox. Inconel 625 is lower (~9.8 W/m.K).",
-    "incoloy": "Incoloy at 0-100 C. Engineering ToolBox.",
-    "monel": "Monel at 0-100 C. Engineering ToolBox.",
-    "nickel": "Wrought nickel at 0-100 C, quoted range 61-90 W/m.K; lower bound used. "
-              "Engineering ToolBox.",
-    "carbon steel": "Plain carbon steel at 20 C, 43 (1% C) to 54 (0.5% C) W/m.K; 50 W/m.K "
-                    "used as a mid-range design value. Engineering ToolBox.",
-    "glass": "Borosilicate glass / glass-lining enamel, ~1.1-1.3 W/m.K. Harmonised with "
-             "LINING_CONDUCTIVITY['glass'].",
-    "glass-lined": "See 'glass'.",
-    "titanium": "Titanium at 0 C, 22.4 W/m.K (Grade 2 ~21.9). Engineering ToolBox.",
-    "zirconium": "Zirconium at 0 C, 23.2 W/m.K. Engineering ToolBox.",
-    "tantalum": "Tantalum at 0 C, 57.4 W/m.K. Engineering ToolBox.",
-    "copper": "Electrolytic (ETP) copper at 0-25 C. Engineering ToolBox.",
-}
-
-LINING_CONDUCTIVITY: dict[str, float] = {
-    "glass": 1.2,
-    "glass-lined": 1.2,
-    "ptfe": 0.25,
-    "teflon": 0.25,
-    "pfa": 0.25,
-    "pvdf": 0.19,
-    "rubber": 0.16,
-    "epoxy": 0.20,
-    "titanium": 22.0,
-    "hastelloy": 12.0,
-    "tantalum": 57.0,
-}
-
-# Nominal as-applied lining thickness (m). Reactor-grade glass lining is
-# typically 1.0-2.0 mm; confirm against the vessel datasheet.
-LINING_THICKNESS_DEFAULT: dict[str, float] = {
-    "glass": 0.0015,
-    "glass-lined": 0.0015,
-    "ptfe": 0.002,
-    "teflon": 0.002,
-    "pfa": 0.002,
-    "pvdf": 0.003,
-    "rubber": 0.006,
-    "epoxy": 0.003,
-    "titanium": 0.002,
-    "hastelloy": 0.002,
-    "tantalum": 0.001,
-}
-
-LINING_CONDUCTIVITY_REF: dict[str, str] = {
-    "glass": "Glass-lining enamel, 1.2 W/m.K (typical 1.1-1.3). De Dietrich / Pfaudler "
-             "glass-lining technical data.",
-    "glass-lined": "See 'glass'.",
-    "ptfe": "PTFE. Engineering ToolBox, Plastics - Thermal Conductivity Coefficients.",
-    "teflon": "See 'ptfe'.",
-    "pfa": "PFA, quoted 0.19-0.25 W/m.K; upper bound used. Fluoropolymer vendor datasheets.",
-    "pvdf": "PVDF. Fluoropolymer vendor datasheets.",
-    "rubber": "Soft/natural rubber lining. Engineering ToolBox.",
-    "epoxy": "Unfilled epoxy coating. Engineering ToolBox.",
-    "titanium": "Metal clad lining — see WALL_CONDUCTIVITY_REF['titanium'].",
-    "hastelloy": "Metal clad lining — see WALL_CONDUCTIVITY_REF['hastelloy'].",
-    "tantalum": "Metal clad lining — see WALL_CONDUCTIVITY_REF['tantalum'].",
-}
-
-# Jacket-side film coefficient used when the medium has no computed value.
-# 1500 W/(m2.K) is a conventional simple-jacket water/glycol value
-# (Perry's Chemical Engineers' Handbook 9th ed., Sec. 11).
-JACKET_HTC_DEFAULT = 1500.0
-# Fouling resistance 2e-4 m2.K/W — typical clean process service (TEMA RGP-T-2.4).
-FOULING_DEFAULT = 0.0002
+from utils.calculations.geometry import liquid_height_from_volume
+from utils.calculations.heat_transfer import (
+    NUSSELT_CORRELATIONS, estimate_jacket_area, estimate_U_from_resistances, jacket_side_htc,
+    nusselt_jacket, time_to_cool_or_heat,
+)
+from utils.calculations.hydrodynamics import impeller_power
 
 
 @dataclass
@@ -233,130 +96,6 @@ def load_csvs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dic
             entry["h_jacket_override"] = safe_float(row.get("h_jacket_override"))
         htm_db[str(row["htm_name"])] = entry
     return reactors, fluids, htm_db
-
-
-def _parse_cone_angle_deg(dish_type: str, default: float = 45.0) -> float:
-    """Cone wall angle from the horizontal (deg), parsed from a dish label."""
-    s = str(dish_type).lower()
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", s)
-    if m is None:
-        m = re.search(r"(\d+(?:\.\d+)?)", s)
-    if m is not None:
-        ang = float(m.group(1))
-        if 5.0 <= ang <= 85.0:
-            return ang
-    return default
-
-
-def _cone_depth(D_tank: float, dish_type: str = "", default_angle_deg: float = 45.0) -> float:
-    """Conical bottom depth (m) from the tank ID and its (parsed) cone angle."""
-    if D_tank <= 0:
-        return 0.0
-    return (D_tank / 2.0) * np.tan(np.radians(_parse_cone_angle_deg(dish_type, default_angle_deg)))
-
-
-def estimate_jacket_area(D_tank: float, H: float, bottom_dish: str = "",
-                         bottom_dish_height_m: float | None = None) -> float:
-    if D_tank <= 0 or H <= 0:
-        return 0.0
-    A_flat = np.pi / 4 * D_tank**2
-    dish = (bottom_dish or "").lower()
-    measured_height = float(bottom_dish_height_m or 0.0)
-    if "ellip" in dish:
-        h_dish = measured_height if measured_height > 0 else D_tank / 4
-        A_dish_full = 1.084 * D_tank**2   # 2:1 semi-ellipsoidal head, exact spheroid area
-    elif "torisph" in dish or "din" in dish:
-        h_dish = measured_height if measured_height > 0 else 0.1935 * D_tank
-        A_dish_full = 0.99 * D_tank**2    # Klöpper head (DIN 28011) surface area
-    elif "conic" in dish:
-        h_dish = measured_height if measured_height > 0 else _cone_depth(D_tank, dish)
-        r = D_tank / 2.0
-        A_dish_full = A_flat * np.sqrt(1.0 + (h_dish / r) ** 2) if r > 0 else A_flat
-    else:
-        h_dish = measured_height
-        A_dish_full = A_flat
-    if h_dish > 0 and H < h_dish:
-        return (H / h_dish) * A_dish_full
-    return A_dish_full + np.pi * D_tank * max(H - h_dish, 0.0)
-
-
-def liquid_height_from_volume(V_L: float, D_tank: float, H_max: float,
-                              bottom_dish: str = "",
-                              bottom_dish_height_m: float | None = None) -> float:
-    """Liquid height (m) from fill volume — delegates to the shared dish-aware
-    geometry in :mod:`utils.calculations.geometry` so every page agrees."""
-    from utils.calculations.geometry import liquid_height_from_volume as _shared
-
-    return _shared(V_L, D_tank, H_max, bottom_dish, bottom_dish_height_m)
-
-
-def impeller_power(Np: float, rho: float, N_rps: float, D_imp: float) -> float:
-    if Np <= 0 or rho <= 0 or N_rps <= 0 or D_imp <= 0:
-        return 0.0
-    return Np * rho * (N_rps**3) * (D_imp**5)
-
-
-def nusselt_jacket(Re: float, Pr: float, mu_ratio: float, correlation: str) -> float:
-    corr = NUSSELT_CORRELATIONS.get(correlation, NUSSELT_CORRELATIONS["DIN 28131 (standard)"])
-    c = float(corr["C"])
-    a = float(corr["a"])
-    b = float(corr["b"])
-    m = float(corr["c"])
-    if Re <= 0 or Pr <= 0:
-        return 0.0
-    return c * Re**a * Pr**b * (mu_ratio if mu_ratio > 0 else 1.0) ** m
-
-
-def estimate_U_from_resistances(
-    h_i: float,
-    h_o: float,
-    wall_k: float,
-    wall_thickness_m: float,
-    lining_k: float,
-    lining_thickness_m: float,
-    fouling: float,
-) -> float:
-    if h_i <= 0 or h_o <= 0:
-        return 0.0
-    r_total = (1.0 / h_i) + (1.0 / h_o) + max(fouling, 0.0)
-    if wall_k > 0 and wall_thickness_m > 0:
-        r_total += wall_thickness_m / wall_k
-    if lining_k > 0 and lining_thickness_m > 0:
-        r_total += lining_thickness_m / lining_k
-    return 1.0 / r_total if r_total > 0 else 0.0
-
-
-def jacket_side_htc(htm: dict[str, Any], v_jacket: float, d_hyd: float) -> float:
-    if "h_jacket_override" in htm:
-        return safe_float(htm["h_jacket_override"], JACKET_HTC_DEFAULT)
-    rho_j = safe_float(htm.get("rho_kg_m3"))
-    mu_j = safe_float(htm.get("mu_Pa_s"))
-    cp_j = safe_float(htm.get("Cp_J_kgK"))
-    k_j = safe_float(htm.get("k_W_mK"))
-    if rho_j <= 0 or mu_j <= 0 or cp_j <= 0 or k_j <= 0 or v_jacket <= 0 or d_hyd <= 0:
-        return JACKET_HTC_DEFAULT
-    re_j = rho_j * v_jacket * d_hyd / mu_j
-    pr_j = cp_j * mu_j / k_j
-    if re_j < 2300:
-        nu_j = 3.66 + 0.065 * d_hyd * re_j * pr_j / (1.0 + 0.04 * (d_hyd * re_j * pr_j) ** (2.0 / 3.0))
-    else:
-        nu_j = 0.023 * re_j**0.8 * pr_j**0.4
-    return nu_j * k_j / d_hyd
-
-
-def time_to_cool_or_heat(
-    rho: float, V_L_m3: float, cp: float, U: float, area: float, t_start: float, t_end: float, t_jacket: float
-) -> float:
-    if rho <= 0 or V_L_m3 <= 0 or cp <= 0 or U <= 0 or area <= 0:
-        return np.inf
-    dt_start = t_start - t_jacket
-    dt_end = t_end - t_jacket
-    if dt_start == 0 or dt_end == 0:
-        return np.inf
-    ratio = dt_start / dt_end
-    if ratio <= 0 or ratio <= 1:
-        return np.inf
-    return (rho * V_L_m3 * cp) / (U * area) * np.log(ratio)
 
 
 def profile_const_jacket(
@@ -499,7 +238,9 @@ def compute_batch(data: dict[str, Any], htm_db: dict[str, dict[str, Any]]) -> Ba
     p_agitator_w = impeller_power(np_in, rho, n_rps, d_imp) if include_agitator else 0.0
 
     q_max = u * area * abs(t_start - t_jacket)
-    dt_dt = ((q_max - p_agitator_w) / (rho * v_l_m3 * cp) * 60.0) if rho > 0 and v_l_m3 > 0 and cp > 0 else 0.0
+    # Initial rate magnitude: agitator power opposes cooling but adds to heating.
+    q_net0 = u * area * (t_jacket - t_start) + p_agitator_w
+    dt_dt = (abs(q_net0) / (rho * v_l_m3 * cp) * 60.0) if rho > 0 and v_l_m3 > 0 and cp > 0 else 0.0
     t_analytical = time_to_cool_or_heat(rho, v_l_m3, cp, u, area, t_start, t_target, t_jacket)
 
     dt = max(0.5, t_analytical / 2000) if np.isfinite(t_analytical) else 1.0

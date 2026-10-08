@@ -22,7 +22,6 @@ from typing import Callable
 
 from utils.calculations import (
     compute_reactor_hydro,
-    compute_damkohler_numbers,
     hydro_basics,
     assemble_hydro,
     blend_time_turbulent,
@@ -80,16 +79,6 @@ SUPPORTED_PARAMS: list[str] = [
     "power_number",
     "epsilon_max",
 ]
-
-# Friendly display names used in UI / equations pages.
-PARAM_DISPLAY: dict[str, str] = {
-    "blend_time": "Blend time θ₉₅ (s)",
-    "micromixing_time": "Engulfment micromixing time t_E (s)",
-    "kla_sparged": "Sparged kLa (1/s)",
-    "kla_surface": "Surface kLa (1/s)",
-    "power_number": "Power number Np",
-    "epsilon_max": "Maximum local energy dissipation ε_max (W/kg)",
-}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -162,45 +151,6 @@ def available_modes_multi(reactor_names: list[str]) -> list[str]:
     return ordered or ["Literature"]
 
 
-def get_all_registered_reactors() -> list[str]:
-    """Return a list of reactor names that have any correlations registered."""
-    return list(_REGISTRY.keys())
-
-
-def get_all_correlations() -> dict[str, list[Correlation]]:
-    """Return the full registry (read-only view)."""
-    return dict(_REGISTRY)
-
-
-def available_param_modes(reactor_name: str) -> dict[str, list[str]]:
-    """Return, per supported parameter, a list of available modes.
-
-    Always includes ``'Literature'``.  Adds ``'ROM'`` / ``'Experimental'``
-    if a matching correlation is registered for that parameter.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        e.g. ``{'blend_time': ['Literature', 'ROM'], ...}``
-    """
-    corrs = _REGISTRY.get(reactor_name, [])
-    result: dict[str, list[str]] = {}
-    for p in SUPPORTED_PARAMS:
-        modes = ["Literature"]
-        types = {c.corr_type for c in corrs if c.param == p}
-        if "ROM" in types:
-            modes.append("ROM")
-        if "Experimental" in types:
-            modes.append("Experimental")
-        result[p] = modes
-    return result
-
-
-def has_any_alt_correlations(reactor_name: str) -> bool:
-    """True if *reactor_name* has at least one ROM or Experimental correlation."""
-    return len(_REGISTRY.get(reactor_name, [])) > 0
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Compute with mode
 # ═══════════════════════════════════════════════════════════════════════════
@@ -236,6 +186,7 @@ def compute_reactor_hydro_with_mode(
     v_s: float = 0.0,
     coalescing: bool = True,
     D_mol: float = 2.3e-9,
+    V_m3: float = None,
 ) -> tuple[dict, dict[str, str]]:
     """Compute hydrodynamic parameters using selected correlation mode(s).
 
@@ -267,7 +218,7 @@ def compute_reactor_hydro_with_mode(
         hydro = compute_reactor_hydro(
             N=N, D_imp=D_imp, D_tank=D_tank, H=H,
             rho=rho, mu=mu, Np=Np, Nq=Nq,
-            v_s=v_s, coalescing=coalescing, D_mol=D_mol,
+            v_s=v_s, coalescing=coalescing, D_mol=D_mol, V_m3=V_m3,
         )
         return hydro, {}
 
@@ -284,7 +235,7 @@ def compute_reactor_hydro_with_mode(
             corrs = get_correlations(reactor_name, param=p, corr_type=m)
             _corr_cache[p] = corrs[0] if corrs else None
 
-    b = hydro_basics(N, D_imp, D_tank, H, rho, mu, Np, Nq)
+    b = hydro_basics(N, D_imp, D_tank, H, rho, mu, Np, Nq, V_m3)
     V, nu, Re, Np_val, Nq_val = b["V"], b["nu"], b["Re"], b["Np"], b["Nq"]
     P, eps, eps_kg = b["P"], b["eps"], b["eps_kg"]
 
@@ -346,121 +297,6 @@ def compute_reactor_hydro_with_mode(
         b, N=N, D_imp=D_imp, mu=mu, t_blend=t_blend, eps_max=eps_max_val,
         t_micro=t_micro, kla=kla, kla_surf=kla_surf)
     return hydro, sources
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Dummy ROM registrations – "Nalas – EasyMax 102"
-# ═══════════════════════════════════════════════════════════════════════════
-# These demonstrate the system.  Replace or augment with real fits.
-
-_DEMO_REACTOR = "Nalas – EasyMax 102"
-
-
-def _demo_blend_time(**kw) -> float:
-    r"""CFD-fitted blend time for EasyMax 102.
-
-    θ95 = 0.08 · Re^{-0.08} · V_L^{0.36} / (N · D²)
-
-    Includes a weak viscosity dependence (via Re) not captured by
-    the Grenville literature correlation.
-    V_L in litres, N in rev/s, D in m.
-    """
-    N = kw["N"]
-    D = kw["D_imp"]
-    V_L = kw.get("V_L", kw.get("V", 0) * 1000)
-    Re = kw.get("Re", kw["rho"] * N * D**2 / kw["mu"])
-    denom = N * D**2
-    if denom == 0 or Re <= 0:
-        return 0.0
-    return 0.08 * Re**(-0.08) * V_L**0.36 / denom
-
-
-register(_DEMO_REACTOR, Correlation(
-    name="Blend time – CFD power-law (EasyMax 102)",
-    param="blend_time",
-    corr_type="ROM",
-    func=_demo_blend_time,
-    latex=r"\theta_{95} = 0.08 \; Re^{-0.08} \; V_L^{\,0.36} \; (N \, D^2)^{-1}",
-    source="Internal CFD parametric study (2025), Nalas R&D.",
-    description=(
-        "Power-law fit to 48-case RANS CFD sweep over the EasyMax 102 "
-        "geometry.  Includes a weak viscosity dependence (via Re) not "
-        "captured by the standard Grenville correlation.  Valid for "
-        "0.02 – 0.10 L, 100 – 800 RPM, water-like fluids (Re > 5 000)."
-    ),
-    input_params={
-        "V_L": "Liquid volume (L)",
-        "N": "Impeller speed (rev/s)",
-        "D_imp": "Impeller diameter (m)",
-        "Re": "Impeller Reynolds number",
-    },
-))
-
-
-def _demo_kla(**kw) -> float:
-    r"""Experimentally fitted kLa for EasyMax 102.
-
-    kLa = 0.032 · (P/V)^0.45 · v_s^0.55
-
-    P/V in W/m³, v_s in m/s.
-    """
-    P_V = kw.get("P_V", kw.get("eps", 0.0))
-    v_s = kw.get("v_s", 0.0)
-    if v_s <= 0 or P_V <= 0:
-        return 0.0
-    return 0.032 * P_V**0.45 * v_s**0.55
-
-
-register(_DEMO_REACTOR, Correlation(
-    name="kLa – Experimental fit (EasyMax 102)",
-    param="kla_sparged",
-    corr_type="Experimental",
-    func=_demo_kla,
-    latex=r"k_L a = 0.032 \; \left(\frac{P}{V}\right)^{0.45} v_s^{\,0.55}",
-    source="O₂ transfer experiments, Nalas lab (2024).",
-    description=(
-        "Fit to dynamic gassing-out O₂ transfer measurements in the "
-        "EasyMax 102 (water, 20 °C).  Valid for P/V = 50 – 2000 W/m³, "
-        "v_s = 0.001 – 0.03 m/s."
-    ),
-    input_params={
-        "P_V": "Power per unit volume (W/m³)",
-        "v_s": "Superficial gas velocity (m/s)",
-    },
-))
-
-
-def _demo_micromixing(**kw) -> float:
-    r"""CFD-fitted micromixing time for EasyMax 102.
-
-    t_E = 12.5 · (ν / ε)^0.48
-
-    ε in W/kg, ν in m²/s.
-    """
-    nu = kw.get("nu", 1e-6)
-    eps_kg = kw.get("eps_kg", 1.0)
-    if eps_kg <= 0:
-        return 0.0
-    return 12.5 * (nu / eps_kg) ** 0.48
-
-
-register(_DEMO_REACTOR, Correlation(
-    name="Micromixing time – CFD fitted (EasyMax 102)",
-    param="micromixing_time",
-    corr_type="ROM",
-    func=_demo_micromixing,
-    latex=r"t_E = 12.5 \left(\frac{\nu}{\varepsilon}\right)^{0.48}",
-    source="LES iodide-iodate simulations, Nalas R&D (2025).",
-    description=(
-        "Engulfment time derived from LES simulations of the Villermaux-"
-        "Dushman (iodide-iodate) reaction in the EasyMax 102.  Valid for "
-        "Re > 5 000, water-like viscosity."
-    ),
-    input_params={
-        "nu": "Kinematic viscosity (m²/s)",
-        "eps_kg": "Mass-specific energy dissipation rate (W/kg)",
-    },
-))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

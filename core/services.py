@@ -30,11 +30,14 @@ from core.records import (
 )
 from core.serialize import jsonable
 from core.heat_transfer import (
-    FOULING_DEFAULT, LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS,
-    SWEEP_PARAMETERS, SWEEP_ZERO_VALUE_MAX, WALL_CONDUCTIVITY,
+    SWEEP_PARAMETERS, SWEEP_ZERO_VALUE_MAX,
     compute_batch, compute_reaction_profile, find_best_material_key, heat_cool_setup_error,
-    jacket_side_htc, load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
+    load_csvs, reactor_jacket_area, resistance_breakdown, resistance_items, surface_color_limits,
     sweep_range_defaults, u_ua_surface, ua_sweep_series,
+)
+from utils.calculations.heat_transfer import (
+    FOULING_DEFAULT, LINING_CONDUCTIVITY, LINING_THICKNESS_DEFAULT, NUSSELT_CORRELATIONS,
+    WALL_CONDUCTIVITY, jacket_side_htc,
 )
 from utils import bourne_kpi
 from core.catalog import available_modes, available_modes_multi

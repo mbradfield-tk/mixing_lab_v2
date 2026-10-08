@@ -531,19 +531,6 @@ TEMPLATES[_tmicro_idx] = PowerLaw1(
 #  Lookup helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-def templates_for_param(param: str) -> list[CorrTemplate]:
-    """Return all templates targeting *param*."""
-    return [t for t in TEMPLATES if t.param == param]
-
-
-def compatible_templates(param: str, available_columns: set[str]) -> list[CorrTemplate]:
-    """Return templates whose required columns are all present."""
-    return [
-        t for t in templates_for_param(param)
-        if set(t.required_columns).issubset(available_columns)
-    ]
-
-
 def template_by_id(tid: str) -> CorrTemplate | None:
     """Look up a template by its ``id`` string."""
     for t in TEMPLATES:

@@ -6,7 +6,7 @@ import { api, ApiError, unwrap, uploadFile } from "../api/client";
 import { tableUrl, useTable, type Row } from "../api/tables";
 import { AdminPanel, useIsAdmin } from "../components/Admin";
 import { AddForm, DatabaseTable, type Field } from "../components/Database";
-import { SliderField } from "../components/Form";
+import { SliderField, Switch } from "../components/Form";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
@@ -69,6 +69,20 @@ const ADD_FIELDS: Field[] = [
   { key: "N_rpm_max", label: "Max speed (rpm)", type: "number", initial: "" },
 ];
 
+export interface Vortex {
+  rpm: number;
+  regime: "full" | "partial" | "none" | "unknown";
+  baffle_note: string;
+  centre_mm: number;
+  wall_mm: number;
+  depth_mm: number;
+  critical_radius_mm: number;
+  Re: number;
+  Fr: number;
+  warnings: string[];
+  low_re: boolean;
+}
+
 export interface Fill {
   total_L: number;
   level_mm: number | null;
@@ -77,6 +91,22 @@ export interface Fill {
   warnings: string[];
   level_warning_kind: "red" | "yellow" | null;
   other_level_warning: string;
+  vortex?: Vortex | null;
+}
+
+/** Agitation slider span: the vessel's rated speed range, else 0-1000 rpm. */
+export function rpmSliderRange(row: Row): [number, number] {
+  const lo = num(row.N_rpm_min);
+  const hi = num(row.N_rpm_max);
+  const max = hi > 0 ? hi : 1000;
+  const min = lo > 0 && lo < max ? lo : 0;
+  return [min, max];
+}
+
+/** Default agitation: middle of the rated range. */
+export function defaultRpm(row: Row): number {
+  const [lo, hi] = rpmSliderRange(row);
+  return Math.round((lo + hi) / 2);
 }
 
 /** "Name [unit]" -> [name, unit] (core.tables.split_label). */
@@ -148,6 +178,34 @@ function FillCaption({ res }: { res: Fill }) {
   );
 }
 
+function VortexCaption({ v }: { v: Vortex }) {
+  const mm = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(0)} mm`;
+  return (
+    <div className="vortex-caption">
+      {v.regime === "full" ? (
+        <p>At {v.rpm.toFixed(0)} rpm: {v.baffle_note}</p>
+      ) : (
+        <p>
+          At <strong>{v.rpm.toFixed(0)} rpm</strong> the predicted vortex is{" "}
+          <strong>{v.depth_mm.toFixed(0)} mm</strong> deep: surface at {mm(v.centre_mm)} on the shaft and{" "}
+          {mm(v.wall_mm)} at the wall (relative to the bottom tangent line; the dashed line is the level at rest).{" "}
+          {v.baffle_note}
+        </p>
+      )}
+      {v.warnings.map((w) => (
+        <p key={w}>⚠️ {w}</p>
+      ))}
+      <p className="muted">
+        Nagata combined (Rankine) vortex: solid-body rotation at the impeller speed inside the impeller radius (
+        {v.critical_radius_mm.toFixed(0)} mm), free vortex outside, with the liquid volume conserved. Water properties,
+        Re = {formatG(v.Re, 3)}, Fr = {formatG(v.Fr, 3)}. The core is assumed to rotate at the full impeller speed, so
+        the depth is an upper-bound estimate (real liquid lags the impeller, typically giving a shallower vortex)
+        {v.low_re ? "; below Re ≈ 10⁴ the flow is not fully turbulent and the estimate is less reliable" : ""}.
+      </p>
+    </div>
+  );
+}
+
 function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string, string> }) {
   const [params, setParams] = useSearchParams();
   const fallback = names.includes(DEFAULT_VESSEL) ? DEFAULT_VESSEL : (names[0] ?? "");
@@ -156,6 +214,8 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
   const defaults = useMemo(() => defaultProps(labels), [labels]);
   const props = picked ?? defaults;
   const [fillText, setFillText] = useState("");
+  const [showVortex, setShowVortex] = useState(false);
+  const [rpmText, setRpmText] = useState("");
   const defaultedFor = useRef("");
 
   const row = useQuery({
@@ -184,6 +244,7 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
     if (row.data && brim.data && defaultedFor.current !== vessel) {
       defaultedFor.current = vessel;
       setFillText(String(defaultFill(row.data, brim.data.total_L)));
+      setRpmText(String(defaultRpm(row.data)));
     }
   }, [row.data, brim.data, vessel]);
 
@@ -192,12 +253,15 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
   const typed = Number(fillText);
   const fillL = fillText === "" || !Number.isFinite(typed) ? null : Math.min(Math.max(0, typed), maxFill);
   const debouncedFill = useDebounced(fillL, 300);
+  const typedRpm = Number(rpmText);
+  const rpm = showVortex && rpmText !== "" && Number.isFinite(typedRpm) && typedRpm > 0 ? typedRpm : null;
+  const debouncedRpm = useDebounced(rpm, 300);
   const fill = useQuery({
-    queryKey: ["vessel-fill", vessel, debouncedFill],
+    queryKey: ["vessel-fill", vessel, debouncedFill, debouncedRpm],
     queryFn: async () =>
       unwrap(
         await api.GET("/api/v1/media/vessels/{name}/fill", {
-          params: { path: { name: vessel }, query: { fill_L: debouncedFill } },
+          params: { path: { name: vessel }, query: { fill_L: debouncedFill, rpm: debouncedRpm } },
         }),
       ) as unknown as Fill,
     enabled: !!vessel && debouncedFill !== null && defaultedFor.current === vessel,
@@ -230,9 +294,11 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
   const schematicUrl =
     debouncedFill === null
       ? undefined
-      : `/api/v1/media/vessels/${encodeURIComponent(vessel)}/schematic.png?fill_L=${debouncedFill}`;
+      : `/api/v1/media/vessels/${encodeURIComponent(vessel)}/schematic.png?fill_L=${debouncedFill}` +
+        (debouncedRpm !== null ? `&rpm=${debouncedRpm}` : "");
   const status = row.data && fill.data && fillL !== null ? fillStatus(row.data, fillL, fill.data) : "";
   const fillRange = row.data ? fillSliderRange(row.data, total) : null;
+  const rpmRange = row.data ? rpmSliderRange(row.data) : null;
 
   return (
     <Card title="Explore Vessel">
@@ -278,7 +344,7 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
         </section>
       </div>
 
-      <h3>2D Schematic &amp; Liquid Level</h3>
+      <h3>2D Schematic, Liquid Level &amp; Vortex</h3>
       <div className="grid-2 explore">
         <div className="media-box">
           {schematicUrl && <img className="schematic" src={schematicUrl} alt={`Cross-section of ${vessel}`} />}
@@ -314,6 +380,21 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
           </div>
           {fill.isError && <ErrorNote error={fill.error} />}
           {fill.data && <FillCaption res={fill.data} />}
+          <Switch label="Show vortex at an agitation rate" checked={showVortex} onChange={setShowVortex} />
+          {showVortex && rpmRange && (
+            <div className="form-row">
+              <SliderField
+                label="Agitation rate (rpm)"
+                value={rpmText}
+                onChange={setRpmText}
+                min={rpmRange[0]}
+                max={rpmRange[1]}
+                step={sliderStep(rpmRange[1] - rpmRange[0])}
+                unit="rpm"
+              />
+            </div>
+          )}
+          {showVortex && fill.data?.vortex && <VortexCaption v={fill.data.vortex} />}
         </div>
       </div>
     </Card>

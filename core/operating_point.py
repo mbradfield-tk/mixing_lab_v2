@@ -140,7 +140,8 @@ def hydro(inp: PointInputs, N_rps: float, V_L: float) -> dict:
     h, _sources = compute_reactor_hydro_with_mode(
         inp.corr_mode, inp.reactor, N=N_rps, D_imp=g.D_imp, D_tank=g.D_tank,
         H=g.liquid_height(V_L), rho=inp.fluid.rho, mu=inp.fluid.mu, Np=g.Np, Nq=g.Nq,
-        v_s=inp.gas.v_s, coalescing=inp.gas.coalescing, D_mol=inp.fluid.D_mol)
+        v_s=inp.gas.v_s, coalescing=inp.gas.coalescing, D_mol=inp.fluid.D_mol,
+        V_m3=V_L / 1000.0)
     return h
 
 
@@ -229,7 +230,7 @@ def screening_damkohler(reactor: str, n_rpm: float, v_l: float, solvent: str, T_
     h_liq = VesselGeometry.from_row(row, H_max_fallback=d_tank).liquid_height(v_l)
     h = compute_reactor_hydro(N=n_rpm / 60.0, D_imp=d_imp, D_tank=d_tank, H=h_liq,
                               rho=rho, mu=mu, Np=sf(row.get("Np")) or None,
-                              Nq=sf(row.get("Nq")) or None)
+                              Nq=sf(row.get("Nq")) or None, V_m3=v_l / 1000.0)
     t_blend, t_e = h["Blend time 95% (s)"], h["Micromix time t_E (s)"]
     return {
         "reactor": reactor, "N_rpm": n_rpm, "V_L": v_l,

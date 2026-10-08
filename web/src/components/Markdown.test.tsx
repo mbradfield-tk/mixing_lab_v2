@@ -36,6 +36,13 @@ describe("Markdown", () => {
     );
     expect(container.innerHTML).not.toContain("onclick");
   });
+
+  it("emits the same KaTeX markup as TeX, so the bundled stylesheet sizes sub/superscripts", () => {
+    const md = render(<Markdown>{"$D_T$"}</Markdown>).container.querySelector(".mtight")?.className;
+    const tex = render(<TeX math="D_T" inline />).container.querySelector(".mtight")?.className;
+    expect(md).toBeDefined();
+    expect(md).toBe(tex);
+  });
 });
 
 describe("TeX", () => {

@@ -665,16 +665,20 @@ class UnitConversionResult(Contract):
 # ---------------------------------------------------------------------------
 # Equations reference
 # ---------------------------------------------------------------------------
-class EquationItem(Contract):
-    type: Literal["header", "latex", "md"]
-    text: str | None = Field(None, description="header / md: Markdown with inline $LaTeX$")
-    latex: str | None = Field(None, description="latex: a display equation")
-    level: int | None = Field(None, description="header: 3 or 4")
+class EquationEntry(Contract):
+    id: str = Field(description="Stable anchor id (section--entry)")
+    title: str
+    used_in: list[str] = Field(description="Pages that use this equation")
+    equation: str | None = Field(None, description="Headline display equation (raw LaTeX)")
+    body: str = Field(description="Markdown with $inline$ / $$display$$ LaTeX")
+    sources: list[str] = Field(description="Markdown references, one per source")
 
 
 class EquationSection(Contract):
+    id: str
     title: str
-    items: list[EquationItem]
+    intro: str = Field(description="Markdown shown above the section's entries")
+    entries: list[EquationEntry]
 
 
 class EquationsResult(Contract):

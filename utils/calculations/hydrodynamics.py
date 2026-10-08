@@ -26,9 +26,10 @@ verification.
         Three-regime model: laminar Np = K_L/Re (Rushton, Costich & Everett
         1950; Bates, Fondy & Corpstein 1963), turbulent plateau (Paul et al.
         2004, Ch. 6), log-log interpolation in between (approximation).
-    edcf (Energy Dissipation / Circulation Function)
-        Ref: Middleton, Pierce & Lynch (1986); Bourne (2003).
-        [NOT in context/ - verify]
+    edcf (Energy Dissipation / Circulation Function, here eps_max / t_c)
+        Variant of the EDCF of Smith (1985) / Justen et al. (1996), Biotechnol.
+        Bioeng. 52, 672, which use P/(k D^3) as the intensity term; this app
+        uses eps_max (W/kg).  Circulation time per Nienow (1997).
 """
 
 import numpy as np

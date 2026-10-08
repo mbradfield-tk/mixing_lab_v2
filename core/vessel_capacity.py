@@ -9,6 +9,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from core.vortex import vortex_state
 from utils.calculations.heat_transfer import estimate_jacket_area
 
 IMP_SOLIDITY = 0.20  # fraction of the swept impeller disc that is solid metal
@@ -283,14 +284,18 @@ def fill_state(geom: dict, fill_L: float | None) -> dict:
     }
 
 
-def fill_summary(row: pd.Series, fill_L: float | None) -> dict:
-    """JSON-ready fill state for a vessel record (what the schematic annotates)."""
+def fill_summary(row: pd.Series, fill_L: float | None, rpm: float | None = None) -> dict:
+    """JSON-ready fill state for a vessel record (what the schematic annotates); with
+    ``rpm`` it includes the predicted vortex surface (:mod:`core.vortex`)."""
     geom = geometry(row)
     if geom is None:
         return {"total_L": 0.0, "level_mm": None, "fill_pct": None, "contact_area_m2": None,
                 "warnings": [], "level_warning": "", "level_warning_kind": None,
-                "other_level_warning": ""}
+                "other_level_warning": "", "vortex": None}
     fs = fill_state(geom, fill_L)
+    vortex = vortex_state(geom, row, fs["level"], rpm)
+    if vortex is not None:
+        vortex = {k: v for k, v in vortex.items() if k not in ("r_m", "surface_m")}
     return {
         "total_L": geom["total_L"],
         "level_mm": fs["level"] * 1000.0 if fs["level"] is not None else None,
@@ -298,4 +303,5 @@ def fill_summary(row: pd.Series, fill_L: float | None) -> dict:
         "warnings": fs["warnings"], "level_warning": fs["level_warning"],
         "level_warning_kind": fs["level_warning_kind"],
         "other_level_warning": fs["other_level_warning"],
+        "vortex": vortex,
     }

@@ -234,7 +234,7 @@ def bourne_plan_tables(req: s.BournePlanRequest) -> s.BournePlanTables:
     nq = sf(services.bourne_reactor(req.reactor).get("Nq")) or None
     hydros = [compute_reactor_hydro(
         N=r["N (RPM)"] / 60.0, D_imp=sys.D_imp, D_tank=sys.D_tank, H=sys.H_liquid, rho=sys.rho,
-        mu=sys.mu, Np=sys.Np, Nq=nq, D_mol=sys.D_mol) for r in p.test1]
+        mu=sys.mu, Np=sys.Np, Nq=nq, D_mol=sys.D_mol, V_m3=sys.V_m3) for r in p.test1]
     t_c = req.T_C
     n_centre = p.test1[1]["N (RPM)"] if len(p.test1) > 1 else None
     return s.BournePlanTables(

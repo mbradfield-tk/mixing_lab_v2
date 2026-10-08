@@ -25,12 +25,6 @@ def kinetics_defaults(name: str) -> dict:
             "solvent": str(row.get("solvent", "") or "")}
 
 
-def timescale_profile(order: str, k: float, C0: float,
-                      t_specified: float = 0.0) -> tuple[float, float, str]:
-    """(characteristic t_rxn, 90 %-conversion time, basis) — see characteristic_reaction_time."""
-    return characteristic_reaction_time(order, k, C0, t_specified)
-
-
 def effective_t_rxn(order: str, k: float, C0: float, t_specified: float,
                     fallback: float = 0.0) -> float:
     """Characteristic reaction time, or ``fallback`` when the kinetics are incomplete."""

@@ -61,7 +61,7 @@ _DIFFUSIVITY = {
 }
 _FLOW_RATE = {
     "m³/s": 1.0, "m³/h": 1.0 / 3600.0, "L/min": 1.0e-3 / 60.0, "L/h": 1.0e-3 / 3600.0,
-    "mL/min": 1.0e-6 / 60.0, "US gal/min (GPM)": 6.30902e-5, "US gal/h": 1.05150e-5,
+    "mL/min": 1.0e-6 / 60.0, "US gal/min (GPM)": 6.30902e-5, "US gal/h": 1.05150e-6,
     "UK gal/min": 7.57682e-5, "ft³/min (CFM)": 4.71947e-4, "ft³/h": 7.86578e-6,
     "bbl/day": 1.84013e-6,
 }

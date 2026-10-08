@@ -912,7 +912,7 @@ export function VesselAssessment() {
               <NumberField label="Rate constant k" value={inputs.k} onChange={(k) => set({ k })} />
               <NumberField label="C0 (mol/L)" value={inputs.c0} onChange={(c0) => set({ c0 })} />
               <NumberField label="t_rxn (s, 0 = auto)" value={inputs.trxn} onChange={(trxn) => set({ trxn })} />
-              <NumberField label="ΔH_rxn (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
+              <NumberField label="ΔH_rxn (kJ/mol, − = exothermic)" value={inputs.dH} onChange={(dH) => set({ dH })} />
             </div>
           </>
         )}

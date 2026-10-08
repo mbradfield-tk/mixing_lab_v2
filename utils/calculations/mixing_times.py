@@ -18,18 +18,20 @@ Wiley (1999).
     micromixing_time_engulfment, micromixing_time_local (t_E = 17.3 (nu/eps)^0.5)
         Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
     mesomixing_time (t_meso = 1.2 (d_feed^2/eps)^(1/3))
-        Ref: Baldyga & Bourne (1999); Myerson (2019) Ch. 8.  [in context/]
+        Ref: Baldyga, Bourne & Hearn (1997), Chem. Eng. Sci. 52, 457
+        (doi:10.1016/S0009-2509(96)00430-7); Myerson (2019) Ch. 8.  The feed-pipe
+        diameter stands in for the integral scale Lambda_C.
     kolmogorov_length (eta = (nu^3/eps)^(1/4))
         Ref: Myerson (2019) Ch. 8 (Baldyga).  [in context/]
-    blend_time_turbulent
-        The coefficient 5.2 is the Grenville-Nienow turbulent blend-time
-        constant, but the published form is N*theta_95 = 5.2 Po^(-1/3)(T/D)^2;
-        the V/Q circulation form used here is an approximation.  Ref:
-        Grenville (1992); Handbook of Industrial Mixing (2004), Ch. 9.
-        [NOT in context/ - verify; formula form differs from published]
-    epsilon_max_estimate (eps_max ~ C P/(rho D^3), C~3)
-        Ref: Kresta & Wood (1993), Chem. Eng. Sci. 48, 1761.
-        [NOT in context/ - verify]
+    blend_time_turbulent (theta_95 = 5.2 T^1.5 H^0.5 / (Po^(1/3) N D^2))
+        Grenville turbulent blend-time correlation (equivalent to
+        N theta_95 = 5.2 Po^(-1/3) (T/D)^2 (H/T)^0.5); valid for H/T ~ 1 and
+        fully turbulent flow.  Ref: Grenville (1992); Handbook of Industrial
+        Mixing (2004), Ch. 9.
+    epsilon_max_estimate (eps_max = 1.04 x Po^(3/4) N^3 D^2, x = 15 -> ~15.6)
+        Ref: Grenville, Giacomelli, Brown & Padron (2017), Chem. Eng. 124(8), 42;
+        the order of eps_max/eps_avg is consistent with Kresta & Wood (1993),
+        Chem. Eng. Sci. 48, 1761 (doi:10.1016/0009-2509(93)80346-R).
     average_shear_rate (Camp-Stein G = sqrt(P/(mu V)))
         Ref: Camp & Stein (1943), J. Boston Soc. Civ. Eng. 30, 219.
         [NOT in context/ - verify]

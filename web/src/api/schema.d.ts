@@ -782,7 +782,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liquid level and warnings at a fill volume */
+        /** Liquid level and warnings at a fill volume (and the vortex at rpm) */
         get: operations["vessel_fill_api_v1_media_vessels__name__fill_get"];
         put?: never;
         post?: never;
@@ -2345,33 +2345,47 @@ export interface components {
          * @enum {string}
          */
         DhAction: "calorimetry" | "estimate";
-        /** EquationItem */
-        EquationItem: {
+        /** EquationEntry */
+        EquationEntry: {
             /**
-             * Latex
-             * @description latex: a display equation
+             * Body
+             * @description Markdown with $inline$ / $$display$$ LaTeX
              */
-            latex?: string | null;
+            body: string;
             /**
-             * Level
-             * @description header: 3 or 4
+             * Equation
+             * @description Headline display equation (raw LaTeX)
              */
-            level?: number | null;
+            equation?: string | null;
             /**
-             * Text
-             * @description header / md: Markdown with inline $LaTeX$
+             * Id
+             * @description Stable anchor id (section--entry)
              */
-            text?: string | null;
+            id: string;
             /**
-             * Type
-             * @enum {string}
+             * Sources
+             * @description Markdown references, one per source
              */
-            type: "header" | "latex" | "md";
+            sources: string[];
+            /** Title */
+            title: string;
+            /**
+             * Used In
+             * @description Pages that use this equation
+             */
+            used_in: string[];
         };
         /** EquationSection */
         EquationSection: {
-            /** Items */
-            items: components["schemas"]["EquationItem"][];
+            /** Entries */
+            entries: components["schemas"]["EquationEntry"][];
+            /** Id */
+            id: string;
+            /**
+             * Intro
+             * @description Markdown shown above the section's entries
+             */
+            intro: string;
             /** Title */
             title: string;
         };
@@ -6064,6 +6078,7 @@ export interface operations {
         parameters: {
             query?: {
                 fill_L?: number | null;
+                rpm?: number | null;
             };
             header?: never;
             path: {
@@ -6099,6 +6114,7 @@ export interface operations {
         parameters: {
             query?: {
                 fill_L?: number | null;
+                rpm?: number | null;
             };
             header?: never;
             path: {

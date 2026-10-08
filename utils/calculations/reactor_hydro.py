@@ -38,12 +38,15 @@ def _resolve(value, fallback):
 
 
 def hydro_basics(N: float, D_imp: float, D_tank: float, H: float,
-                 rho: float, mu: float, Np: float = None, Nq: float = None) -> dict:
+                 rho: float, mu: float, Np: float = None, Nq: float = None,
+                 V_m3: float = None) -> dict:
     """Volume, Reynolds number, resolved Np/Nq, power and specific power.
 
-    ``eps`` is P/V in W/m^3 and ``eps_kg`` in W/kg; see the module UNIT NOTE.
+    ``V_m3`` is the actual liquid volume (including the bottom dish); when None the
+    flat-bottom cylinder pi/4 D^2 H is used.  ``eps`` is P/V in W/m^3 and ``eps_kg``
+    in W/kg; see the module UNIT NOTE.
     """
-    V = np.pi / 4 * D_tank**2 * H
+    V = V_m3 if V_m3 is not None and V_m3 > 0 else np.pi / 4 * D_tank**2 * H
     nu = mu / rho if rho > 0 else 0.0
     Re = reynolds_number(N, D_imp, rho, mu) if mu > 0 else 0.0
     Np = _resolve(Np, lambda: power_number_correlation(Re))
@@ -102,10 +105,11 @@ def compute_reactor_hydro(
     Np: float = None, Nq: float = None,
     v_s: float = 0.0, coalescing: bool = True,
     D_mol: float = 2.3e-9,
+    V_m3: float = None,
 ) -> dict:
     """Return a dictionary of all computed hydrodynamic parameters (literature
-    correlations throughout)."""
-    b = hydro_basics(N, D_imp, D_tank, H, rho, mu, Np, Nq)
+    correlations throughout).  Pass ``V_m3`` (actual fill volume) whenever known."""
+    b = hydro_basics(N, D_imp, D_tank, H, rho, mu, Np, Nq, V_m3)
     eps_max = epsilon_max_estimate(b["Np"], N, D_imp)
     return assemble_hydro(
         b, N=N, D_imp=D_imp, mu=mu,

@@ -72,15 +72,17 @@ def test_zwietering_uses_weight_percent():
 
 
 # --- Literature vs ROM dict parity ------------------------------------------------
-def test_mode_paths_return_identical_key_sets():
+def test_mode_paths_return_identical_key_sets(monkeypatch):
     kwargs = dict(N=5.0, D_imp=0.05, D_tank=0.1, H=0.1, rho=1000.0, mu=1e-3,
                   Np=5.0, Nq=0.79, v_s=0.0, coalescing=True, D_mol=2.3e-9)
     lit = compute_reactor_hydro(**kwargs)
-    # Use the demo registration that ships with the registry.
-    reactor = next(iter(rom_registry._REGISTRY))
+    reactor = "__test_reactor__"
+    monkeypatch.setitem(rom_registry._REGISTRY, reactor, [rom_registry.Correlation(
+        name="test t_E", param="micromixing_time", corr_type="ROM",
+        func=lambda **kw: 12.5 * (kw["nu"] / kw["eps_kg"]) ** 0.48, latex="", source="test")])
     modes = rom_registry.available_modes(reactor)
     alt = [m for m in modes if m != "Literature"]
-    assert alt, "expected at least one ROM/Experimental registration for the parity test"
+    assert alt == ["ROM"]
     rom, sources = rom_registry.compute_reactor_hydro_with_mode(alt[0], reactor, **kwargs)
     assert set(rom) == set(lit)
     assert sources, "an overridden parameter should be reported as a source"

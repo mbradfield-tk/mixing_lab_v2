@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 
 from core.vessel_capacity import brim_volume, fill_state
 from core.vessel_capacity import geometry as _geometry
+from core.vortex import vortex_state
 
 __all__ = ["brim_volume", "build_vessel_schematic", "_geometry"]
 
@@ -36,6 +37,15 @@ _IMP_COLORS = ["#1976D2", "#F57C00", "#388E3C"]
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
+def _dish_drop(r: float, geom: dict) -> float:
+    """Depth of the drawn bottom below the tangent line at radius ``r``."""
+    R, bd, shape = geom["R"], geom["bot_depth"], geom["bot_shape"]
+    if bd <= 0 or shape == "flat":
+        return 0.0
+    x = min(r / R, 1.0)
+    return bd * (1.0 - x) if shape == "cone" else bd * float(np.sqrt(1.0 - x * x))
+
+
 def _png(fig) -> bytes:
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=140, facecolor="white")
@@ -56,8 +66,13 @@ def _png_html(png: bytes) -> tuple[str, float]:
 
 
 def build_vessel_schematic(row: pd.Series, fill_L: float | None,
-                           title: str = "", as_png: bool = False) -> dict:
-    """Render the schematic; return {html (or png bytes), total_L, level_mm, fill_pct, ...}."""
+                           title: str = "", as_png: bool = False,
+                           rpm: float | None = None) -> dict:
+    """Render the schematic; return {html (or png bytes), total_L, level_mm, fill_pct, ...}.
+
+    With ``rpm`` the liquid is drawn with the predicted vortex surface and the static
+    level as a dashed reference line.
+    """
     geom = _geometry(row)
     if geom is None:
         if as_png:
@@ -85,6 +100,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     lowest_imp_y, warnings, wall_hit = fs["lowest_imp_y"], fs["warnings"], fs["wall_hit"]
     level_warning, level_warning_kind = fs["level_warning"], fs["level_warning_kind"]
     other_level_warning = fs["other_level_warning"]
+    vortex = vortex_state(geom, row, level, rpm)
 
     # Size-aware padding so labels never crowd the vessel.
     drawn_top = max(H + top_depth, full_top if show_full_height else 0.0)
@@ -149,7 +165,22 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             lw=1.2, ls=dotted, zorder=3)
 
     # Liquid fill (behind the impellers)
-    if level is not None:
+    if level is not None and vortex is not None:
+        r_v = np.asarray(vortex["r_m"])
+        s_v = np.asarray(vortex["surface_m"])
+        xs = np.concatenate([-r_v[::-1], r_v])
+        surf = np.minimum(np.concatenate([s_v[::-1], s_v]), H + top_depth)
+        bot = np.array([-_dish_drop(abs(x), geom) for x in xs])
+        ax.fill_between(xs, bot, surf, where=surf > bot + 1e-9,
+                        color="#4FC3F7", alpha=0.30, lw=0, zorder=1)
+        ax.plot(xs, surf, color="#0288D1", lw=1.6, zorder=2)
+        r_surf = radius_at(level)
+        ax.plot([-r_surf, r_surf], [level, level], color="#0288D1", lw=0.9,
+                ls=(0, (4, 3)), alpha=0.7, zorder=2)
+        ax.text(0, drawn_top + ref * 0.02, f"{fill_L:,.1f} L @ {rpm:,.0f} rpm",
+                ha="center", va="bottom", fontsize=10, fontweight="bold",
+                color="#0277BD", zorder=2)
+    elif level is not None:
         z_liq = np.linspace(-bot_depth, level, 80)
         r_liq = np.array([radius_at(z) for z in z_liq])
         xs_liq = np.concatenate([r_liq, -r_liq[::-1]])

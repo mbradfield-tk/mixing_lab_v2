@@ -9,6 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from api import cache
+from core import equations as eq_source
 from core import media, records
 from core import schemas as s
 from core.vessel_capacity import fill_summary
@@ -18,8 +19,8 @@ from viz.vessel_schematic import build_vessel_schematic
 outputs = APIRouter(tags=["Reports & charts"])
 reference = APIRouter(tags=["Reference"])
 
-# The LaTeX source of the Equations Reference (rendered by the web app).
-EQUATIONS_JSON = records.DATA_DIR / "equations_source.json"
+# Markdown + LaTeX source of the Equations Reference (rendered by the web app).
+EQUATIONS_MD = records.DATA_DIR / "equations.md"
 
 
 @outputs.post("/reports/{kind}", summary="Build a PDF report",
@@ -58,22 +59,25 @@ def vessel_media(name: str) -> dict[str, Any]:
     return found
 
 
-@reference.get("/media/vessels/{name}/fill", summary="Liquid level and warnings at a fill volume")
-def vessel_fill(name: str, fill_L: float | None = Query(None, ge=0)) -> dict[str, Any]:
-    return fill_summary(_reactor(name), fill_L)
+@reference.get("/media/vessels/{name}/fill",
+               summary="Liquid level and warnings at a fill volume (and the vortex at rpm)")
+def vessel_fill(name: str, fill_L: float | None = Query(None, ge=0),
+                rpm: float | None = Query(None, ge=0)) -> dict[str, Any]:
+    return fill_summary(_reactor(name), fill_L, rpm)
 
 
 @reference.get("/media/vessels/{name}/schematic.png", summary="2D cross-section drawing",
                responses={200: {"content": {"image/png": {}}}})
-def vessel_schematic(name: str, fill_L: float | None = Query(None, ge=0)) -> Response:
-    res = build_vessel_schematic(_reactor(name), fill_L, as_png=True)
+def vessel_schematic(name: str, fill_L: float | None = Query(None, ge=0),
+                     rpm: float | None = Query(None, ge=0)) -> Response:
+    res = build_vessel_schematic(_reactor(name), fill_L, as_png=True, rpm=rpm)
     return Response(res["png"], media_type="image/png",
                     headers={"Cache-Control": "no-cache"})
 
 
 @lru_cache(maxsize=1)
 def _equations(mtime: float) -> s.EquationsResult:
-    return s.EquationsResult.model_validate_json(EQUATIONS_JSON.read_text(encoding="utf-8"))
+    return s.EquationsResult.model_validate(eq_source.parse(EQUATIONS_MD.read_text(encoding="utf-8")))
 
 
 @reference.get("/media/icons/{name}", summary="Menu icon or app logo ('logo') as a small PNG",
@@ -90,7 +94,7 @@ def icon(name: str, px: int = Query(96)) -> FileResponse:
 
 @reference.get("/equations", summary="Equations reference with raw LaTeX (render with KaTeX)")
 def equations() -> s.EquationsResult:
-    return _equations(EQUATIONS_JSON.stat().st_mtime)
+    return _equations(EQUATIONS_MD.stat().st_mtime)
 
 
 ROUTERS = [outputs, reference]

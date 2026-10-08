@@ -1,6 +1,7 @@
 """HTTP API (FastAPI) tests: JSON over HTTP equals the service results (which
 test_contracts ties to the page goldens), plus auth, uploads, errors and static files."""
 import json
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -626,11 +627,18 @@ def test_vessel_media_schematic_and_static_files(client):
 
 def test_reference_endpoints(client):
     eq = client.get(f"{V1}/equations").json()
-    items = [i for sec in eq["sections"] for i in sec["items"]]
-    latex = [i for i in items if i["type"] == "latex"]
-    assert latex and all(i["latex"] for i in latex)
-    assert not any("img" in i for i in items)  # raw LaTeX for KaTeX, not pre-rendered PNGs
-    assert all(isinstance(i["level"], int) for i in items if i["type"] == "header")
+    entries = [e for sec in eq["sections"] for e in sec["entries"]]
+    assert len(eq["sections"]) >= 10 and len(entries) >= 40
+    ids = [e["id"] for e in entries]
+    assert len(ids) == len(set(ids))
+    assert all(e["equation"] or e["body"] for e in entries)
+    assert all("$$" not in (e["equation"] or "") for e in entries)
+    assert all(e["sources"] for e in entries if e["equation"])
+    titles = [e["title"] for e in entries]
+    assert len(titles) == len(set(titles)), "duplicate entries"
+    # x_s^p stacks the exponent over the subscript in KaTeX; the source writes {x_s}^p.
+    stacked = re.compile(r"[A-Za-z]_(\{[^}]*\}|[A-Za-z0-9])\^")
+    assert not any(stacked.search((e["equation"] or "") + e["body"]) for e in entries)
     assert "Pressure" in client.get(f"{V1}/units").json()["properties"]
     o = client.get(f"{V1}/options").json()
     assert REACTOR in o["reactors"] and o["enums"]["CorrSource"]

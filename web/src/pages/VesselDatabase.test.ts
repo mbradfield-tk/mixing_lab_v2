@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultFill, defaultProps, fillSliderRange, fillStatus, splitLabel, vesselRatios, type Fill } from "./VesselDatabase";
+import { defaultFill, defaultProps, defaultRpm, fillSliderRange, fillStatus, rpmSliderRange, splitLabel, vesselRatios, type Fill } from "./VesselDatabase";
 
 const OK: Fill = {
   total_L: 10,
@@ -15,6 +15,13 @@ describe("vessel helpers (ports of pages/vessel_database.py)", () => {
   it("splitLabel", () => {
     expect(splitLabel("Max Volume [L]")).toEqual(["Max Volume", "L"]);
     expect(splitLabel("Owner")).toEqual(["Owner", ""]);
+  });
+
+  it("rpmSliderRange / defaultRpm: rated speed range, else 0-1000 rpm", () => {
+    expect(rpmSliderRange({ N_rpm_min: 50, N_rpm_max: 1000 })).toEqual([50, 1000]);
+    expect(rpmSliderRange({ N_rpm_min: null, N_rpm_max: 125 })).toEqual([0, 125]);
+    expect(rpmSliderRange({ N_rpm_min: null, N_rpm_max: null })).toEqual([0, 1000]);
+    expect(defaultRpm({ N_rpm_min: 50, N_rpm_max: 1000 })).toBe(525);
   });
 
   it("fillSliderRange: min-max fill volume, else 0 / brim-full", () => {

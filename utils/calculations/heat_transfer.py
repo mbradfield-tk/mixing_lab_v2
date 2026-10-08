@@ -1,4 +1,8 @@
-"""Heat generation, heat transfer, and batch temperature simulation.
+"""Heat generation, jacket heat transfer and overall-U primitives.
+
+This module is the single home of the heat-transfer correlations and material
+tables; ``core/heat_transfer.py`` (Heat Transfer tool simulations) imports them.
+Sources for every equation and value: docs/EQUATIONS_REGISTRY.md.
 
 UNIT CONVENTION
 ---------------
@@ -6,43 +10,13 @@ Reaction: delta_H in kJ/mol, k in 1/s (1st order) or L/(mol.s) (2nd order),
 C0 in mol/L, V_L in litres -> reaction_rate_mol_per_s returns mol/s and
 heat_generation_rate returns W.  Heat transfer: U in W/(m^2.K), A in m^2,
 h in W/(m^2.K), k_fluid in W/(m.K), Cp in J/(kg.K); batch energy balances use
-V_L in m^3 (V_L_m3).  N_rps is in rev/s.
-
-REFERENCES (per function / table)
----------------------------------
-None of the heat-transfer correlations below appear in the context source
-(Myerson 2019); canonical references are given but MUST be verified.
-
-    reaction_rate_mol_per_s, heat_generation_rate (Q = |dH| r)
-        First-principles kinetics + energy balance.  [definition]
-    estimate_jacket_area (dished-head area factors)
-        Ref: DIN 28011 / ASME F&D head geometry.  [NOT in context/ - verify]
-    estimate_U (material-based band)
-        Heuristic U ranges by wall/lining material.  [SOURCE MISSING - heuristic]
-    estimate_U_detailed, nusselt_jacket, NUSSELT_CORRELATIONS table
-        Jacketed-vessel process-side Nu = C Re^(2/3) Pr^(1/3) (mu/mu_w)^0.14.
-        Refs (also in the table 'ref' keys): DIN 28131:1979; Chilton, Drew &
-        Jebens (1944), Ind. Eng. Chem. 36, 510; Lehrer (1970); Nagata (1975);
-        Brooks & Su (1959); Stein & Schmidt (1993).  [NOT in context/ - verify]
-    jacket_side_htc (laminar Hausen; turbulent Dittus-Boelter 0.023 Re^0.8 Pr^0.4)
-        Ref: Dittus & Boelter (1930); Hausen (1943).  [NOT in context/ - verify]
-    estimate_U_from_resistances, heat_removal_capacity,
-    time_to_cool_or_heat (log-mean)
-        Series-resistance / lumped-capacitance energy balances.
-        Ref: standard process heat-transfer texts (e.g. Coulson & Richardson
-        vol. 1; Perry's Handbook).  [NOT in context/ - verify]
-        (Transient batch simulations live in core/heat_transfer.py.)
-    WALL_CONDUCTIVITY, LINING_CONDUCTIVITY, *_THICKNESS, JACKET_HTC, FOULING
-        Tabulated material/typical values.  [SOURCE MISSING - verify against
-        material datasheets / Perry's]
+V in m^3.  N_rps is in rev/s.
 """
 
 import re as _re
-import warnings as _warnings
+from typing import Any
 
 import numpy as np
-import pandas as pd
-import pathlib as _pathlib
 
 from .geometry import cone_depth
 
@@ -60,14 +34,20 @@ def reaction_rate_mol_per_s(order: str, k: float, C0: float,
         r = k * C0
     elif order in ("2", "pseudo-2"):
         r = k * C0**2
+    elif order == "0":
+        r = k
     else:
         return 0.0
     return r * V_L
 
 
 def heat_generation_rate(delta_H_kJ_mol: float, r_mol_per_s: float) -> float:
-    """Rate of heat generation (W) from reaction.  Q_rxn = |ΔH_rxn| × r"""
-    return abs(delta_H_kJ_mol) * 1000.0 * r_mol_per_s
+    """Rate of heat release (W) by the reaction, Q_rxn = −ΔH_rxn × r.
+
+    Positive for an exothermic reaction (ΔH < 0), negative (heat absorbed) for an
+    endothermic one.
+    """
+    return -delta_H_kJ_mol * 1000.0 * r_mol_per_s
 
 
 # ---------------------------------------------------------------------------
@@ -131,11 +111,9 @@ def estimate_U(material: str = "", N_rps: float = 0.0,
 
 
 # ---------------------------------------------------------------------------
-# Material property lookup tables
+# Material property tables (values at ~20-25 C, each with its source)
 # ---------------------------------------------------------------------------
 
-# Keep in sync with core/heat_transfer.py, which holds the referenced source table
-# (WALL_CONDUCTIVITY_REF / LINING_CONDUCTIVITY_REF) for every value below.
 WALL_CONDUCTIVITY: dict[str, float] = {
     "stainless steel": 15.0, "stainless": 15.0,
     "ss316": 13.4, "ss304": 14.4,
@@ -148,6 +126,30 @@ WALL_CONDUCTIVITY: dict[str, float] = {
     "tantalum": 57.0, "copper": 390.0,
 }
 
+WALL_CONDUCTIVITY_REF: dict[str, str] = {
+    "stainless steel": "Generic austenitic grade; midpoint of 304/316 (13-16 W/m.K). "
+                       "Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
+    "ss316": "316/316L at 20-100 C. ASM Handbook Vol. 1; confirm per mill certificate.",
+    "ss304": "Type 304 at 20 C. Engineering ToolBox, Thermal Conductivity of Metals and Alloys.",
+    "hastelloy": "Hastelloy C at 0-25 C. Engineering ToolBox. Haynes C-276 datasheets "
+                 "quote ~10 W/m.K at 25 C - verify for critical duty.",
+    "hastelloy c-276": "See 'hastelloy'.",
+    "inconel": "Inconel (600) at 21-100 C. Engineering ToolBox. Inconel 625 is lower (~9.8 W/m.K).",
+    "incoloy": "Incoloy at 0-100 C. Engineering ToolBox.",
+    "monel": "Monel at 0-100 C. Engineering ToolBox.",
+    "nickel": "Wrought nickel at 0-100 C, quoted range 61-90 W/m.K; lower bound used. "
+              "Engineering ToolBox.",
+    "carbon steel": "Plain carbon steel at 20 C, 43 (1% C) to 54 (0.5% C) W/m.K; 50 W/m.K "
+                    "used as a mid-range design value. Engineering ToolBox.",
+    "glass": "Borosilicate glass / glass-lining enamel, ~1.1-1.3 W/m.K. Harmonised with "
+             "LINING_CONDUCTIVITY['glass'].",
+    "glass-lined": "See 'glass'.",
+    "titanium": "Titanium at 0 C, 22.4 W/m.K (Grade 2 ~21.9). Engineering ToolBox.",
+    "zirconium": "Zirconium at 0 C, 23.2 W/m.K. Engineering ToolBox.",
+    "tantalum": "Tantalum at 0 C, 57.4 W/m.K. Engineering ToolBox.",
+    "copper": "Electrolytic (ETP) copper at 0-25 C. Engineering ToolBox.",
+}
+
 LINING_CONDUCTIVITY: dict[str, float] = {
     "glass": 1.2, "glass-lined": 1.2,
     "ptfe": 0.25, "teflon": 0.25, "pfa": 0.25,
@@ -155,6 +157,7 @@ LINING_CONDUCTIVITY: dict[str, float] = {
     "titanium": 22.0, "hastelloy": 12.0, "tantalum": 57.0,
 }
 
+# Nominal as-applied lining thickness (m); reactor-grade glass lining is 1.0-2.0 mm.
 LINING_THICKNESS_DEFAULT: dict[str, float] = {
     "glass": 0.0015, "glass-lined": 0.0015,
     "ptfe": 0.002, "teflon": 0.002, "pfa": 0.002,
@@ -162,6 +165,22 @@ LINING_THICKNESS_DEFAULT: dict[str, float] = {
     "titanium": 0.002, "hastelloy": 0.002, "tantalum": 0.001,
 }
 
+LINING_CONDUCTIVITY_REF: dict[str, str] = {
+    "glass": "Glass-lining enamel, 1.2 W/m.K (typical 1.1-1.3). De Dietrich / Pfaudler "
+             "glass-lining technical data.",
+    "glass-lined": "See 'glass'.",
+    "ptfe": "PTFE. Engineering ToolBox, Plastics - Thermal Conductivity Coefficients.",
+    "teflon": "See 'ptfe'.",
+    "pfa": "PFA, quoted 0.19-0.25 W/m.K; upper bound used. Fluoropolymer vendor datasheets.",
+    "pvdf": "PVDF. Fluoropolymer vendor datasheets.",
+    "rubber": "Soft/natural rubber lining. Engineering ToolBox.",
+    "epoxy": "Unfilled epoxy coating. Engineering ToolBox.",
+    "titanium": "Metal clad lining - see WALL_CONDUCTIVITY_REF['titanium'].",
+    "hastelloy": "Metal clad lining - see WALL_CONDUCTIVITY_REF['hastelloy'].",
+    "tantalum": "Metal clad lining - see WALL_CONDUCTIVITY_REF['tantalum'].",
+}
+
+# Fallback (k, Cp) for fluids missing from the solvent library.
 SOLVENT_THERMAL: dict[str, tuple[float, float]] = {
     "water":           (0.607, 4182.0),
     "methanol":        (0.200, 2530.0),
@@ -185,13 +204,33 @@ SOLVENT_THERMAL: dict[str, tuple[float, float]] = {
     "corn syrup":      (0.400, 3000.0),
 }
 
-JACKET_HTC: dict[str, float] = {
-    "simple jacket":   1500.0,
-    "half-pipe coil":  2500.0,
-    "dimple jacket":   1200.0,
-}
+# Simple-jacket water/glycol film coefficient (Perry's 9th ed., Sec. 11).
 JACKET_HTC_DEFAULT = 1500.0
+# Flow-path length in the Hausen laminar Graetz term Gz = (d_hyd/L) Re Pr.
+JACKET_PATH_L_M = 1.0
+# Clean process service (TEMA RGP-T-2.4).
 FOULING_DEFAULT = 0.0002
+
+# Process-side Nu = C Re^a Pr^b (mu/mu_w)^c for jacketed agitated vessels.
+NUSSELT_CORRELATIONS: dict[str, dict[str, float | str]] = {
+    "Chilton–Drew–Jebens (paddle)": {
+        "C": 0.36, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Chilton, Drew & Jebens (1944), Ind. Eng. Chem. 36(6):510, "
+               "doi:10.1021/ie50414a006. Jacketed vessel, paddle impeller, turbulent.",
+    },
+    "Flat-blade turbine (baffled)": {
+        "C": 0.74, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Uhl & Gray, Mixing: Theory and Practice Vol. 1 (1966); Perry's "
+               "Chemical Engineers' Handbook 9th ed., Sec. 11. Baffled vessel with "
+               "a flat-blade (Rushton) turbine, turbulent regime.",
+    },
+    "Brooks–Su (retreat blade, glass-lined)": {
+        "C": 0.33, "a": 2.0 / 3.0, "b": 1.0 / 3.0, "c": 0.14,
+        "ref": "Brooks & Su (1959), Chem. Eng. Prog. 55(10):54. Retreat-curve blade "
+               "impeller in a glass-lined vessel.",
+    },
+}
+DEFAULT_NUSSELT = "Chilton–Drew–Jebens (paddle)"
 
 
 # ---------------------------------------------------------------------------
@@ -288,8 +327,7 @@ def estimate_U_detailed(
 
     Re = rho * N_rps * D_imp**2 / mu
     Pr = Cp * mu / k_fluid
-    C_Nu = 0.36
-    Nu = C_Nu * Re**(2.0/3.0) * Pr**(1.0/3.0)
+    Nu = nusselt_jacket(Re, Pr, 1.0, DEFAULT_NUSSELT)
     h_i = Nu * k_fluid / D_tank
 
     k_wall = _lookup_wall_k(material)
@@ -301,7 +339,7 @@ def estimate_U_detailed(
     elif k_wall is not None and wall_m == 0:
         warnings.append("Wall thickness unknown – wall resistance omitted")
     elif wall_m > 0:
-        k_wall = 16.0
+        k_wall = WALL_CONDUCTIVITY["stainless steel"]
         R_wall = wall_m / k_wall
         warnings.append(f"Wall material unknown – assumed SS (k={k_wall} W/m·K)")
     else:
@@ -318,7 +356,7 @@ def estimate_U_detailed(
             f"(k={_k_lining} W/m·K, t={_t_lining*1000:.1f} mm)"
         )
         if wall_m == 0 and k_wall is None:
-            R_wall += 0.010 / 16.0
+            R_wall += 0.010 / WALL_CONDUCTIVITY["stainless steel"]
             warnings.append(f"Shell unknown – assumed 10 mm SS behind {_lining_label} lining")
 
     h_o = jacket_htc if jacket_htc > 0 else JACKET_HTC_DEFAULT
@@ -361,12 +399,12 @@ def heat_balance_assessment(Q_gen: float, Q_cool: float) -> str:
         return f"🔴 Insufficient cooling (Q_gen/Q_cool = {ratio:.2f})"
 
 
-def time_to_cool_or_heat(rho: float, V_L: float, Cp: float,
+def time_to_cool_or_heat(rho: float, V_m3: float, Cp: float,
                          U: float, A: float,
                          T_start: float, T_end: float,
                          T_jacket: float) -> float:
-    """Logarithmic batch heating / cooling time."""
-    if U <= 0 or A <= 0 or rho <= 0 or V_L <= 0 or Cp <= 0:
+    """Logarithmic batch heating / cooling time (s), t = (ρVCp/UA)·ln(ΔT_start/ΔT_end)."""
+    if U <= 0 or A <= 0 or rho <= 0 or V_m3 <= 0 or Cp <= 0:
         return np.inf
     dT_start = T_start - T_jacket
     dT_end = T_end - T_jacket
@@ -375,141 +413,62 @@ def time_to_cool_or_heat(rho: float, V_L: float, Cp: float,
     ratio = dT_start / dT_end
     if ratio <= 0 or ratio <= 1:
         return np.inf
-    return (rho * V_L * Cp) / (U * A) * np.log(ratio)
+    return (rho * V_m3 * Cp) / (U * A) * np.log(ratio)
 
 
 # ---------------------------------------------------------------------------
-# HTM database
+# Film coefficients and overall U
 # ---------------------------------------------------------------------------
-
-_HTM_CSV = _pathlib.Path(__file__).resolve().parent.parent.parent / "data" / "HTM.csv"
-
-
-def load_htm_db(csv_path=_HTM_CSV) -> dict[str, dict]:
-    """Load heat-transfer media from CSV.
-
-    Resilient to a missing or malformed file: returns an empty dict if the
-    file cannot be read, and skips (with a warning) any individual row that
-    fails to parse, so a single bad cell never crashes the whole app.
-    """
-    db: dict[str, dict] = {}
-    try:
-        df = pd.read_csv(csv_path)
-    except (FileNotFoundError, OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
-        _warnings.warn(f"Could not load HTM database from {csv_path}: {exc}")
-        return db
-
-    for _, row in df.iterrows():
-        try:
-            entry: dict = {
-                "T_min_C": float(row["T_min_C"]),
-                "T_max_C": float(row["T_max_C"]),
-                "rho_kg_m3": float(row["rho_kg_m3"]),
-                "Cp_J_kgK": float(row["Cp_J_kgK"]),
-                "mu_Pa_s": float(row["mu_Pa_s"]),
-                "k_W_mK": float(row["k_W_mK"]),
-                "notes": str(row.get("notes", "")),
-            }
-            if pd.notna(row.get("h_jacket_override")):
-                entry["h_jacket_override"] = float(row["h_jacket_override"])
-            db[str(row["htm_name"])] = entry
-        except (KeyError, ValueError, TypeError) as exc:
-            _warnings.warn(
-                f"Skipping malformed HTM row '{row.get('htm_name', '?')}': {exc}"
-            )
-            continue
-    return db
-
-
-HTM_DB: dict[str, dict] = load_htm_db()
-
-
-# ---------------------------------------------------------------------------
-# Nusselt correlations
-# ---------------------------------------------------------------------------
-
-NUSSELT_CORRELATIONS: dict[str, dict] = {
-    "DIN 28131 (standard)": {
-        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
-        "description": "DIN 28131 standard: Nu = 0.36 Re^(2/3) Pr^(1/3) (μ/μ_w)^0.14.",
-        "ref": "DIN 28131:1979",
-    },
-    "Chilton–Drew–Jebens": {
-        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
-        "description": "Classic correlation for jacketed stirred vessels (1944).",
-        "ref": "Chilton, Drew, Jebens (1944)",
-    },
-    "Lehrer (anchor/helical)": {
-        "C": 0.54, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
-        "description": "Anchor and helical ribbon impellers.",
-        "ref": "Lehrer (1970)",
-    },
-    "Stein–Schmidt (high Re)": {
-        "C": 0.50, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
-        "description": "Higher coefficient for high-Re turbulent regimes.",
-        "ref": "Stein & Schmidt (1993)",
-    },
-    "Brooks–Su (Retreat Blade)": {
-        "C": 0.33, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.14,
-        "description": "Retreat-blade impellers in glass-lined vessels.",
-        "ref": "Brooks & Su (1959)",
-    },
-    "Nagata (paddle)": {
-        "C": 0.36, "a": 2.0/3.0, "b": 1.0/3.0, "c": 0.18,
-        "description": "Paddle impellers with stronger wall viscosity correction.",
-        "ref": "Nagata (1975)",
-    },
-}
-
 
 def nusselt_jacket(Re: float, Pr: float, mu_ratio: float = 1.0,
-                   correlation: str = "DIN 28131 (standard)") -> float:
-    """Compute process-side Nusselt number for a jacketed stirred vessel."""
-    corr = NUSSELT_CORRELATIONS.get(correlation, NUSSELT_CORRELATIONS["DIN 28131 (standard)"])
-    C = corr["C"]
-    a = corr["a"]
-    b = corr["b"]
-    c = corr["c"]
-    return C * Re**a * Pr**b * mu_ratio**c
+                   correlation: str = DEFAULT_NUSSELT) -> float:
+    """Process-side Nu = C Re^a Pr^b (mu/mu_w)^c for a jacketed stirred vessel."""
+    corr = NUSSELT_CORRELATIONS.get(correlation, NUSSELT_CORRELATIONS[DEFAULT_NUSSELT])
+    if Re <= 0 or Pr <= 0:
+        return 0.0
+    return (float(corr["C"]) * Re ** float(corr["a"]) * Pr ** float(corr["b"])
+            * (mu_ratio if mu_ratio > 0 else 1.0) ** float(corr["c"]))
 
 
-def jacket_side_htc(htm_name: str = "", v_jacket: float = 0.0,
-                    D_hyd: float = 0.05) -> float:
-    """Estimate jacket-side heat-transfer coefficient h_o (W/m²·K)."""
-    if htm_name not in HTM_DB:
-        return JACKET_HTC_DEFAULT
-    htm = HTM_DB[htm_name]
+def _num(value: Any, default: float = 0.0) -> float:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if np.isnan(f) else f
+
+
+def jacket_side_htc(htm: dict[str, Any], v_jacket: float, d_hyd: float) -> float:
+    """Jacket-side h_o (W/m²·K) for a heat-transfer medium (HTM.csv row as a dict):
+    Hausen (laminar, Re < 2300) or Dittus–Boelter (turbulent)."""
     if "h_jacket_override" in htm:
-        return htm["h_jacket_override"]
-    rho_j = htm["rho_kg_m3"]
-    mu_j = htm["mu_Pa_s"]
-    Cp_j = htm["Cp_J_kgK"]
-    k_j = htm["k_W_mK"]
-    if v_jacket <= 0:
-        v_jacket = 1.0
-    if mu_j <= 0 or k_j <= 0 or D_hyd <= 0:
+        return _num(htm["h_jacket_override"], JACKET_HTC_DEFAULT)
+    rho_j, mu_j = _num(htm.get("rho_kg_m3")), _num(htm.get("mu_Pa_s"))
+    cp_j, k_j = _num(htm.get("Cp_J_kgK")), _num(htm.get("k_W_mK"))
+    if rho_j <= 0 or mu_j <= 0 or cp_j <= 0 or k_j <= 0 or v_jacket <= 0 or d_hyd <= 0:
         return JACKET_HTC_DEFAULT
-    Re_j = rho_j * v_jacket * D_hyd / mu_j
-    Pr_j = Cp_j * mu_j / k_j
-    if Re_j < 2300:
-        Nu_j = 3.66 + 0.065 * (D_hyd / 1.0) * Re_j * Pr_j / (1.0 + 0.04 * ((D_hyd / 1.0) * Re_j * Pr_j) ** (2.0/3.0))
+    re_j = rho_j * v_jacket * d_hyd / mu_j
+    pr_j = cp_j * mu_j / k_j
+    if re_j < 2300:
+        gz = d_hyd / JACKET_PATH_L_M * re_j * pr_j
+        nu_j = 3.66 + 0.0668 * gz / (1.0 + 0.04 * gz ** (2.0 / 3.0))
     else:
-        Nu_j = 0.023 * Re_j**0.8 * Pr_j**0.4
-    return Nu_j * k_j / D_hyd
+        nu_j = 0.023 * re_j**0.8 * pr_j**0.4
+    return nu_j * k_j / d_hyd
 
 
 def estimate_U_from_resistances(h_i: float, h_o: float,
-                                wall_k: float = 16.0,
+                                wall_k: float = 0.0,
                                 wall_thickness_m: float = 0.0,
                                 lining_k: float = 0.0,
                                 lining_thickness_m: float = 0.0,
                                 fouling: float = FOULING_DEFAULT) -> float:
-    """Compute overall U from individual resistances."""
+    """Overall U from series resistances 1/U = 1/h_i + x_w/k_w + x_l/k_l + 1/h_o + R_f."""
     if h_i <= 0 or h_o <= 0:
         return 0.0
-    R = 1.0 / h_i + 1.0 / h_o + fouling
+    r_total = 1.0 / h_i + 1.0 / h_o + max(fouling, 0.0)
     if wall_k > 0 and wall_thickness_m > 0:
-        R += wall_thickness_m / wall_k
+        r_total += wall_thickness_m / wall_k
     if lining_k > 0 and lining_thickness_m > 0:
-        R += lining_thickness_m / lining_k
-    return 1.0 / R
+        r_total += lining_thickness_m / lining_k
+    return 1.0 / r_total

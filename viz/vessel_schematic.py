@@ -32,6 +32,7 @@ from core.vortex import vortex_state
 __all__ = ["brim_volume", "build_vessel_schematic", "_geometry"]
 
 _IMP_COLORS = ["#1976D2", "#F57C00", "#388E3C"]
+_VESSEL_IN = 3.0  # drawn size (inches) of the vessel's longest dimension
 
 
 # ---------------------------------------------------------------------------
@@ -39,11 +40,22 @@ _IMP_COLORS = ["#1976D2", "#F57C00", "#388E3C"]
 # ---------------------------------------------------------------------------
 def _dish_drop(r: float, geom: dict) -> float:
     """Depth of the drawn bottom below the tangent line at radius ``r``."""
-    R, bd, shape = geom["R"], geom["bot_depth"], geom["bot_shape"]
-    if bd <= 0 or shape == "flat":
+    return _head_depth(r, geom["R"], geom["bot_depth"], geom["bot_shape"])
+
+
+def _head_depth(r: float, R: float, depth: float, shape: str) -> float:
+    """Distance of a drawn head (dish) from its tangent line at radius ``r``."""
+    if depth <= 0 or shape == "flat":
         return 0.0
     x = min(r / R, 1.0)
-    return bd * (1.0 - x) if shape == "cone" else bd * float(np.sqrt(1.0 - x * x))
+    return depth * (1.0 - x) if shape == "cone" else depth * float(np.sqrt(1.0 - x * x))
+
+
+def _fmt_L(v: float) -> str:
+    """Fill volume to about three significant figures, with thousands separators."""
+    if v >= 100:
+        return f"{v:,.0f}"
+    return f"{v:.3g}" if v < 10 else f"{v:.1f}"
 
 
 def _png(fig) -> bytes:
@@ -102,31 +114,22 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     other_level_warning = fs["other_level_warning"]
     vortex = vortex_state(geom, row, level, rpm)
 
-    # Size-aware padding so labels never crowd the vessel.
+    # Fixed drawing scale: the vessel's longest dimension is _VESSEL_IN inches, so every
+    # annotation offset below is in inches (u = metres per inch) and the labels keep the
+    # same size relative to the vessel whatever its proportions.
     drawn_top = max(H + top_depth, full_top if show_full_height else 0.0)
     total_h = bot_depth + drawn_top
-    ref = max(R, total_h)
-    gap = ref * 0.06
-    left_pad = R * 0.85
-    right_pad = R * 2.60
-    bot_pad = gap + ref * 0.12
-    top_pad = ref * 0.03
-    if level is not None:
-        top_pad += ref * 0.06
+    u = max(2 * R, total_h) / _VESSEL_IN
 
-    fig, ax = plt.subplots(1, 1, figsize=(4.6, 4.6))
+    # Generous provisional frame (content is measured and the frame cropped at the end).
+    x0, x1 = -R - 1.5 * u, R + 3.0 * u
+    y0, y1 = -bot_depth - 1.0 * u, drawn_top + 1.0 * u
+    fig = plt.figure(figsize=((x1 - x0) / u, (y1 - y0) / u))
+    ax = fig.add_axes((0, 0, 1, 1))
     ax.set_aspect("equal")
-    # Square frame centred on the vessel centre-point: every reactor renders at
-    # the same pixel size and centred, so the panel scale is consistent and the
-    # reactor centre lands at the panel centre.
-    cy_c = (drawn_top - bot_depth) / 2.0
-    ex = R + max(left_pad, right_pad)
-    ey = max(cy_c + bot_depth + bot_pad, (H + top_depth + top_pad) - cy_c)
-    half = max(ex, ey)
-    ax.set_xlim(-half, half)
-    ax.set_ylim(cy_c - half, cy_c + half)
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
     ax.set_axis_off()
-    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     wall_lw, wall_color = 2.0, "#333333"
 
@@ -165,11 +168,13 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
             lw=1.2, ls=dotted, zorder=3)
 
     # Liquid fill (behind the impellers)
+    fill_label = None
     if level is not None and vortex is not None:
         r_v = np.asarray(vortex["r_m"])
         s_v = np.asarray(vortex["surface_m"])
         xs = np.concatenate([-r_v[::-1], r_v])
-        surf = np.minimum(np.concatenate([s_v[::-1], s_v]), H + top_depth)
+        roof = np.array([H + _head_depth(abs(x), R, top_depth, top_shape) for x in xs])
+        surf = np.minimum(np.concatenate([s_v[::-1], s_v]), roof)
         bot = np.array([-_dish_drop(abs(x), geom) for x in xs])
         ax.fill_between(xs, bot, surf, where=surf > bot + 1e-9,
                         color="#4FC3F7", alpha=0.30, lw=0, zorder=1)
@@ -177,7 +182,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         r_surf = radius_at(level)
         ax.plot([-r_surf, r_surf], [level, level], color="#0288D1", lw=0.9,
                 ls=(0, (4, 3)), alpha=0.7, zorder=2)
-        ax.text(0, drawn_top + ref * 0.02, f"{fill_L:,.1f} L @ {rpm:,.0f} rpm",
+        fill_label = ax.text(0, drawn_top + 0.08 * u, f"{_fmt_L(fill_L)} L @ {rpm:,.0f} rpm",
                 ha="center", va="bottom", fontsize=10, fontweight="bold",
                 color="#0277BD", zorder=2)
     elif level is not None:
@@ -189,7 +194,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         r_surf = radius_at(level)
         ax.plot([-r_surf, r_surf], [level, level],
                 color="#0288D1", lw=1.6, zorder=2)
-        ax.text(0, drawn_top + ref * 0.02, f"{fill_L:,.1f} L",
+        fill_label = ax.text(0, drawn_top + 0.08 * u, f"{_fmt_L(fill_L)} L",
                 ha="center", va="bottom", fontsize=10, fontweight="bold",
                 color="#0277BD", zorder=2)
 
@@ -226,9 +231,9 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
                 boxstyle="round,pad=0.002", facecolor=color, edgecolor=edge,
                 alpha=0.7, lw=elw, zorder=4))
         # Leader line + label
-        ax.plot([r_imp, R + right_pad * 0.12], [lab_y, lab_y],
+        ax.plot([r_imp, R + 0.15 * u], [lab_y, lab_y],
                 color=color, lw=0.6, alpha=0.5, zorder=3)
-        ax.text(R + right_pad * 0.15, lab_y, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
+        ax.text(R + 0.2 * u, lab_y, f"Imp {idx_imp + 1}  ⌀{d_imp * 1000:.0f} mm",
                 fontsize=10, fontweight="bold", va="center", ha="left", color=color)
 
     # Shaft
@@ -236,77 +241,82 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     shaft_bot = min(lowest_imp_y - H * 0.05, 0.0) if impellers else 0.0
     ax.plot([0, 0], [shaft_bot, shaft_top], color="#555555", lw=1.5, zorder=3)
 
-    # Dimension annotations (diameter below, height to the left)
+    # Dimension annotations: diameter below; on the left the clearance C (inner) and the
+    # straight-side height H (outer), with C's label under its arrow so the H witness
+    # line at the tangent never runs through it.
     dim_color, dim_fs, wit_lw = "#555555", 10, 0.6
-    arr_y = -bot_depth - gap
+    arr_y = -bot_depth - 0.3 * u
     for sx in (-R, R):
         ax.plot([sx, sx], [0, arr_y], color=dim_color, lw=wit_lw, zorder=2)
     ax.annotate("", xy=(R, arr_y), xytext=(-R, arr_y),
                 arrowprops=dict(arrowstyle="<->", color=dim_color, lw=1))
-    ax.text(0, arr_y - ref * 0.04, f"⌀ {geom['D'] * 1000:.0f} mm",
+    ax.text(0, arr_y - 0.06 * u, f"⌀ {geom['D'] * 1000:.0f} mm",
             ha="center", va="top", fontsize=dim_fs, fontweight="bold", color=dim_color)
 
-    hx = -R - left_pad * 0.5
+    hx = -R - 0.6 * u
     for sy in (0.0, H):
         ax.plot([-R, hx], [sy, sy], color=dim_color, lw=wit_lw, zorder=2)
     ax.annotate("", xy=(hx, H), xytext=(hx, 0),
                 arrowprops=dict(arrowstyle="<->", color=dim_color, lw=1))
-    ax.text(hx - R * 0.06, H / 2, f"H {H * 1000:.0f} mm",
+    ax.text(hx - 0.05 * u, H / 2, f"H {H * 1000:.0f} mm",
             ha="right", va="center", fontsize=dim_fs, fontweight="bold",
             color=dim_color, rotation=90)
 
     if show_full_height:
-        leader_y = full_top + ref * 0.18
-        elbow_x = R * 2.15
-        leader_end_x = R * 3.35
-        ax.plot([elbow_x, leader_end_x], [leader_y, leader_y],
-            color="#777777", lw=1.2, zorder=2)
-        ax.annotate("", xy=(R, full_top), xytext=(elbow_x, leader_y),
-                arrowprops=dict(arrowstyle="->", color="#777777", lw=1.2))
-        ax.text((elbow_x + leader_end_x) / 2.0, leader_y + ref * 0.025,
-            f"H full {full_height * 1000:.0f} mm",
-            ha="center", va="bottom", fontsize=dim_fs, fontweight="bold",
-            color="#777777")
+        label_x = R + 0.35 * u
+        if fill_label is not None:  # the centred fill label sits at the same height
+            bb = fill_label.get_window_extent(renderer=fig.canvas.get_renderer())
+            label_x = max(label_x, ax.transData.inverted().transform((bb.x1, 0))[0] + 0.15 * u)
+        ax.annotate(f"H full {full_height * 1000:.0f} mm", xy=(R, full_top),
+                    xytext=(label_x, full_top + 0.2 * u), ha="left", va="center",
+                    fontsize=dim_fs, fontweight="bold", color="#777777",
+                    arrowprops=dict(arrowstyle="->", color="#777777", lw=1.2))
 
     # Bottom impeller off-bottom clearance (C): vessel bottom -> impeller underside.
     if impellers:
         y_bot = min(cy_i - h_i / 2.0 for (_d, cy_i, h_i, _c, _t) in impellers)
         clr_mm = (y_bot + bot_depth) * 1000.0
         cclr = "#00695C"
-        cx = -R - left_pad * 0.22
+        cx = -R - 0.22 * u
         for sy in (-bot_depth, y_bot):
             ax.plot([-R, cx], [sy, sy], color=cclr, lw=wit_lw, zorder=2)
-        ax.annotate("", xy=(cx, y_bot), xytext=(cx, -bot_depth),
-                    arrowprops=dict(arrowstyle="<->", color=cclr, lw=1))
-        ax.text(cx - R * 0.04, (-bot_depth + y_bot) / 2.0, f"C {clr_mm:.0f} mm",
-                ha="right", va="center", fontsize=dim_fs, fontweight="bold",
-                color=cclr, rotation=90)
+        label_y = -bot_depth - 0.06 * u
+        if y_bot + bot_depth >= 0.2 * u:
+            ax.annotate("", xy=(cx, y_bot), xytext=(cx, -bot_depth),
+                        arrowprops=dict(arrowstyle="<->", color=cclr, lw=1))
+        else:
+            # Too short for inside arrowheads: point at the extension lines from outside.
+            tail = 0.15 * u
+            ax.plot([cx, cx], [-bot_depth, y_bot], color=cclr, lw=1, zorder=2)
+            for tip, start in ((-bot_depth, -bot_depth - tail), (y_bot, y_bot + tail)):
+                ax.annotate("", xy=(cx, tip), xytext=(cx, start),
+                            arrowprops=dict(arrowstyle="->", color=cclr, lw=1))
+            label_y -= tail
+        ax.text(cx + 0.08 * u, label_y, f"C {clr_mm:.0f} mm",
+                ha="right", va="top", fontsize=dim_fs, fontweight="bold", color=cclr)
 
     # Warnings (wall interference, liquid level vs. impeller) are surfaced by
     # the caller via the returned dict, not drawn on the image itself.
 
-    # Labels are fixed pixel-size text, so their data-space extent depends on the
-    # vessel proportions and can spill past the geometry-derived frame. Measure
-    # the rendered text boxes and widen the square frame until everything fits —
-    # expanding rescales the axes while the text keeps its pixel size, so the
-    # required extent must be found iteratively (converges geometrically).
+    # Crop the frame to everything drawn. The figure is resized with the limits, so the
+    # scale (u metres per inch) and therefore every text extent stays fixed.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    for _ in range(10):
-        inv = ax.transData.inverted()
-        needed = half
-        for artist in ax.texts:
-            bb = artist.get_window_extent(renderer=renderer)
-            (x0, y0), (x1, y1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
-            needed = max(needed, abs(x0), abs(x1), abs(y0 - cy_c), abs(y1 - cy_c))
-        if needed <= half * 1.001:
-            break
-        half = needed * 1.02  # small breathing margin
-        ax.set_xlim(-half, half)
-        ax.set_ylim(cy_c - half, cy_c + half)
+    inv = ax.transData.inverted()
+    xs, ys = [-R, R], [-bot_depth, drawn_top]
+    for artist in [*ax.lines, *ax.patches, *ax.texts]:
+        bb = artist.get_window_extent(renderer=renderer)
+        if bb.width <= 0 and bb.height <= 0:
+            continue
+        (bx0, by0), (bx1, by1) = inv.transform([(bb.x0, bb.y0), (bb.x1, bb.y1)])
+        xs += [bx0, bx1]
+        ys += [by0, by1]
+    m = 0.08 * u
+    x0, x1, y0, y1 = min(xs) - m, max(xs) + m, min(ys) - m, max(ys) + m
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
+    fig.set_size_inches((x1 - x0) / u, (y1 - y0) / u)
 
-    # Title is intentionally not drawn on the canvas (it would offset the vessel
-    # from centre); the vessel name is shown in the page selector instead.
     png = _png(fig)
     html, aspect = ("", 0.0) if as_png else _png_html(png)
     return {

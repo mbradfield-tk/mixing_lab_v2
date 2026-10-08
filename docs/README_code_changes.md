@@ -703,3 +703,14 @@ Code docstrings were corrected: the blend-time form, the ε_max / mesomixing / E
 - **PDF:** the verdict colour now comes from the verdict's severity rather than keyword matching, which had printed "Mixing sensitivity confirmed" in green.
 - **Page:** the Step 2 text now says that t_rxn is the initial-rate time constant (it previously claimed the 90 % conversion time was used). The summary tile reads "Likely limiting".
 - **Tests:** new rule tests in `tests/test_core_rules.py`. The Reaction Sensitivity Protocol goldens (`page_outputs`, `page_parity`, `report_outputs`) were refreshed, and every diff traces to the points above.
+
+**16t. Vessel Database 2D schematic layout.**
+
+- **Space use:** the image was a fixed 644 px square centred on the vessel, with 2.6 R of padding on the right mirrored onto the left. A squat vessel therefore filled only about a quarter of the width. The frame is now cropped to what is actually drawn (vessel plus labels), and the page displays the image at full column width (max 520 px tall).
+- **Fixed drawing scale:** the vessel's longest dimension is drawn at 3 in, and every annotation offset is in inches. Labels keep the same size relative to the vessel for any proportions; previously the offsets were fractions of R, so labels crowded slim vessels and drifted far away from squat ones.
+- **Dimensions:**
+  - The C (clearance) label is now horizontal under its arrow, so the H witness line at the tangent no longer runs through it.
+  - Short clearances get outside-pointing arrows instead of overlapping arrowheads.
+  - The "H full" callout is a single leader that is kept clear of the fill label.
+  - Fill volumes show three significant figures (0.07 L had shown as "0.1 L").
+- **Fix:** the vortex liquid surface is now clipped to the top-head outline. On domed heads it had been drawn outside the vessel.

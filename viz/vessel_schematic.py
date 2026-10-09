@@ -22,7 +22,6 @@ matplotlib.use("Agg")  # headless: render to a buffer, never a GUI window
 import matplotlib.patches as patches
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Arc
 import matplotlib.pyplot as plt
 
 from core.vessel_capacity import brim_volume, fill_state
@@ -40,15 +39,14 @@ _VESSEL_IN = 3.0  # drawn size (inches) of the vessel's longest dimension
 # ---------------------------------------------------------------------------
 def _dish_drop(r: float, geom: dict) -> float:
     """Depth of the drawn bottom below the tangent line at radius ``r``."""
-    return _head_depth(r, geom["R"], geom["bot_depth"], geom["bot_shape"])
+    return -geom["bottom_at"](r)
 
 
-def _head_depth(r: float, R: float, depth: float, shape: str) -> float:
-    """Distance of a drawn head (dish) from its tangent line at radius ``r``."""
-    if depth <= 0 or shape == "flat":
-        return 0.0
-    x = min(r / R, 1.0)
-    return depth * (1.0 - x) if shape == "cone" else depth * float(np.sqrt(1.0 - x * x))
+def _head_xy(geom: dict, top: bool, n: int = 121) -> tuple[np.ndarray, np.ndarray]:
+    """Outline of the bottom (or top) head from -R to R."""
+    xs = np.linspace(-geom["R"], geom["R"], n)
+    f = geom["top_at"] if top else geom["bottom_at"]
+    return xs, np.array([f(abs(x)) for x in xs])
 
 
 def _fmt_L(v: float) -> str:
@@ -99,7 +97,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
 
     R, H = geom["R"], geom["H"]
     bot_depth, top_depth = geom["bot_depth"], geom["top_depth"]
-    bot_shape, top_shape = geom["bot_shape"], geom["top_shape"]
+    bot_shape = geom["bot_shape"]
     full_height, full_top = geom["full_height"], geom["full_top"]
     show_full_height = geom["show_full_height"]
     show_full_height_box = geom["show_full_height_box"]
@@ -137,25 +135,10 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
     ax.plot([-R, -R], [0, H], color=wall_color, lw=wall_lw)
     ax.plot([R, R], [0, H], color=wall_color, lw=wall_lw)
 
-    # Bottom dish (shape-aware)
-    if bot_depth <= 0 or bot_shape == "flat":
-        ax.plot([-R, R], [0, 0], color=wall_color, lw=wall_lw)
-    elif bot_shape == "cone":
-        ax.plot([-R, 0], [0, -bot_depth], color=wall_color, lw=wall_lw)
-        ax.plot([R, 0], [0, -bot_depth], color=wall_color, lw=wall_lw)
-    else:
-        ax.add_patch(Arc((0, 0), geom["D"], bot_depth * 2,
-                         theta1=180, theta2=360, color=wall_color, lw=wall_lw))
-
-    # Top dish (shape-aware)
-    if top_depth <= 0 or top_shape == "flat":
-        ax.plot([-R, R], [H, H], color=wall_color, lw=wall_lw)
-    elif top_shape == "cone":
-        ax.plot([-R, 0], [H, H + top_depth], color=wall_color, lw=wall_lw)
-        ax.plot([R, 0], [H, H + top_depth], color=wall_color, lw=wall_lw)
-    else:
-        ax.add_patch(Arc((0, H), geom["D"], top_depth * 2,
-                         theta1=0, theta2=180, color=wall_color, lw=wall_lw))
+    # Bottom and top heads (true profile: ellipsoidal, torispherical, conical, flat)
+    for top in (False, True):
+        hx, hy = _head_xy(geom, top)
+        ax.plot(hx, hy, color=wall_color, lw=wall_lw)
 
     if show_full_height_box:
         envelope_color = "#777777"
@@ -173,7 +156,7 @@ def build_vessel_schematic(row: pd.Series, fill_L: float | None,
         r_v = np.asarray(vortex["r_m"])
         s_v = np.asarray(vortex["surface_m"])
         xs = np.concatenate([-r_v[::-1], r_v])
-        roof = np.array([H + _head_depth(abs(x), R, top_depth, top_shape) for x in xs])
+        roof = np.array([geom["top_at"](abs(x)) for x in xs])
         surf = np.minimum(np.concatenate([s_v[::-1], s_v]), roof)
         bot = np.array([-_dish_drop(abs(x), geom) for x in xs])
         ax.fill_between(xs, bot, surf, where=surf > bot + 1e-9,

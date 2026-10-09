@@ -5,6 +5,7 @@ import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { InstrumentPanel, Setpoint } from "../components/Instrument";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
 import { ResultTable } from "../components/ResultTable";
@@ -280,11 +281,14 @@ export function VesselComparison() {
           <SelectField label="Correlation source" value={inputs.corr} options={setup.data?.corr_sources ?? []} onChange={(corr) => set({ corr })} />
           <p className="muted">{setup.data?.corr_status}</p>
         </div>
-        <div className="form-row three">
+        <div className="form-row">
           <SelectField label="Fluid" value={inputs.fluid} options={options.data?.fluids ?? []} onChange={(fluid) => set({ fluid })} />
-          <NumberField label="Temperature (°C)" value={inputs.T} onChange={(T) => set({ T })} />
-          <NumberField label="Pressure (atm)" value={inputs.P} onChange={(P) => set({ P })} />
         </div>
+        <InstrumentPanel title="Operating point">
+          <Setpoint label="Temperature" value={inputs.T} onChange={(T) => set({ T })} unit="°C" />
+          <Setpoint label="Pressure" value={inputs.P} onChange={(P) => set({ P })} unit="atm" step={0.1} min={0} />
+          <Setpoint label="Coolant temp" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} unit="°C" />
+        </InstrumentPanel>
         <div className="form-row three">
           <SelectField
             label="Reaction source"
@@ -302,7 +306,6 @@ export function VesselComparison() {
             }}
           />
           <SelectField label="Reaction (for Da numbers)" value={inputs.reaction} options={reactionList} onChange={(v) => report(loadReaction(v))} />
-          <NumberField label="Coolant temperature (°C)" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} />
         </div>
         <p>
           <strong>Reaction conditions &amp; kinetics</strong> — auto-filled from the database; edit any value to override.
@@ -480,10 +483,9 @@ export function VesselComparison() {
           </Card>
 
           <Card title="Operating Envelope Charts">
-            <p>
-              Each vessel's reachable region is a filled polygon spanning its RPM range (as % of max). The <strong>solid</strong>{" "}
-              line is the maximum-fill-volume edge, the <strong>dotted</strong> line the minimum-fill edge. Dashed lines on the
-              Damköhler panels mark the 0.1 and 1.0 mixing-sensitivity thresholds.
+            <p className="muted">
+              Each vessel&apos;s reachable region across its speed range (% of max). Solid: max fill; dotted: min fill; dashed (Da
+              panels): 0.1 and 1 thresholds.
             </p>
             <MultiSelect
               label="Parameters to plot"
@@ -505,7 +507,7 @@ export function VesselComparison() {
 
           {t.scale.length > 0 && (
             <Card title="Scale-Up Matching Results">
-              <p>Matched operating conditions that hold the chosen parameter constant relative to the basis vessel.</p>
+              <p>Conditions in each vessel that match the chosen parameter of the basis vessel.</p>
               <ResultTable rows={t.scale} csvName="vessel_comparison_matching.csv" stale={stale} />
               {t.scale_full.length > 0 && (
                 <details>
@@ -524,7 +526,7 @@ export function VesselComparison() {
 
           {t.impact.length > 0 && (
             <Card title="Scale-Up Impact Summary">
-              <p>Ratios use the midpoint (average of the 4 corners) for each parameter, relative to the first selected vessel.</p>
+              <p>Ratios to the first vessel, using each parameter&apos;s midpoint (average of the 4 corners).</p>
               <ResultTable rows={t.impact} csvName="vessel_comparison_impact.csv" stale={stale} />
             </Card>
           )}
@@ -532,9 +534,8 @@ export function VesselComparison() {
           {t.feed_plan.length > 0 && (
             <Card title="Fed-Batch Feed Plan">
               <p>
-                Feed volume (and rate) scales linearly with each vessel's max fill volume (V_L_max) relative to the basis
-                vessel; feed time is shared. Start volume is each vessel's V_L_min; flagged rows would exceed that vessel's
-                recorded V_L_max.
+                Feed volume scales with each vessel&apos;s max fill; feed time is shared. Flagged rows exceed the vessel&apos;s
+                max fill.
               </p>
               <ResultTable rows={t.feed_plan} csvName="vessel_comparison_feed_plan.csv" stale={stale} />
             </Card>

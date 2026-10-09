@@ -775,6 +775,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/media/vessels/{name}/drawing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Geometry for the interactive cross-section (mm; z = 0 at the bottom tangent) */
+        get: operations["vessel_drawing_api_v1_media_vessels__name__drawing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media/vessels/{name}/fill": {
         parameters: {
             query?: never;
@@ -6050,6 +6067,42 @@ export interface operations {
     vessel_media_api_v1_media_vessels__name__get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vessel_drawing_api_v1_media_vessels__name__drawing_get: {
+        parameters: {
+            query?: {
+                fill_L?: number | null;
+                rpm?: number | null;
+            };
             header?: never;
             path: {
                 name: string;

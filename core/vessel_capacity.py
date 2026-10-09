@@ -77,6 +77,86 @@ def _dish_shape(dish_type: str) -> str:
     return "curved"
 
 
+def dish_kind(dish_type: str) -> str:
+    """Detailed head profile: flat | cone | ellipsoidal | hemispherical | torispherical |
+    klopper | korbbogen (unknown curved heads are drawn as ellipsoidal)."""
+    dt = dish_type.lower().strip()
+    shape = _dish_shape(dt)
+    if shape != "curved":
+        return shape
+    if "hemi" in dt or "round" in dt:
+        return "hemispherical"
+    if "korbbogen" in dt or "28013" in dt:
+        return "korbbogen"
+    if ("klopper" in dt or "kloepper" in dt or "klöpper" in dt
+            or "28011" in dt or ("din" in dt and "tori" in dt)):
+        return "klopper"
+    if "tori" in dt or "asme" in dt or "f&d" in dt or "f & d" in dt or "flanged" in dt:
+        return "torispherical"
+    return "ellipsoidal"
+
+
+# Crown radius / knuckle radius as fractions of the tank diameter D.
+# ASME F&D (Rc = D, rk = 0.06 D); DIN 28011 Klöpper (Rc = D, rk = 0.1 D);
+# DIN 28013 Korbbogen (Rc = 0.8 D, rk = 0.154 D).
+_TORI = {"torispherical": (1.0, 0.06), "klopper": (1.0, 0.10), "korbbogen": (0.8, 0.154)}
+
+
+class Head:
+    """Profile of a vessel head of ``depth`` (m) below/above its tangent line.
+
+    Torispherical heads use the standard crown/knuckle construction, scaled
+    vertically so the head depth matches the recorded (or estimated) depth.
+    """
+
+    def __init__(self, kind: str, R: float, depth: float, knuckle: float = 0.0):
+        self.kind, self.R, self.depth = (kind if depth > 0 else "flat"), R, max(depth, 0.0)
+        if self.kind in _TORI:
+            D = 2.0 * R
+            crown, kn = _TORI[self.kind]
+            rc = crown * D
+            rk = knuckle if 0.0 < knuckle < R else kn * D
+            centre_gap = np.sqrt(max((rc - rk) ** 2 - (R - rk) ** 2, 0.0))
+            self.rc, self.rk = rc, rk
+            self.h_nat = rc - centre_gap           # natural (unscaled) head depth
+            self.d_c = self.h_nat - rc             # crown centre (depth axis, < 0)
+            self.d_t = rk * centre_gap / (rc - rk)  # knuckle/crown junction depth
+            self.r_t = (R - rk) * rc / (rc - rk)   # ... and its radius
+            self.scale = self.h_nat / self.depth
+
+    def radius(self, d: float) -> float:
+        """Interior radius at distance ``d`` (m) from the tangent line into the head."""
+        R, depth = self.R, self.depth
+        if self.kind == "flat" or d <= 0.0:
+            return R
+        if d >= depth:
+            return 0.0
+        if self.kind == "cone":
+            return R * (1.0 - d / depth)
+        if self.kind in _TORI:
+            dn = d * self.scale
+            if dn <= self.d_t:
+                return (R - self.rk) + float(np.sqrt(max(self.rk ** 2 - dn ** 2, 0.0)))
+            return float(np.sqrt(max(self.rc ** 2 - (dn - self.d_c) ** 2, 0.0)))
+        return R * float(np.sqrt(max(0.0, 1.0 - (d / depth) ** 2)))
+
+    def drop(self, r: float) -> float:
+        """Distance (m) of the head from its tangent line at radius ``r``."""
+        R, depth = self.R, self.depth
+        if self.kind == "flat":
+            return 0.0
+        x = min(max(r, 0.0), R)
+        if self.kind == "cone":
+            return depth * (1.0 - x / R)
+        if self.kind in _TORI:
+            if x <= self.r_t:
+                dn = self.d_c + float(np.sqrt(max(self.rc ** 2 - x * x, 0.0)))
+            else:
+                dn = float(np.sqrt(max(self.rk ** 2 - (x - (R - self.rk)) ** 2, 0.0)))
+            return dn / self.scale
+        return depth * float(np.sqrt(max(0.0, 1.0 - (x / R) ** 2)))
+
+
 def _bottom_dish_depth(row: pd.Series, dish_type: str, radius: float) -> float:
     """Bottom-dish height (m): CSV H_bot_dish_m, else H_max_m - L_tan_tan_m, else type heuristic."""
     depth = _f(row, "H_bot_dish_m", float("nan"))
@@ -109,6 +189,11 @@ def geometry(row: pd.Series) -> dict | None:
     bot_depth = _bottom_dish_depth(row, bottom, R)
     if bot_depth > 0 and bot_shape == "flat":
         bot_shape = "curved"
+    bot_kind = dish_kind(bottom)
+    if bot_kind == "flat" and bot_depth > 0:  # a measured depth means the label is wrong
+        bot_kind = "ellipsoidal"
+    bot_head = Head(bot_kind, R, bot_depth, _f(row, "knuckle_radius_m"))
+    top_head = Head(dish_kind(top), R, top_depth)
     full_height = _f(row, "H_m")
     full_top = full_height - bot_depth if full_height > 0 else 0.0
     show_full_height = full_top > H + max(D, H) * 1e-6
@@ -120,12 +205,15 @@ def geometry(row: pd.Series) -> dict | None:
         """Interior radius at absolute height z (z=0 is the bottom tangent line)."""
         if z >= 0.0 or bot_depth <= 0:
             return R
-        d = -z
-        if d >= bot_depth:
-            return 0.0
-        if bot_shape == "cone":
-            return R * (z + bot_depth) / bot_depth
-        return R * float(np.sqrt(max(0.0, 1.0 - (d / bot_depth) ** 2)))
+        return bot_head.radius(-z)
+
+    def bottom_at(r: float) -> float:
+        """Height of the vessel bottom (m, tangent line = 0) at radius r."""
+        return -bot_head.drop(r)
+
+    def top_at(r: float) -> float:
+        """Height of the vessel top head (m) at radius r."""
+        return H + top_head.drop(r)
 
     # Impellers: clearance is the gap from the lowest interior point to the
     # impeller underside; cy is the resulting blade centre height.
@@ -174,6 +262,8 @@ def geometry(row: pd.Series) -> dict | None:
         "show_full_height": show_full_height,
         "show_full_height_box": show_full_height_box,
         "impellers": impellers, "radius_at": radius_at,
+        "bottom_at": bottom_at, "top_at": top_at,
+        "bot_kind": bot_head.kind, "top_kind": top_head.kind,
         "z_grid": z_grid, "cap_grid": cap_grid,
         "total_L": float(cap_grid[-1]) * 1000.0,
     }
@@ -305,3 +395,86 @@ def fill_summary(row: pd.Series, fill_L: float | None, rpm: float | None = None)
         "other_level_warning": fs["other_level_warning"],
         "vortex": vortex,
     }
+
+
+def impeller_style(label: str) -> dict:
+    """Drawing style from an impeller label such as 'PBT, 45° (4)' or 'Rushton gassing'."""
+    s = label.lower()
+    blades = re.search(r"\((\d+)\)", s)
+    angle = re.search(r"(\d+(?:\.\d+)?)\s*°", s)
+    if "chevron" in s:
+        style = "chevron"
+    elif "rushton" in s or "disc" in s:
+        style = "rushton"
+    elif "cbr" in s or "cbt" in s or "concave" in s or "curved" in s:
+        style = "curved"
+    elif "half" in s and "moon" in s:
+        style = "halfmoon"
+    elif "anchor" in s:
+        style = "anchor"
+    elif "foil" in s:
+        style = "hydrofoil"
+    elif "pbt" in s or "pitch" in s or angle:
+        style = "pitched"
+    elif "flat" in s or "turbine" in s or "paddle" in s:
+        style = "flat"
+    else:
+        style = "generic"
+    return {"style": style, "blades": int(blades.group(1)) if blades else None,
+            "angle_deg": float(angle.group(1)) if angle else None}
+
+
+def drawing_data(row: pd.Series, fill_L: float | None = None, rpm: float | None = None) -> dict | None:
+    """Everything the interactive schematic needs (all lengths in mm, z = 0 at the bottom
+    tangent line): head profiles, impellers, baffles, the capacity curve for level <-> volume
+    and, with ``fill_L`` and ``rpm``, the vortex surface."""
+    geom = geometry(row)
+    if geom is None:
+        return None
+    R, mm = geom["R"], 1000.0
+    radii = np.linspace(0.0, R, 61)
+    fs = fill_state(geom, fill_L)
+    wall_hit = fs["wall_hit"]
+    impellers = []
+    for idx, (d, cy, h, slot, itype) in enumerate(geom["impellers"]):
+        impellers.append({
+            "index": idx + 1, "d_mm": d * mm, "cy_mm": cy * mm, "h_mm": h * mm,
+            "clearance_mm": (cy - h / 2.0 + geom["bot_depth"]) * mm, "type": itype or "Impeller",
+            **impeller_style(itype), "wall_hit": idx in wall_hit,
+        })
+    step = max(1, len(geom["z_grid"]) // 160)
+    baffles = _f(row, "baffles", float("nan"))
+    wall = _f(row, "wall_thickness_mm")
+    vortex = vortex_state(geom, row, fs["level"], rpm)
+    lining = _s(row, "lining_material") or _s(row, "lining")
+    return {
+        "D_mm": geom["D"] * mm, "H_mm": geom["H"] * mm,
+        "bot_depth_mm": geom["bot_depth"] * mm, "top_depth_mm": geom["top_depth"] * mm,
+        "bot_kind": geom["bot_kind"], "top_kind": geom["top_kind"],
+        "bottom_label": geom["bottom"], "top_label": geom["top"],
+        "full_top_mm": geom["full_top"] * mm if geom["show_full_height"] else None,
+        "wall_mm": wall if wall > 0 else max(geom["D"] * mm * 0.012, 1.0),
+        "glass_lined": "glass" in lining.lower(),
+        "baffles": int(baffles) if np.isfinite(baffles) else None,
+        "bottom": [[r * mm, geom["bottom_at"](r) * mm] for r in radii],
+        "top": [[r * mm, geom["top_at"](r) * mm] for r in radii],
+        "impellers": impellers,
+        "capacity": {"z_mm": [float(z) * mm for z in _thin(geom["z_grid"], step)],
+                     "V_L": [float(v) * mm for v in _thin(geom["cap_grid"], step)]},
+        "total_L": geom["total_L"],
+        "V_min_L": _f(row, "V_L_min") or None, "V_max_L": _f(row, "V_L_max") or None,
+        "vortex": None if vortex is None else {
+            "fill_L": fill_L, "rpm": rpm, "regime": vortex["regime"],
+            "r_mm": [r * mm for r in _thin(vortex["r_m"], 4)],
+            "z_mm": [z * mm for z in _thin(vortex["surface_m"], 4)],
+        },
+    }
+
+
+def _thin(seq, step: int) -> list:
+    """Every ``step``-th item, always keeping the last one."""
+    items = list(seq)
+    out = items[::step]
+    if items and (len(items) - 1) % step:
+        out.append(items[-1])
+    return out

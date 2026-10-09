@@ -58,7 +58,8 @@ export async function postForFile(url: string, body: unknown): Promise<{ blob: B
     throw new ApiError(response.status, errorMessage(err, response));
   }
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const filename = /filename="?([^"]+)"?/.exec(disposition)?.[1] ?? "report.pdf";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const filename = (encoded && decodeURIComponent(encoded)) || /filename="?([^";]+)"?/.exec(disposition)?.[1] || "report.pdf";
   return { blob: await response.blob(), filename };
 }
 

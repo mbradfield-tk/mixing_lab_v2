@@ -905,29 +905,339 @@ label.narrow {
   font-size: 0.9rem;
 }
 
-/* Slider + number input (components/Form.tsx SliderField) */
-.slider-field {
+/* Lab-instrument controls (components/Instrument.tsx) */
+.instrument-panel {
+  margin: 8px 0 0;
+  padding: 6px 8px 8px;
+  border: 1px solid #c9ced3;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f4f5f6 0%, #e4e7ea 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.instrument-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  margin: 0 2px 5px;
+}
+
+.instrument-controls {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.instrument-knobs {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 220px;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
-.slider-field input[type="range"] {
-  width: 100%;
-  accent-color: var(--primary);
+.instrument-knobs .instrument {
+  flex: 1;
+  justify-content: center;
 }
 
-.slider-scale {
+.instrument-rest {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: stretch;
+}
+
+.instrument {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.instrument-label {
+  align-self: stretch;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knob-control {
+  width: 150px;
+}
+
+.fader-control {
+  flex: 1 1 100%;
+}
+
+.setpoint-control,
+.selector-control {
+  flex: 1 1 140px;
+  justify-content: center;
+}
+
+.knob {
+  width: 108px;
+  height: 108px;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.knob:active {
+  cursor: grabbing;
+}
+
+.knob:focus-visible .knob-cap {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.knob-tick {
+  stroke: var(--secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.knob-track,
+.knob-level {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.knob-track {
+  stroke: #d9dde1;
+}
+
+.knob-level {
+  stroke: var(--primary);
+}
+
+.knob-cap {
+  fill: #e9ecef;
+  stroke: #b9c0c7;
+  stroke-width: 1;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+}
+
+.knob-grip {
+  fill: #f8f9fa;
+  stroke: #d0d5da;
+}
+
+.knob-pointer {
+  stroke: var(--primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.knob-scale {
+  align-self: stretch;
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.slider-out {
-  color: #b54708;
+.fader {
+  position: relative;
+  align-self: stretch;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.fader-ticks {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 0;
+  height: 7px;
+  background:
+    repeating-linear-gradient(90deg, var(--secondary) 0 1px, transparent 1px 10%) 0 0 / 100% 7px no-repeat,
+    repeating-linear-gradient(90deg, #aeb5bc 0 1px, transparent 1px 2%) 0 4px / 100% 3px no-repeat;
+  pointer-events: none;
+}
+
+.fader input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  margin: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--primary) 0 var(--level), #d9dde1 var(--level) 100%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+.fader input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid #9aa2aa;
+  background: linear-gradient(180deg, #fdfdfd 0%, #dfe3e7 45%, #c9ced3 50%, #e8ebee 100%);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+}
+
+.fader input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid #9aa2aa;
+  background: linear-gradient(180deg, #fdfdfd 0%, #dfe3e7 45%, #c9ced3 50%, #e8ebee 100%);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+  cursor: grab;
+}
+
+.fader input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--primary);
+}
+
+.lcd-row {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fader-control .lcd-row {
+  align-self: center;
+  width: min(100%, 220px);
+}
+
+.lcd {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #23272b;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.lcd input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 3.5ch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ff5a4f;
+  font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+  font-size: 1.1rem;
   font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 6px rgba(225, 37, 27, 0.55);
+  -moz-appearance: textfield;
+}
+
+.lcd input::-webkit-outer-spin-button,
+.lcd input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lcd input:focus {
+  outline: none;
+}
+
+.lcd:focus-within {
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(225, 37, 27, 0.45);
+}
+
+.lcd-unit {
+  flex: 0 0 auto;
+  color: #c5cad0;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.instrument-rest > label {
+  flex: 1 1 140px;
+}
+
+.lcd-select {
+  align-self: stretch;
+  position: relative;
+}
+
+.lcd-select::after {
+  content: "▾";
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #c5cad0;
+  pointer-events: none;
+}
+
+.lcd-select select {
+  width: 100%;
+  padding: 3px 18px 3px 0;
+  border: 0;
+  background: transparent;
+  color: #ff5a4f;
+  font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-shadow: 0 0 6px rgba(225, 37, 27, 0.55);
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.lcd-select select:focus {
+  outline: none;
+}
+
+.lcd-select option {
+  color: var(--text);
+  background: #fff;
+  text-shadow: none;
+}
+
+.lcd-step {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #b9c0c7;
+  background: linear-gradient(180deg, #ffffff 0%, #e4e7ea 100%);
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.lcd-step:active {
+  background: #dfe3e7;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 input.computed {
@@ -1072,6 +1382,193 @@ input.computed {
 .fill-status {
   align-self: end;
   font-weight: 600;
+}
+
+/* Interactive vessel cross-section (components/VesselSchematic.tsx) */
+.schematic-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vessel-schematic {
+  display: block;
+  width: 100%;
+  max-height: 560px;
+  background: radial-gradient(ellipse at 50% 40%, #ffffff 0%, #f3f5f7 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+  touch-action: none;
+}
+
+.vessel-schematic.draggable {
+  cursor: ns-resize;
+}
+
+.vessel-schematic text {
+  fill: #444b52;
+  font-weight: 600;
+}
+
+.schem-surface {
+  stroke: #0288d1;
+  stroke-width: 2;
+}
+
+.schem-static-level {
+  stroke: #0288d1;
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.7;
+}
+
+.schem-range line {
+  stroke: #8a939b;
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.vessel-schematic .schem-range text {
+  fill: #8a939b;
+  font-weight: 500;
+}
+
+.schem-baffle rect {
+  fill: #cfd6dd;
+  stroke: #8a939b;
+  stroke-width: 1;
+}
+
+.schem-scale line {
+  stroke: #5c6670;
+  stroke-width: 1;
+}
+
+.vessel-schematic .schem-scale text {
+  fill: #6b7280;
+  font-weight: 500;
+}
+
+.vessel-schematic .schem-unit {
+  font-style: italic;
+}
+
+.schem-pointer polygon {
+  fill: var(--primary);
+}
+
+.vessel-schematic .schem-pointer text {
+  fill: var(--primary);
+  font-weight: 700;
+}
+
+.schem-hover line {
+  stroke: #2a2e33;
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
+}
+
+.vessel-schematic .schem-hover text {
+  fill: #2a2e33;
+}
+
+.schem-dim line {
+  stroke: #555;
+  stroke-width: 1;
+}
+
+.schem-dim .schem-witness {
+  stroke-width: 0.6;
+  opacity: 0.7;
+}
+
+.schem-dim .schem-full {
+  stroke: #777;
+  stroke-dasharray: 1 3;
+}
+
+.vessel-schematic .schem-full-text {
+  fill: #777;
+}
+
+.schem-label polyline {
+  stroke-width: 0.8;
+}
+
+.vessel-schematic .schem-label text {
+  fill: inherit;
+}
+
+.schem-impeller:hover {
+  filter: drop-shadow(0 0 2px rgba(225, 37, 27, 0.6));
+}
+
+.schem-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: schem-spin linear infinite;
+}
+
+@keyframes schem-spin {
+  0% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(-1);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schem-spin {
+    animation: none;
+  }
+}
+
+.schematic-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 0.8rem;
+}
+
+.schematic-legend .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+}
+
+.schematic-legend .chip::before {
+  content: "";
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chip.liquid::before {
+  background: linear-gradient(180deg, #7fd3f7, #0277bd);
+}
+
+.chip.static::before {
+  height: 0;
+  border-top: 2px dashed #0288d1;
+}
+
+.chip.range::before {
+  height: 0;
+  border-top: 2px dotted #8a939b;
+}
+
+.chip.baffle::before {
+  background: #cfd6dd;
+  border: 1px solid #8a939b;
 }
 
 .vortex-caption {
@@ -1272,7 +1769,19 @@ button.link-btn {
 }
 
 .va-top {
-  align-items: start;
+  align-items: stretch;
+}
+
+.va-top > .media-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.va-top > .media-box > .vessel-media,
+.va-top > .media-box > .placeholder {
+  flex: 1 1 auto;
+  height: 0;
+  min-height: 260px;
 }
 
 .vessel-row {

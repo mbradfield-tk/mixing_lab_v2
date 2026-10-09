@@ -8,6 +8,7 @@ from fastapi import (
     APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, status,
 )
 
+from api.routers import attachment
 from api.security import current_principal
 from core import repositories as repos
 from core import tables
@@ -30,8 +31,7 @@ async def read_upload(file: UploadFile) -> bytes:
 
 
 def _csv_response(df, filename: str) -> Response:
-    return Response(tables.csv_bytes(df), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return Response(tables.csv_bytes(df), media_type="text/csv", headers=attachment(filename))
 
 
 def table_router(repo: repos.Repository, prefix: str, tag: str) -> APIRouter:

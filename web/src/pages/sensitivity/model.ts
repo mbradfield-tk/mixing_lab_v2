@@ -78,8 +78,7 @@ export const INITIAL: Inputs = {
   daVl: "1",
 };
 
-export const SUMMARY_PRE_START =
-  "*Set your inputs in the steps below, then click **Start assessment** to see the overall verdict, findings, and recommended next steps.*";
+export const SUMMARY_PRE_START = "*Run the assessment to see the verdict and next steps.*";
 
 /** ``core.records.sf``: blank / non-numeric text counts as 0. */
 export const sf = (v: string, fallback = 0): number => {
@@ -199,8 +198,7 @@ export function splitHeadline(verdict: string): [string, string] {
 }
 
 // The server's pending note names the Taipy step numbers, so the page uses its own wording.
-export const SUMMARY_PENDING =
-  "*Complete Steps 2, 3, 5 and 6 - select a reaction with kinetics, at least one phase, whether competing reactions are present, and resolve ΔH - to see the overall verdict.*";
+export const SUMMARY_PENDING = "*Complete Steps 2, 3, 5 and 6 to see the verdict.*";
 
 type Tone = "critical" | "warning" | "caution" | "ok" | "unknown" | "info";
 

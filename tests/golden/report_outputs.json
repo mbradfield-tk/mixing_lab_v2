@@ -552,22 +552,22 @@
     [
      "Bourne pre-screen",
      "⚪ Not performed",
-     "Run Bourne Protocol Part 1 for a direct experimental answer."
+     "Run Bourne Test 1 for a direct experimental answer."
     ],
     [
      "Micromixing",
      "🟢 Unlikely",
-     "Da_micro = 0.000227 in TMA EasyMax-102 (525 RPM, 0.055 L): t_E = 0.0227 s vs t_rxn = 100 s."
+     "Da_micro = 0.000227 (t_E 0.0227 s vs t_rxn 100 s) in TMA EasyMax-102 at 525 RPM, 0.055 L."
     ],
     [
      "Micro/mesomixing (selectivity)",
      "🟢 Not a factor",
-     "No competing reactions; batch process (no feed addition)."
+     "No competing reactions and no feed."
     ],
     [
      "Macromixing (blend time)",
      "🟢 Unlikely",
-     "Da_macro = 0.0122 in TMA EasyMax-102: θ₉₅ = 1.22 s vs t_rxn = 100 s. Blend time grows ~T^(2/3) at constant P/V - re-check at the next scale."
+     "Da_macro = 0.0122 (θ₉₅ 1.22 s vs t_rxn 100 s) in TMA EasyMax-102. Blend time grows with scale - re-check at the next scale."
     ],
     [
      "Mass transfer",
@@ -577,21 +577,21 @@
     [
      "Heat transfer",
      "🔴 Likely heat-transfer-limited",
-     "|ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K - run a heat balance to confirm adequate cooling capacity."
+     "|ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K - check cooling capacity with a heat balance."
     ]
    ],
    "is_semi_batch": false,
    "next_steps": [
     {
      "Area": "Bourne pre-screen",
-     "Recommended action": "Run Bourne Protocol Part 1 (quick screen) to confirm whether mixing sensitivity exists experimentally."
+     "Recommended action": "Run Bourne Test 1 to check experimentally whether mixing matters."
     },
     {
      "Area": "Heat transfer",
-     "Recommended action": "Run a heat balance (Vessel Assessment or Heat Transfer Tool) to compare the reaction heat rate with the jacket duty."
+     "Recommended action": "Run a heat balance (Vessel Assessment or Heat Transfer) against the jacket duty."
     }
    ],
-   "overall_verdict": "Low mixing sensitivity risk; heat transfer needs review - no mixing mechanism is expected to limit this reaction under typical operating conditions. Separately, heat transfer is likely limiting - this is a heat-removal (thermal) question, not a mixing sensitivity: run a heat balance to confirm the jacket can handle the reaction heat.",
+   "overall_verdict": "Low mixing sensitivity risk; heat transfer needs review - no mixing mechanism is expected to limit this reaction. Separately, heat transfer is likely limiting - a thermal issue, not a mixing sensitivity. Run a heat balance.",
    "phases": [
     "Liquid"
    ],

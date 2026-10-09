@@ -2,7 +2,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import { Chart } from "../components/Chart";
-import { NumberField, Segmented, SelectField, SliderField, Switch } from "../components/Form";
+import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { Fader, InstrumentPanel, Setpoint } from "../components/Instrument";
 import {
   InsightCard, InsightGrid, Pill, Stages, StatGrid, TableDetails, ThresholdBar, VerdictBanner, stripIcon,
 } from "../components/Insights";
@@ -35,10 +36,8 @@ const DEFAULT_COLUMNS: Record<TestNo, string[]> = {
   3: ["Surface", "Mid", "Impeller"],
 };
 const NOT_STARTED = "Define the system, then click Start Protocol.";
-const STARTED = "Protocol started. Run Test 1 conditions and enter the responses.";
-const INVALIDATED =
-  "System or response inputs changed — previous Bourne assessments are invalid. " +
-  "Reassessment required: please redo the protocol from Test 1.";
+const STARTED = "Run the Test 1 conditions and enter the responses.";
+const INVALIDATED = "Inputs changed - previous results no longer apply. Redo the protocol from Test 1.";
 
 interface Project {
   projectName: string;
@@ -77,7 +76,7 @@ function TestResult({ n, out, columns }: { n: TestNo; out: Schemas["BourneTestOu
               status={st.label}
             >
               <div className="kpi-change">{k.max_change_pct.toFixed(1)}%</div>
-              <div className="muted">max change from centre · threshold {k.threshold_pct.toFixed(0)}%</div>
+              <div className="muted">change vs centre · threshold {k.threshold_pct.toFixed(0)}%</div>
               <ThresholdBar value={k.max_change_pct} threshold={k.threshold_pct} tone={st.tone} />
               <div className="kpi-values">
                 {[k.low, k.centre, k.high].map((v, j) => (
@@ -115,21 +114,20 @@ function OutcomeDashboard({ out }: { out: Schemas["BourneAssessResult"] }) {
       <StatGrid
         size="sm"
         stats={[
-          { label: "Tests assessed", value: `${out.tests.length} / 3` },
-          {
-            label: "Test 1 P/m span",
-            value: `${out.pm_span.toFixed(out.pm_span < 100 ? 1 : 0)}×`,
-            tone: out.pm_span >= 100 ? "ok" : "warning",
-            hint: out.pm_span >= 100 ? "Full 100× range" : "Below the 100× intended",
-          },
           {
             label: `Sensitive KPIs (Test ${last.test})`,
             value: `${nSens} / ${last.kpi_details.length}`,
             tone: nSens ? "critical" : "ok",
           },
           {
+            label: "Test 1 P/m span",
+            value: `${out.pm_span.toFixed(out.pm_span < 100 ? 1 : 0)}×`,
+            tone: out.pm_span >= 100 ? "ok" : "warning",
+            hint: out.pm_span >= 100 ? "Full range" : "Below 100×",
+          },
+          {
             label: "Next step",
-            value: out.next_test ? `Run Test ${out.next_test}` : "Protocol complete",
+            value: out.next_test ? `Run Test ${out.next_test}` : "Done",
             tone: out.next_test ? "info" : "ok",
           },
         ]}
@@ -369,12 +367,12 @@ export function BourneProtocol() {
   const fluidSelect = (
     <SelectField label="Fluid" value={inputs.fluid} options={options.data?.fluids ?? []} onChange={(fluid) => set({ fluid })} />
   );
-  const tField = <NumberField label="Temperature (°C)" value={inputs.T} onChange={(T) => set({ T })} />;
-  const pField = <NumberField label="Pressure (atm)" value={inputs.P} onChange={(P) => set({ P })} />;
+  const tField = <Setpoint label="Temperature" value={inputs.T} onChange={(T) => set({ T })} unit="°C" />;
+  const pField = <Setpoint label="Pressure" value={inputs.P} onChange={(P) => set({ P })} unit="atm" step={0.1} min={0} />;
   const vField =
     vRange && vRange[1] > vRange[0] ? (
-      <SliderField
-        label="Working volume (L)"
+      <Fader
+        label="Working volume"
         value={inputs.V_L}
         onChange={(V_L) => set({ V_L })}
         min={vRange[0]}
@@ -385,6 +383,13 @@ export function BourneProtocol() {
     ) : (
       <NumberField label="Working volume (L)" value={inputs.V_L} onChange={(V_L) => set({ V_L })} />
     );
+  const operatingPanel = (
+    <InstrumentPanel title="Operating point">
+      {vField}
+      {tField}
+      {pField}
+    </InstrumentPanel>
+  );
   const centreFields = (
     <div className="form-row">
       <SelectField
@@ -437,12 +442,7 @@ export function BourneProtocol() {
       {conditions(tables?.test1_summary, "bourne_test_1_conditions.csv")}
       {tables && (
         <details>
-          <summary>All hydrodynamic parameters per condition</summary>
-          <p className="muted">
-            Literature correlations at each condition: power and torque, mean and maximum energy dissipation rate (EDR),
-            tip speed, Re, Froude number, pumping, circulation and blend times, micromixing times, Kolmogorov scale, shear
-            rates and stress, EDCF and surface kLa.
-          </p>
+          <summary>All hydrodynamic parameters</summary>
           <ResultTable rows={tables.test1_detail} csvName="bourne_test_1_conditions_detail.csv" stale={planStale} />
         </details>
       )}
@@ -480,10 +480,10 @@ export function BourneProtocol() {
 
       {tab === "Protocol" ? (
         <>
-          <p>{status}</p>
+          <p className={systemChanged ? "stale-note" : "muted"}>{status}</p>
           <p>
-            A structured mixing-sensitivity screen (Bourne, 2003). Three gated tests reveal whether mixing matters and, if so,
-            which scale — <strong>micro</strong>, <strong>meso</strong>, or <strong>macro</strong> — controls the outcome.
+            Three tests show whether mixing matters and, if so, which scale controls it: <strong>micro</strong>,{" "}
+            <strong>meso</strong> or <strong>macro</strong> (Bourne, 2003).
           </p>
           <details>
             <summary>Decision-tree flowsheet</summary>
@@ -517,17 +517,15 @@ export function BourneProtocol() {
             <div className="grid-2 va-top">
               <div>
                 {vesselSelect}
-                <div className="form-row">
-                  {fluidSelect}
-                  {tField}
-                  {pField}
-                </div>
-                <div className="form-row">{vField}</div>
+                <div className="form-row">{fluidSelect}</div>
+                {operatingPanel}
                 {inputError}
-                <p>
-                  <strong>Reactor limits</strong>
-                </p>
-                {limits && <ResultTable rows={limits} />}
+                {limits && (
+                  <details>
+                    <summary>Reactor limits</summary>
+                    <ResultTable rows={limits} />
+                  </details>
+                )}
                 <p>
                   <button
                     type="button"
@@ -554,8 +552,8 @@ export function BourneProtocol() {
           {started && (
             <Card title="Test 1 — Impeller Speed">
               <p>
-                Vary the specific power <strong>P/m</strong> over a 100× range (0.1× → 10× the centre) at fixed volume. If the
-                response barely moves, mixing is not rate-limiting.
+                Vary <strong>P/m</strong> 100× (0.1× to 10× the centre) at fixed volume. No change in the response means mixing is
+                not limiting.
               </p>
               <section className="sub-section">
                 <h3>
@@ -568,12 +566,8 @@ export function BourneProtocol() {
 
               <section className="sub-section">
                 <h3>
-                  <span className="sub-step">1.2</span> Discrete speed adjustments (fed-batch)
+                  <span className="sub-step">1.2</span> Fed-batch speed steps (optional)
                 </h3>
-                <p>
-                Step the impeller speed at volume milestones to hold <strong>P/m constant</strong> as the working volume grows.
-                Enter one row per milestone volume (L).
-              </p>
               <Switch
                 label="Fed-batch speed adjustments"
                 checked={inputs.fedBatch}
@@ -587,6 +581,7 @@ export function BourneProtocol() {
               {inputs.fedBatch && (
                 <div className="grid-2 va-top">
                   <div>
+                    <p className="muted">One row per milestone volume; speeds hold P/m constant as the volume grows.</p>
                     <table className="data-table kpi-editor" aria-label="Milestone volumes">
                       <thead>
                         <tr>
@@ -632,15 +627,12 @@ export function BourneProtocol() {
                   <span className="sub-step">1.3</span> Impeller speed vs fill volume
                 </h3>
               {tables && !tables.has_speed_plan ? (
-                <p>
-                  <em>This vessel has a single working volume, so the speed-vs-volume plot is not applicable.</em>
-                </p>
+                <p className="muted">Single working volume - no speed-vs-volume plot.</p>
               ) : (
                 <>
-                  <p>
-                    Iso-<strong>P/m</strong> lines show the impeller speed needed to hold each condition&apos;s specific power
-                    constant as the fill volume changes. The black dot is the working-volume centre-point; diamonds mark any
-                    fed-batch set-points; dashed lines are the reactor RPM limits.
+                  <p className="muted">
+                    Lines hold each condition&apos;s P/m as the fill changes. Black dot: centre point; diamonds: fed-batch steps;
+                    dashed: RPM limits.
                   </p>
                   <Chart figure={chart.data} height={480} />
                 </>
@@ -651,14 +643,21 @@ export function BourneProtocol() {
                 <h3>
                   <span className="sub-step">1.4</span> Measured responses
                 </h3>
-                <p>
-                Track one or more KPIs — add a row per metric. A KPI counts as sensitive when it changes by more than its
-                threshold from the centre value (<strong>5%</strong> for yield / conversion / purity / selectivity,{" "}
-                <strong>10%</strong> for impurity levels and particle size) and the change exceeds twice the measurement noise
-                (optional <strong>Std dev</strong> and <strong>Replicates</strong> columns). The overall verdict is{" "}
-                <em>sensitive</em> if any critical KPI (impurity, selectivity) or every KPI is sensitive, <em>not sensitive</em>{" "}
-                if none is, and <em>inconclusive</em> for a mixed signal.
-              </p>
+                <p>Add a row per KPI and enter the response at each condition.</p>
+                <details>
+                  <summary>How KPIs are judged</summary>
+                  <ul>
+                    <li>
+                      A KPI is <strong>sensitive</strong> if it changes from the centre by more than its threshold (5% for yield,
+                      conversion, purity, selectivity; 10% for impurities and particle size) and by more than twice the noise
+                      (optional Std dev / Replicates).
+                    </li>
+                    <li>
+                      The test is <em>sensitive</em> if any critical KPI (impurity, selectivity) or every KPI is sensitive,{" "}
+                      <em>not sensitive</em> if none is, otherwise <em>inconclusive</em>.
+                    </li>
+                  </ul>
+                </details>
               {kpiSection(1)}
               </section>
             </Card>
@@ -667,8 +666,8 @@ export function BourneProtocol() {
           {show(2) && (
             <Card title="Test 2 — Feed Rate / Time">
               <p>
-                Hold P/m at the centre and vary the <strong>feed rate</strong> over a 9× range. Insensitivity means the reaction
-                is <strong>micromixing</strong>-controlled; sensitivity points to mesomixing.
+                Keep P/m at the centre and vary the <strong>feed rate</strong> 9×. No change means <strong>micromixing</strong>{" "}
+                controls; a change points to mesomixing.
               </p>
               <section className="sub-section">
                 <h3>
@@ -681,10 +680,7 @@ export function BourneProtocol() {
                 <h3>
                   <span className="sub-step">2.2</span> Measured responses
                 </h3>
-                <p>
-                  KPIs carry over from Test 1 — edit the responses (columns: <strong>Slow feed / Centre / Fast feed</strong>),
-                  add or remove rows as needed.
-                </p>
+                <p className="muted">KPIs carry over from Test 1.</p>
                 {kpiSection(2)}
               </section>
             </Card>
@@ -693,16 +689,15 @@ export function BourneProtocol() {
           {show(3) && (
             <Card title="Test 3 — Feed Location">
               <p>
-                Hold P/m and feed rate; move the feed point between low- and high-dissipation zones. Insensitivity means{" "}
-                <strong>macromixing</strong> controls; sensitivity means mesomixing.
+                Keep P/m and feed rate; move the feed point between low- and high-turbulence zones. No change means{" "}
+                <strong>macromixing</strong> controls; a change means mesomixing.
               </p>
               <section className="sub-section">
                 <h3>
                   <span className="sub-step">3.1</span> Feed locations &amp; test conditions
                 </h3>
-                <p>
-                  The local dissipation ratios below are illustrative defaults. Replace them with measured or CFD-derived values
-                  when available.
+                <p className="muted">
+                  Default dissipation ratios are illustrative - use measured or CFD values if you have them.
                 </p>
                 {ratioFields}
                 {conditions(tables?.test3, "bourne_test_3_conditions.csv")}
@@ -711,9 +706,7 @@ export function BourneProtocol() {
                 <h3>
                   <span className="sub-step">3.2</span> Measured responses
                 </h3>
-                <p>
-                  KPIs carry over from Test 2 — edit the responses (columns: <strong>Surface / Mid / Impeller</strong>).
-                </p>
+                <p className="muted">KPIs carry over from Test 2.</p>
                 {kpiSection(3)}
               </section>
             </Card>
@@ -722,19 +715,18 @@ export function BourneProtocol() {
           {latest && (
             <Card title="Summary">
               <OutcomeDashboard out={latest.out} />
-              <h3>Export report</h3>
-              <p>Generate a PDF capturing the system, each completed test&apos;s conditions and responses, and the decision-tree conclusion.</p>
-              <button type="button" className="primary" disabled={download.isPending} onClick={() => download.mutate("pdf")}>
-                Download PDF report
-              </button>
-              <h3>Export for the Reaction Sensitivity Protocol</h3>
-              <p>
-                Export the outcome as a CSV that can be imported into the <strong>Reaction Sensitivity Protocol</strong> (Step 1
-                pre-screen) to feed the experimental result into the overall sensitivity assessment.
+              <h3>Export</h3>
+              <p className="muted">
+                The PDF records the system, tests and conclusion. The CSV feeds Step 1 of the Reaction Sensitivity Protocol.
               </p>
-              <button type="button" className="primary" disabled={download.isPending} onClick={() => download.mutate("csv")}>
-                Download Sensitivity CSV
-              </button>
+              <p className="button-row">
+                <button type="button" className="primary" disabled={download.isPending} onClick={() => download.mutate("pdf")}>
+                  Download PDF report
+                </button>{" "}
+                <button type="button" className="primary" disabled={download.isPending} onClick={() => download.mutate("csv")}>
+                  Download Sensitivity CSV
+                </button>
+              </p>
             </Card>
           )}
         </>
@@ -742,18 +734,14 @@ export function BourneProtocol() {
         <>
           <h2>Experimental plan</h2>
           <p>
-            Set the vessel, fluid and test inputs to calculate all three experimental condition sets. Planning does not require
-            starting or assessing the protocol. These inputs are shared with the Protocol tab; changing them invalidates previous
-            assessments.
+            Conditions for all three tests. No need to start the protocol; inputs are shared with the Protocol tab.
           </p>
           <Card title="System">
             <div className="form-row">
               {vesselSelect}
               {fluidSelect}
-              {vField}
-              {tField}
-              {pField}
             </div>
+            {operatingPanel}
             {inputError}
             {limits && <ResultTable rows={limits} />}
           </Card>
@@ -767,9 +755,9 @@ export function BourneProtocol() {
             {conditions(tables?.test2, "bourne_test_2_conditions.csv")}
           </Card>
           <Card title="Test 3: feed location">
-            <p>
-              Keep the centre-point speed and feed rate fixed. Local dissipation ratios are illustrative; use measured or
-              CFD-derived values when available.
+            <p className="muted">
+              Centre speed and feed rate stay fixed. Default dissipation ratios are illustrative - use measured or CFD values if you
+              have them.
             </p>
             {ratioFields}
             {conditions(tables?.test3, "bourne_test_3_conditions.csv")}

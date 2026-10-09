@@ -5,11 +5,13 @@ import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { Fader, InstrumentPanel, Knob, Selector, Setpoint } from "../components/Instrument";
 import { StatGrid, TableDetails, statsFromRows } from "../components/Insights";
 import { NoticeBar, useNotice } from "../components/Notice";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
-import { asOrder, downloadBlob } from "./assessment/model";
+import { useDebounced } from "../hooks";
+import { asOrder, downloadBlob, sliderStep } from "./assessment/model";
 import {
   INITIAL, MODES, MODE_HINT, adiabaticText, agitatorText, buildBody, colorLimits, heatStatus, kpiRows,
   reactionStatus, sweepRange, type HeatBody, type Inputs, type Mode, type SweepKey,
@@ -49,6 +51,13 @@ export function HeatTransfer() {
 
   // Vessel bounds for the sweep defaults; refreshed with each vessel.
   const [ranges, setRanges] = useState<{ N_rpm_range?: number[] | null; V_L_range?: number[] | null }>({});
+  const span = (r?: number[] | null) => (r && r.length === 2 && r[1] > r[0] ? (r as [number, number]) : null);
+  const nRange = span(ranges.N_rpm_range);
+  const vRange = span(ranges.V_L_range);
+  const setVolume = (v_l: string) => {
+    areaPending.current = true;
+    set({ v_l });
+  };
 
   function sweepDefaults(i: Inputs, r = ranges): Partial<Inputs> {
     const zero = ht?.sweep_zero_max ?? {};
@@ -112,6 +121,16 @@ export function HeatTransfer() {
   }
 
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
+
+  // Re-derive the jacket area once a user-set volume settles.
+  const areaPending = useRef(false);
+  const vSettled = useDebounced(inputs.v_l, 400);
+  useEffect(() => {
+    if (!areaPending.current) return;
+    areaPending.current = false;
+    report(updateArea(vSettled));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vSettled]);
 
   const initialised = useRef(false);
   useEffect(() => {
@@ -316,15 +335,6 @@ export function HeatTransfer() {
               setNotice({ kind: "info", text: "Fluid properties loaded." });
             }}
           />
-          <SelectField
-            label="Heat transfer medium"
-            value={inputs.htm}
-            options={Object.keys(ht?.media ?? {})}
-            onChange={(htm) => {
-              set({ htm, cp_jacket: String(ht?.media[htm] ?? inputs.cp_jacket) });
-              setNotice({ kind: "info", text: "HTM defaults loaded." });
-            }}
-          />
           <SelectField label="Nusselt correlation" value={inputs.nusselt} options={ht?.nusselt_correlations ?? []} onChange={(nusselt) => set({ nusselt })} />
         </div>
       </Card>
@@ -335,19 +345,50 @@ export function HeatTransfer() {
           <NumberField label="D_tank (m)" value={inputs.d_tank} onChange={(d_tank) => set({ d_tank })} />
           <NumberField label="D_imp (m)" value={inputs.d_imp} onChange={(d_imp) => set({ d_imp })} />
           <NumberField label="Np" value={inputs.np_in} onChange={(np_in) => set({ np_in })} />
-          <NumberField label="N (RPM)" value={inputs.n_rpm} onChange={(n_rpm) => set({ n_rpm })} />
         </div>
-        <div className="form-row">
-          <label>
-            Liquid volume (L)
-            <input
-              type="number"
-              step="any"
-              value={inputs.v_l}
-              onChange={(e) => set({ v_l: e.target.value })}
-              onBlur={(e) => report(updateArea(e.target.value))}
+        <InstrumentPanel title="Operating point">
+          {nRange ? (
+            <Knob
+              label="Stir speed"
+              value={inputs.n_rpm}
+              onChange={(n_rpm) => set({ n_rpm })}
+              min={nRange[0]}
+              max={nRange[1]}
+              step={sliderStep(nRange[1] - nRange[0])}
+              unit="RPM"
             />
-          </label>
+          ) : (
+            <NumberField label="N (RPM)" value={inputs.n_rpm} onChange={(n_rpm) => set({ n_rpm })} />
+          )}
+          {vRange ? (
+            <Fader
+              label="Liquid volume"
+              value={inputs.v_l}
+              onChange={setVolume}
+              min={vRange[0]}
+              max={vRange[1]}
+              step={sliderStep(vRange[1] - vRange[0])}
+              unit="L"
+            />
+          ) : (
+            <NumberField label="Liquid volume (L)" value={inputs.v_l} onChange={setVolume} />
+          )}
+          <Setpoint label="Start temperature" value={inputs.t_start} onChange={(t_start) => set({ t_start })} unit="°C" />
+          {mode === "heat" && (
+            <Setpoint label="Target temperature" value={inputs.t_target} onChange={(t_target) => set({ t_target })} unit="°C" />
+          )}
+          <Selector
+            label="Coolant"
+            value={inputs.htm}
+            options={Object.keys(ht?.media ?? {})}
+            onChange={(htm) => {
+              set({ htm, cp_jacket: String(ht?.media[htm] ?? inputs.cp_jacket) });
+              setNotice({ kind: "info", text: "Coolant defaults loaded." });
+            }}
+          />
+          <Setpoint label="Coolant temp" value={inputs.t_jacket} onChange={(t_jacket) => set({ t_jacket })} unit="°C" />
+        </InstrumentPanel>
+        <div className="form-row">
           <NumberField label="Heat-transfer area A_ht (m²)" value={inputs.a_ht} onChange={(a_ht) => set({ a_ht })} />
           <NumberField label="Fouling resistance (m²·K/W)" value={inputs.fouling} onChange={(fouling) => set({ fouling })} />
           <NumberField label="Extra heat input (W)" value={inputs.q_rxn} onChange={(q_rxn) => set({ q_rxn })} />
@@ -398,11 +439,8 @@ export function HeatTransfer() {
           <NumberField label="Jacket Cp (J/kg.K)" value={inputs.cp_jacket} onChange={(cp_jacket) => set({ cp_jacket })} />
         </div>
 
-        <h3>Temperatures</h3>
+        <h3>Plot</h3>
         <div className="form-row">
-          <NumberField label="T_start (C)" value={inputs.t_start} onChange={(t_start) => set({ t_start })} />
-          <NumberField label="Jacket / coolant T (C)" value={inputs.t_jacket} onChange={(t_jacket) => set({ t_jacket })} />
-          {mode === "heat" && <NumberField label="T_target (C)" value={inputs.t_target} onChange={(t_target) => set({ t_target })} />}
           <SelectField
             label="Plot time unit"
             value={inputs.timeUnit}
@@ -461,9 +499,8 @@ export function HeatTransfer() {
       {mode === "reaction" && (
         <Card title="Reaction Kinetics and Heat of Reaction">
           <p>
-            Pick a reaction to auto-fill its kinetics, or edit the fields directly. The rate constant is held fixed
-            (isothermal-kinetics approximation; activation energy is not modelled) and the profile runs until 99%
-            conversion.
+            Pick a reaction to fill its kinetics, or edit the fields. Runs to 99% conversion with a fixed rate constant (no
+            activation energy).
           </p>
           <div className="form-row">
             <SelectField

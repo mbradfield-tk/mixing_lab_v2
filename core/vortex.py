@@ -33,6 +33,8 @@ def surface_profile(r: np.ndarray, omega: float, r_c: float) -> np.ndarray:
 
 def _bottom_height(r: np.ndarray, geom: dict) -> np.ndarray:
     """Height of the vessel bottom (m, tangent line = 0) at radius ``r``."""
+    if "bottom_at" in geom:
+        return np.array([geom["bottom_at"](float(x)) for x in r])
     R, bd, shape = geom["R"], geom["bot_depth"], geom["bot_shape"]
     if bd <= 0 or shape == "flat":
         return np.zeros_like(r)

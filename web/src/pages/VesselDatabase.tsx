@@ -6,11 +6,13 @@ import { api, ApiError, unwrap, uploadFile } from "../api/client";
 import { tableUrl, useTable, type Row } from "../api/tables";
 import { AdminPanel, useIsAdmin } from "../components/Admin";
 import { AddForm, DatabaseTable, type Field } from "../components/Database";
-import { SliderField, Switch } from "../components/Form";
+import { Switch } from "../components/Form";
+import { Fader, InstrumentPanel, Knob } from "../components/Instrument";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
+import { VesselSchematic, type Drawing } from "../components/VesselSchematic";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
 import { sliderStep } from "./assessment/model";
@@ -266,6 +268,17 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
       ) as unknown as Fill,
     enabled: !!vessel && debouncedFill !== null && defaultedFor.current === vessel,
   });
+  const drawing = useQuery({
+    queryKey: ["vessel-drawing", vessel, debouncedFill, debouncedRpm],
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/media/vessels/{name}/drawing", {
+          params: { path: { name: vessel }, query: { fill_L: debouncedFill, rpm: debouncedRpm } },
+        }),
+      ) as unknown as Drawing,
+    enabled: !!vessel,
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === vessel ? prev : undefined),
+  });
 
   const allProps = useMemo(() => {
     const out: string[] = [];
@@ -291,11 +304,6 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
     .filter((d) => props.length === 0 || props.includes(d.prop))
     .sort((a, b) => order(a.prop) - order(b.prop));
 
-  const schematicUrl =
-    debouncedFill === null
-      ? undefined
-      : `/api/v1/media/vessels/${encodeURIComponent(vessel)}/schematic.png?fill_L=${debouncedFill}` +
-        (debouncedRpm !== null ? `&rpm=${debouncedRpm}` : "");
   const status = row.data && fill.data && fillL !== null ? fillStatus(row.data, fillL, fill.data) : "";
   const fillRange = row.data ? fillSliderRange(row.data, total) : null;
   const rpmRange = row.data ? rpmSliderRange(row.data) : null;
@@ -344,17 +352,27 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
         </section>
       </div>
 
-      <h3>2D Schematic, Liquid Level &amp; Vortex</h3>
+      <h3>Cross-Section, Liquid Level &amp; Vortex</h3>
       <div className="grid-2 explore">
         <div className="media-box">
-          {schematicUrl && <img className="schematic" src={schematicUrl} alt={`Cross-section of ${vessel}`} />}
+          {drawing.isError && <ErrorNote error={drawing.error} />}
+          {drawing.data && (
+            <VesselSchematic
+              data={drawing.data}
+              fillL={fillL}
+              rpm={rpm}
+              fillRange={fillRange}
+              onFill={(v) => setFillText(String(v))}
+              name={vessel}
+            />
+          )}
         </div>
         <div>
-          <p>Enter a fill volume to draw the liquid surface on the vessel cross-section.</p>
-          <div className="form-row">
-            {fillRange ? (
-              <SliderField
-                label="Liquid fill volume (L)"
+          <p>Set the fill with the fader or drag inside the drawing; hover for the volume at any height.</p>
+          {fillRange ? (
+            <InstrumentPanel>
+              <Fader
+                label="Liquid fill volume"
                 value={fillText}
                 onChange={setFillText}
                 min={fillRange[0]}
@@ -362,7 +380,20 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
                 step={sliderStep(fillRange[1] - fillRange[0])}
                 unit="L"
               />
-            ) : (
+              {showVortex && rpmRange && (
+                <Knob
+                  label="Agitation rate"
+                  value={rpmText}
+                  onChange={setRpmText}
+                  min={rpmRange[0]}
+                  max={rpmRange[1]}
+                  step={sliderStep(rpmRange[1] - rpmRange[0])}
+                  unit="rpm"
+                />
+              )}
+            </InstrumentPanel>
+          ) : (
+            <div className="form-row">
               <label>
                 Liquid fill volume (L)
                 <input
@@ -375,16 +406,16 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
                   onBlur={() => fillL !== null && setFillText(String(fillL))}
                 />
               </label>
-            )}
-            <p className="fill-status">{status}</p>
-          </div>
+            </div>
+          )}
+          <p className="fill-status">{status}</p>
           {fill.isError && <ErrorNote error={fill.error} />}
           {fill.data && <FillCaption res={fill.data} />}
           <Switch label="Show vortex at an agitation rate" checked={showVortex} onChange={setShowVortex} />
-          {showVortex && rpmRange && (
-            <div className="form-row">
-              <SliderField
-                label="Agitation rate (rpm)"
+          {showVortex && !fillRange && rpmRange && (
+            <InstrumentPanel>
+              <Knob
+                label="Agitation rate"
                 value={rpmText}
                 onChange={setRpmText}
                 min={rpmRange[0]}
@@ -392,7 +423,7 @@ function ExploreVessel({ names, labels }: { names: string[]; labels: Map<string,
                 step={sliderStep(rpmRange[1] - rpmRange[0])}
                 unit="rpm"
               />
-            </div>
+            </InstrumentPanel>
           )}
           {showVortex && fill.data?.vortex && <VortexCaption v={fill.data.vortex} />}
         </div>

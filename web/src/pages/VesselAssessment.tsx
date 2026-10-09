@@ -4,7 +4,8 @@ import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
-import { NumberField, Segmented, SelectField, SliderField, Switch } from "../components/Form";
+import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { Fader, InstrumentPanel, Knob, Selector, Setpoint } from "../components/Instrument";
 import {
   InsightCard, InsightGrid, StatGrid, TableDetails, statsFromRows, stripIcon, toneOf, type Stat,
 } from "../components/Insights";
@@ -90,15 +91,19 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
       <h3>Hydrodynamics</h3>
       <StatGrid stats={featured} />
       <StatGrid size="sm" stats={rest} />
-      {md(t.applicability)}
+      {t.applicability && (
+        <details>
+          <summary>Correlation applicability</summary>
+          {md(t.applicability)}
+        </details>
+      )}
       <TableDetails rows={t.hydro} csvName="vessel_assessment_hydrodynamics.csv" stale={stale} />
 
       {t.mass_transfer.length > 0 && (
         <>
-          <h3>Mass-transfer capacity versus kinetic demand</h3>
-          <p>
-            The capacity ratio is a preliminary screen using <strong>kLa / (1/t<sub>rxn</sub>)</strong>. Confirm the
-            result with solubility, phase composition, and concentration driving-force data.
+          <h3>Mass-transfer capacity vs reaction demand</h3>
+          <p className="muted">
+            Rough screen: kLa / (1/t<sub>rxn</sub>). Confirm with solubility and driving-force data.
           </p>
           <InsightGrid>
             {t.mass_transfer.map((r, i) => {
@@ -133,8 +138,8 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
         </>
       ) : (
         <p className="muted">
-          No heat load — enter ΔH<sub>rxn</sub> in Section 4, or a dosing temperature different from the process
-          temperature in Section 3, to run the heat-balance check.
+          No heat load. Enter ΔH<sub>rxn</sub> (Section 4) or a dosing temperature different from the process temperature
+          (Section 3).
         </p>
       )}
     </>
@@ -175,31 +180,18 @@ function TemperatureProfile({ temp, stale }: { temp: Temperature; stale: boolean
     <Card title="Temperature Profile">
       {r.scenario === "dosed" ? (
         <p>
-          <strong>Dosed scenario</strong> over the {formatG(r.time_min[r.time_min.length - 1], 3)} min dosing time
-          {reaction ? (
-            <>
-              : reagent A is charged at C<sub>0</sub> and the stoichiometric co-reagent is dosed with the feed at a
-              constant rate, so heat is released as it is dosed and reacts (unreacted feed accumulates when the reaction
-              is slower than the dosing). The balance includes the reaction heat,
-            </>
-          ) : (
-            <>, without reaction heat. The balance includes</>
-          )}{" "}
-          the feed's sensible heat ṁ·c<sub>p</sub>·(T<sub>feed</sub> − T) and the jacket duty UA(t)·(T<sub>coolant</sub> −
-          T), with UA and the heat capacity growing as the vessel fills.
+          <strong>Dosed</strong> over {formatG(r.time_min[r.time_min.length - 1], 3)} min
+          {reaction ? ": heat is released as the co-reagent is dosed and reacts." : ", without reaction heat."} Includes the
+          feed&apos;s sensible heat and the jacket duty, which grows as the vessel fills.
         </p>
       ) : (
         <p>
-          <strong>Batch scenario</strong>: all reagent is charged at C<sub>0</sub> and reacts until 99 % conversion. The
-          reaction heat is balanced against the jacket duty UA·(T<sub>coolant</sub> − T), as on the{" "}
-          <PageLink pageKey="Heat_Transfer" /> page (rate constant fixed; activation energy not modelled).
+          <strong>Batch</strong>: all reagent reacts to 99% conversion against the jacket duty (as on the{" "}
+          <PageLink pageKey="Heat_Transfer" /> page; no activation energy).
         </p>
       )}
       <p className="muted">
-        The <em>no-cooling end temperature</em> is the overall heat balance once
-        {reaction ? " all reagent has reacted" : ""}
-        {reaction && r.scenario === "dosed" ? " and" : ""}
-        {r.scenario === "dosed" ? " all feed is added" : ""}, with no heat removed by the jacket.
+        <em>No-cooling end temperature</em>: the final temperature if the jacket removed no heat.
       </p>
       {stale && (
         <p className="stale-note">⚠️ Inputs changed since the simulation — click <em>Compute Assessment</em> to refresh.</p>
@@ -215,8 +207,8 @@ function FillingDynamics({ filling, stale }: { filling: Filling; stale: boolean 
   return (
     <Card title="Filling Dynamics">
       <p>
-        Every parameter is recomputed at {filling.request.n_steps} time steps while the vessel fills at constant speed. The
-        liquid at each step is a volume blend of the initial fluid and the dosed fluid (Fluid Database blend rules).
+        Parameters at {filling.request.n_steps} steps as the vessel fills at constant speed (liquid = blend of the initial and
+        dosed fluids).
       </p>
       {stale && (
         <p className="stale-note">⚠️ Inputs changed since the simulation — click <em>Compute Assessment</em> to refresh.</p>
@@ -641,22 +633,11 @@ export function VesselAssessment() {
                 setNotice({ kind: "info", text: "Vessel geometry loaded." });
               }}
             />
-            <div className="form-row">
-              <NumberField label="Temperature (°C)" value={inputs.T} onChange={(T) => set({ T })} />
-              <NumberField label="Pressure (atm)" value={inputs.P} onChange={(P) => set({ P })} />
-              <NumberField label="Coolant temp (°C)" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} />
-              <SelectField
-                label="Coolant (HTF)"
-                value={inputs.htm}
-                options={[{ code: "", label: "Typical jacket (h_o 1500 W/m²·K)" }, ...htmList.map((m) => ({ code: m, label: m }))]}
-                onChange={(htm) => set({ htm })}
-              />
-            </div>
-            <div className="form-row">
+            <InstrumentPanel title="Operating point">
               {ranges ? (
                 <>
-                  <SliderField
-                    label="Agitation speed N (RPM)"
+                  <Knob
+                    label="Stir speed"
                     value={inputs.N}
                     onChange={(N) => set({ N })}
                     min={ranges.N[0]}
@@ -664,8 +645,8 @@ export function VesselAssessment() {
                     step={sliderStep(ranges.N[1] - ranges.N[0])}
                     unit="RPM"
                   />
-                  <SliderField
-                    label="Fill volume (L)"
+                  <Fader
+                    label="Fill volume"
                     value={inputs.V}
                     onChange={(V) => set({ V })}
                     min={ranges.V[0]}
@@ -680,7 +661,16 @@ export function VesselAssessment() {
                   <NumberField label="Fill volume (L)" value={inputs.V} onChange={(V) => set({ V })} />
                 </>
               )}
-            </div>
+              <Setpoint label="Temperature" value={inputs.T} onChange={(T) => set({ T })} unit="°C" />
+              <Setpoint label="Pressure" value={inputs.P} onChange={(P) => set({ P })} unit="atm" step={0.1} min={0} />
+              <Setpoint label="Coolant temp" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} unit="°C" />
+              <Selector
+                label="Coolant"
+                value={inputs.htm}
+                options={[{ code: "", label: "Typical jacket" }, ...htmList.map((m) => ({ code: m, label: m }))]}
+                onChange={(htm) => set({ htm })}
+              />
+            </InstrumentPanel>
             <details>
               <summary>Advanced: vessel geometry overrides</summary>
               <div className="form-row">
@@ -796,8 +786,7 @@ export function VesselAssessment() {
         {inputs.fed ? (
           <>
             <p className="muted">
-              Feed inputs unlock the <strong>mesomixing</strong> assessment (feed-plume dispersion). The feed's sensible
-              heat, ṁ·C<sub>p</sub>·(T<sub>feed</sub> − T<sub>process</sub>), is added to the heat balance.
+              Adds the <strong>mesomixing</strong> check and the feed&apos;s sensible heat to the heat balance.
             </p>
             <div className="form-row">
               <NumberField label="Dosing Time [h]" value={inputs.dosingTime} onChange={(dosingTime) => set({ dosingTime })} />
@@ -841,18 +830,17 @@ export function VesselAssessment() {
             />
             {inputs.simulateFilling && (
               <p className="muted">
-                On <em>Compute Assessment</em>, every hydrodynamic, mass- and heat-transfer parameter is computed at 50
-                steps over the dosing time, from {inputs.V || "?"} L to{" "}
+                Computes all parameters at 50 steps from {inputs.V || "?"} L to{" "}
                 {(() => {
                   const end = Number(inputs.V) + Number(inputs.dosingAmount);
                   return Number.isFinite(end) ? formatG(end, 4) : "?";
                 })()}{" "}
-                L, with the blended fluid properties at each step.
+                L.
               </p>
             )}
           </>
         ) : (
-          <p className="muted">Enable for a semi-batch process to define the dosing (feeding) of a second fluid.</p>
+          <p className="muted">Enable to define a fed (semi-batch) second fluid.</p>
         )}
       </Card>
 
@@ -888,10 +876,7 @@ export function VesselAssessment() {
           )}
         </div>
         {!rxnOn ? (
-          <p className="muted">
-            No reaction: a hydrodynamic (and, with dosing, filling and heat) assessment. Damköhler numbers and reaction
-            heat are not computed.
-          </p>
+          <p className="muted">No reaction: hydrodynamics only (plus filling and heat with dosing). No Damköhler numbers.</p>
         ) : (
           <>
             {rxnInfo ? (
@@ -919,10 +904,7 @@ export function VesselAssessment() {
       </Card>
 
       <Card title="5. Correlations">
-        <p>
-          Choose the correlation source used for the assessment. Only sources registered for the
-          selected vessel are offered.
-        </p>
+        <p>Only sources available for this vessel are listed.</p>
         <div className="form-row">
           <SelectField label="Correlation source" value={inputs.corr} options={corrSources} onChange={(corr) => set({ corr })} />
           <p className="muted">{corrStatus}</p>
@@ -938,9 +920,7 @@ export function VesselAssessment() {
         {compute.isPending ? "Computing…" : "Compute Assessment"}
       </button>
       {stale && (
-        <p className="stale-note">
-          ⚠️ Inputs changed since the last run — click <em>Compute Assessment</em> to refresh the results.
-        </p>
+        <p className="stale-note">⚠️ Inputs changed - click <em>Compute Assessment</em> to refresh.</p>
       )}
 
       {t && last && (
@@ -954,11 +934,9 @@ export function VesselAssessment() {
           {last.filling && <FillingDynamics filling={last.filling} stale={stale} />}
 
           <Card title="Operating Envelope">
-            <p>
-              Each parameter is swept across the vessel's RPM range to form an <strong>operating region</strong>: the
-              solid line is the boundary at maximum fill volume, the dotted line at minimum fill volume, and the
-              shaded band is the reachable envelope between them. The red ★ marks the current operating point.
-              Dashed lines on the Damköhler panels mark the 0.1 and 1.0 mixing-sensitivity thresholds.
+            <p className="muted">
+              Each parameter across the vessel&apos;s speed range. Solid line: max fill; dotted: min fill; shaded: reachable
+              region; red ★: current point; dashed (Da panels): 0.1 and 1 thresholds.
             </p>
             <MultiSelect
               label="Parameters to plot"
@@ -975,12 +953,9 @@ export function VesselAssessment() {
           </Card>
 
           <Card title="Response Surfaces (3D)">
-            <p>
-              Each parameter selected above is evaluated over the full <strong>agitation speed × fill volume</strong>{" "}
-              window of the vessel as an interactive 3D surface (drag to rotate, scroll to zoom, hover for values).
-              The red ◆ marks the current operating point; translucent planes on the Damköhler panels mark the 0.1
-              and 1.0 mixing-sensitivity thresholds. Surfaces are generated on demand because the N × V grid is
-              computationally heavier than the envelope sweep.
+            <p className="muted">
+              The parameters above over the full speed × fill window (drag to rotate). Red ◆: current point; planes (Da panels):
+              0.1 and 1 thresholds.
             </p>
             <button
               type="button"
@@ -992,8 +967,7 @@ export function VesselAssessment() {
             </button>
             {surfacesStale && (
               <p className="stale-note">
-                ⚠️ Results or parameter selection changed since the surfaces were built — click{" "}
-                <em>Generate 3D surfaces</em> to refresh.
+                ⚠️ Results changed - click <em>Generate 3D surfaces</em> to refresh.
               </p>
             )}
             {surfaceKey && surfaces.data && (
@@ -1006,9 +980,7 @@ export function VesselAssessment() {
 
           <Card title="Export & Save">
             <p>
-              Generate a PDF capturing the system configuration, hydrodynamics, Damköhler mixing-sensitivity,
-              optional solid-suspension / heat balance, and the operating envelope chart — or save the computed
-              case to the <PageLink pageKey="Recorded_Results" /> page for bulk export and comparison.
+              Download a PDF of this assessment, or save it to <PageLink pageKey="Recorded_Results" />.
             </p>
             <div className="modal-actions">
               <button
@@ -1041,10 +1013,7 @@ export function VesselAssessment() {
 
       <Card title="Solve for">
         <p>
-          Find the agitation speed (or fill volume) that gives a target value of a hydrodynamic or
-          mass-transfer parameter in the selected vessel. The other variable is held at its Section 1 input;
-          fluid, phase, reaction and correlation settings above are used. Speed is scanned from 0.25× the minimum
-          to 2× the maximum rated speed; volume is scanned across the vessel fill range.
+          Find the speed (or fill volume) that gives a target value. The other variable stays at its Section 1 input.
         </p>
         <div className="form-row">
           <SelectField

@@ -153,8 +153,8 @@ def test_bourne_assess_uses_the_page_verdicts():
     flat = [{"name": "Yield", "low": 85, "centre": 85, "high": 85.1}]
     res = sv.bourne_assess(s.BourneAssessRequest(reactor=REACTOR, test1=kpi, test2=flat))
     assert [t.status for t in res.tests] == ["sensitive", "not_sensitive"]
-    assert res.dominant == "Micromixing" and "MICROMIXING" in res.summary
-    assert res.tests[1].verdict.endswith("(match P/V near the feed point).")
+    assert res.dominant == "Micromixing" and "Micromixing controls" in res.summary
+    assert res.tests[1].verdict.endswith("hold local ε constant at the feed point.")
 
 
 def test_bourne_plan_flags_clamped_fed_batch_speeds():
@@ -189,7 +189,7 @@ def test_options_expose_codes_and_labels():
 
 def test_bourne_summary_for_incomplete_protocol():
     o = rules.bourne_outcome("sensitive", "", "", 100.0)
-    assert rules.bourne_summary_md(o).endswith("— and Test 3 if needed.")
+    assert rules.bourne_summary_md(o).endswith("Continue with **Test 2** (feed rate).")
 
 
 # --- import boundaries ------------------------------------------------------

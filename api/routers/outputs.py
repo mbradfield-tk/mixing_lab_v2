@@ -9,10 +9,11 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from api import cache
+from api.routers import attachment
 from core import equations as eq_source
 from core import media, records
 from core import schemas as s
-from core.vessel_capacity import fill_summary
+from core.vessel_capacity import drawing_data, fill_summary
 from reports import charts, service
 from viz.vessel_schematic import build_vessel_schematic
 
@@ -31,8 +32,7 @@ async def report(kind: str, payload: dict[str, Any] = Body(...)) -> Response:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown report '{kind}'.")
     pdf = await run_in_threadpool(
         cache.cached, f"report:{kind}", payload, lambda: service.render_report(kind, payload))
-    return Response(pdf.content, media_type=pdf.media_type,
-                    headers={"Content-Disposition": f'attachment; filename="{pdf.filename}"'})
+    return Response(pdf.content, media_type=pdf.media_type, headers=attachment(pdf.filename))
 
 
 @outputs.post("/charts/{kind}", summary="Plotly figure JSON for react-plotly.js",
@@ -64,6 +64,16 @@ def vessel_media(name: str) -> dict[str, Any]:
 def vessel_fill(name: str, fill_L: float | None = Query(None, ge=0),
                 rpm: float | None = Query(None, ge=0)) -> dict[str, Any]:
     return fill_summary(_reactor(name), fill_L, rpm)
+
+
+@reference.get("/media/vessels/{name}/drawing",
+               summary="Geometry for the interactive cross-section (mm; z = 0 at the bottom tangent)")
+def vessel_drawing(name: str, fill_L: float | None = Query(None, ge=0),
+                   rpm: float | None = Query(None, ge=0)) -> dict[str, Any]:
+    data = drawing_data(_reactor(name), fill_L, rpm)
+    if data is None:
+        raise ValueError("Insufficient geometry data (needs tank ID and height) to draw a schematic.")
+    return data
 
 
 @reference.get("/media/vessels/{name}/schematic.png", summary="2D cross-section drawing",

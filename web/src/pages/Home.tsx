@@ -29,12 +29,8 @@ export function Home() {
 
       <Card title="About this app">
         <p>
-          <strong>Mixing Lab</strong> is an engineering toolkit for characterising mixing
-          sensitivity and comparing agitated vessels for experimental design or scale-up. It
-          combines equipment, fluid, reaction and particle databases with hydrodynamic, mixing,
-          and mass- and heat-transfer calculations so you can assess whether a vessel is fit for a
-          given process, compare candidate vessels, determine scale-up suitability and document
-          the results as PDF reports.
+          <strong>Mixing Lab</strong> helps you check whether a reaction is sensitive to mixing, assess and compare agitated
+          vessels, plan scale-up, and export the results as PDF reports.
         </p>
         <p>
           Use the menu on the left to navigate between sections. Pages marked ↗ still open in the

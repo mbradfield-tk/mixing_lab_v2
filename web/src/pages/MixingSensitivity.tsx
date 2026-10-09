@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, postForFile, unwrap, uploadFile, type Schemas } from "../api/client";
 import { NumberField, SelectField, Switch } from "../components/Form";
+import { Fader, InstrumentPanel, Knob } from "../components/Instrument";
 import {
   ActionList, InsightCard, InsightGrid, LogScale, StatGrid, TableDetails, VerdictBanner, toneOf, type Tone,
 } from "../components/Insights";
@@ -11,7 +12,7 @@ import { NoticeBar, useNotice } from "../components/Notice";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
-import { downloadBlob } from "./assessment/model";
+import { downloadBlob, sliderStep } from "./assessment/model";
 import {
   BLANK_PROJECT, DA_ZONES, INITIAL, SPEED_ZONES, SUMMARY_PENDING, SUMMARY_PRE_START, buildProtocol, bySeverity, daContext,
   findingRows, importPatch, reactionList, reactionPatch, severityCounts, sf, splitHeadline, timescaleTiles,
@@ -32,6 +33,14 @@ const bourneTone = (sensitiveKpis: string): Tone => (/^none\b/i.test(sensitiveKp
 function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourne: Schemas["BourneTestRow"][] }) {
   const [headline, rest] = splitHeadline(res.verdict);
   const counts = severityCounts(res.insights);
+  const sorted = bySeverity(res.insights);
+  const flagged = sorted.filter((f) => f.kind !== "ok");
+  const clear = sorted.filter((f) => f.kind === "ok");
+  const card = (f: Schemas["ProtocolPage"]["insights"][number]) => (
+    <InsightCard key={f.area} tone={f.kind} title={f.area} status={f.status}>
+      <Markdown>{f.detail}</Markdown>
+    </InsightCard>
+  );
   return (
     <>
       <VerdictBanner tone={res.verdict_kind} eyebrow="Overall verdict" title={headline}>
@@ -41,23 +50,24 @@ function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourn
         size="sm"
         stats={[
           { label: "Likely limiting", value: counts.critical, tone: counts.critical ? "critical" : "info" },
-          { label: "Watch / borderline", value: counts.watch, tone: counts.watch ? "warning" : "info" },
-          { label: "Unlikely / manageable", value: counts.ok, tone: "ok" },
+          { label: "Watch", value: counts.watch, tone: counts.watch ? "warning" : "info" },
+          { label: "Not a concern", value: counts.ok, tone: "ok" },
           { label: "Unknown", value: counts.unknown, tone: "unknown" },
         ]}
       />
-      <h3>Sensitivity findings</h3>
-      <InsightGrid>
-        {bySeverity(res.insights).map((f) => (
-          <InsightCard key={f.area} tone={f.kind} title={f.area} status={f.status}>
-            <Markdown>{f.detail}</Markdown>
-          </InsightCard>
-        ))}
-      </InsightGrid>
-      <TableDetails rows={res.findings} csvName="sensitivity_findings.csv" />
+      <h3>Recommended next steps</h3>
+      <ActionList items={res.actions} />
+      <h3>Findings</h3>
+      {flagged.length > 0 ? <InsightGrid>{flagged.map(card)}</InsightGrid> : <p className="muted">Nothing flagged.</p>}
+      {clear.length > 0 && (
+        <details>
+          <summary>Not a concern ({clear.length})</summary>
+          <InsightGrid>{clear.map(card)}</InsightGrid>
+        </details>
+      )}
       {bourne.length > 0 && (
-        <>
-          <h3>Bourne Protocol experimental findings</h3>
+        <details>
+          <summary>Bourne Protocol results ({bourne.length})</summary>
           <InsightGrid>
             {bourne.map((b) => (
               <InsightCard key={b.test} tone={bourneTone(b.sensitive_kpis)} title={b.test}>
@@ -66,11 +76,10 @@ function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourn
               </InsightCard>
             ))}
           </InsightGrid>
-        </>
+        </details>
       )}
-      <h3>Recommended next steps</h3>
-      <ActionList items={res.actions} />
-      <TableDetails rows={res.next_steps} csvName="sensitivity_next_steps.csv" />
+      <TableDetails rows={res.findings} csvName="sensitivity_findings.csv" summary="Findings as table" />
+      <TableDetails rows={res.next_steps} csvName="sensitivity_next_steps.csv" summary="Next steps as table" />
     </>
   );
 }
@@ -81,6 +90,7 @@ export function MixingSensitivity() {
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
   const [project, setProject] = useState<Project>(BLANK_PROJECT);
   const [started, setStarted] = useState(false);
+  const [daRanges, setDaRanges] = useState<{ N: [number, number]; V: [number, number] } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
@@ -108,7 +118,11 @@ export function MixingSensitivity() {
     if (d.rho_cp_kJ_m3K != null) set({ rhoCp: String(d.rho_cp_kJ_m3K) });
   }
   async function loadVessel(name: string) {
-    const d = unwrap(await api.GET("/api/v1/bourne/defaults/{name}", { params: { path: { name } } }));
+    const [d, v] = await Promise.all([
+      api.GET("/api/v1/bourne/defaults/{name}", { params: { path: { name } } }).then(unwrap),
+      api.GET("/api/v1/assessment/vessel-defaults/{name}", { params: { path: { name } } }).then(unwrap),
+    ]);
+    setDaRanges({ N: [v.N_rpm_range[0], v.N_rpm_range[1]], V: [v.V_L_range[0], v.V_L_range[1]] });
     set({ daReactor: name, daRpm: String(d.centre_rpm), daVl: String(d.V_L) });
   }
 
@@ -184,9 +198,8 @@ export function MixingSensitivity() {
       <PageTitle pageKey="Mixing_Sensitivity">Reaction Sensitivity Protocol</PageTitle>
       {(options.isError || msOptions.isError) && <ErrorNote error={options.error ?? msOptions.error} />}
       <p>
-        A guided decision tree to determine <strong>whether a reaction is sensitive to mixing</strong> and, if so,{" "}
-        <strong>which mechanism controls</strong> it - micromixing, mesomixing, macromixing, interphase mass transport, or heat
-        transfer. Work through the steps; the <strong>Summary</strong> synthesises everything into an overall verdict.
+        Find out <strong>whether a reaction is sensitive to mixing</strong> and, if so, <strong>which mechanism</strong>{" "}
+        controls it. Fill in the steps, then run the assessment for an overall verdict.
       </p>
       <details>
         <summary>Decision-tree flowsheet</summary>
@@ -216,14 +229,7 @@ export function MixingSensitivity() {
         </div>
       </Card>
 
-      {!started ? (
-        <p>
-          <strong>
-            Set your inputs in the steps below, then click <em>Run assessment</em> at the bottom of the page.
-          </strong>{" "}
-          No results are shown until you do.
-        </p>
-      ) : (
+      {started && (
         <p className="button-row">
           <button
             type="button"
@@ -253,10 +259,7 @@ export function MixingSensitivity() {
       {page.isError && started && <ErrorNote error={page.error} />}
 
       <Card title="Step 1 - Bourne Protocol Pre-Screen">
-        <p>
-          Independent experimental evidence of whether a mixing sensitivity exists. If you have run the Bourne Protocol, enter the
-          outcome (or import its results CSV).
-        </p>
+        <p>Have you run the Bourne Protocol? Enter the outcome or import its results CSV.</p>
         <div className="form-row">
           <SelectField
             label="Bourne outcome"
@@ -299,15 +302,19 @@ export function MixingSensitivity() {
           />
         </label>
         {inputs.bourneMetaCaption && <Markdown>{inputs.bourneMetaCaption}</Markdown>}
-        {inputs.bourneFindings.length > 0 && <ResultTable rows={findingRows(inputs.bourneFindings)} />}
+        {inputs.bourneFindings.length > 0 && (
+          <details>
+            <summary>Imported Bourne results</summary>
+            <ResultTable rows={findingRows(inputs.bourneFindings)} />
+          </details>
+        )}
         {res && step(0) && <ResultBox tone={stepTone(0)}>{step(0)}</ResultBox>}
       </Card>
 
       <Card title="Step 2 - Reaction Kinetics">
         <p>
-          The characteristic reaction time <strong>t<sub>rxn</sub></strong> is the Damköhler reference timescale for every
-          mechanism below. When derived from k and C₀ it is the initial-rate time constant, the shortest
-          and most conservative estimate; the 90% conversion time is shown for process-window planning only.
+          The reaction time <strong>t<sub>rxn</sub></strong> is compared with each mixing time below. Values are filled from the
+          database; edit any to override.
         </p>
         <div className="form-row">
           <SelectField
@@ -322,9 +329,6 @@ export function MixingSensitivity() {
           />
           <SelectField label="Reaction or proxy class" value={inputs.reaction} options={reactions} onChange={(v) => report(loadReaction(v))} />
         </div>
-        <p>
-          <strong>Reaction conditions &amp; kinetics</strong> - auto-filled from the database; edit any value to override.
-        </p>
         <div className="form-row">
           <SelectField label="Reaction order" value={inputs.order} options={msOptions.data?.reaction_orders ?? []} onChange={(order) => set({ order })} />
           <NumberField label="Rate constant k (1/s or L/mol·s)" value={inputs.k} onChange={(k) => set({ k })} />
@@ -356,9 +360,8 @@ export function MixingSensitivity() {
 
       <Card title="Step 3 - Phase Assessment">
         <p>
-          Multi-phase systems can be limited by <strong>interphase mass transfer</strong> before mixing even matters. This includes
-          gas–liquid (k<sub>L</sub>a) transport and solid–liquid (k<sub>SL</sub>) transport such as solid dissolution, adsorption,
-          and desorption.
+          With more than one phase, transfer between phases (gas–liquid k<sub>L</sub>a, solid–liquid dissolution) can limit the
+          rate before mixing does.
         </p>
         <MultiSelect
           label="Which phases are present?"
@@ -372,22 +375,19 @@ export function MixingSensitivity() {
 
       <Card title="Step 4 - Feed Mode (Mesomixing)">
         <p>
-          <strong>Mesomixing</strong> is how quickly a fed reagent&apos;s plume disperses into the bulk. In a{" "}
-          <strong>semi-batch (fed-batch)</strong> process the concentration near the feed point depends on the feed rate and the
-          local turbulence: if the plume reacts faster than it disperses, selectivity can shift. A batch process with no feed
-          stream has no feed-zone risk.
+          When a reagent is fed, the feed rate and local turbulence decide how fast it disperses. A batch process has no feed, so no
+          feed-zone risk.
         </p>
         <Switch label="Semi-batch (fed-batch) process" checked={inputs.semiBatch} onChange={(semiBatch) => set({ semiBatch })} />
         {res && (
           <ResultBox tone={inputs.semiBatch ? "warning" : "ok"}>
             {inputs.semiBatch ? (
               <p>
-                <strong>Semi-batch</strong> - feed rate/time and feed location matter; they are assessed with competing reactions
-                (Step 5) and in the recommendations.
+                <strong>Semi-batch</strong> - feed rate and location matter (see Step 5 and the recommendations).
               </p>
             ) : (
               <p>
-                <strong>Batch</strong> - no feed stream, so no feed-zone (mesomixing) risk from the feed mode.
+                <strong>Batch</strong> - no feed-zone risk.
               </p>
             )}
           </ResultBox>
@@ -395,10 +395,7 @@ export function MixingSensitivity() {
       </Card>
 
       <Card title="Step 5 - Competing Reactions">
-        <p>
-          When parallel/consecutive reactions compete for a reagent, incomplete <strong>micromixing</strong> (molecular scale) and{" "}
-          <strong>mesomixing</strong> (feed-plume scale) can shift selectivity.
-        </p>
+        <p>If side reactions compete for a reagent, slow local mixing can shift selectivity.</p>
         <SelectField
           label="Are there competing reactions?"
           value={inputs.competing}
@@ -410,10 +407,8 @@ export function MixingSensitivity() {
 
       <Card title="Step 6 - Heat Transfer Screening">
         <p>
-          The thermal load is set by the enthalpy of reaction (ΔH) and the limiting-reagent concentration (C₀), and is assessed by
-          the <strong>adiabatic temperature rise</strong> (ΔT<sub>ad</sub> = |ΔH|·C₀·1000/(ρ·Cp)) - the temperature increase at
-          full conversion with no cooling and perfect insulation. The reaction rate does not change ΔT_ad, but a faster reaction
-          releases that heat more quickly and is harder to cool.
+          Screened by the <strong>adiabatic temperature rise</strong> ΔT<sub>ad</sub> = |ΔH|·C₀·1000/(ρ·Cp): the temperature
+          change at full conversion with no cooling.
         </p>
         {res?.show_dh_action && (
           <>
@@ -438,23 +433,23 @@ export function MixingSensitivity() {
             </div>
           </>
         )}
-        <p>
-          <strong>Heat of reaction basis</strong> - optionally override the ΔH used for this screening and state whether the value
-          was measured experimentally. With proxy kinetics, the ΔH is treated as estimated unless a measured override is entered.
-        </p>
-        <div className="form-row">
-          <NumberField label="ΔH override (kJ/mol, 0 = use Step 2 value)" value={inputs.dhOverride} onChange={(dhOverride) => set({ dhOverride })} />
-          <SelectField
-            label="Override ΔH measured?"
-            value={inputs.dhMeasured}
-            options={enums.DhBasis ?? []}
-            onChange={(v) => set({ dhMeasured: v as Inputs["dhMeasured"] })}
-          />
-        </div>
         <div className="form-row">
           <NumberField label="Volumetric heat capacity ρ·Cp (kJ/m³·K)" value={inputs.rhoCp} onChange={(rhoCp) => set({ rhoCp })} />
           <NumberField label="Limiting-reagent C₀ (mol/L)" value={inputs.c0Heat} onChange={(c0Heat) => set({ c0Heat })} />
         </div>
+        <details>
+          <summary>Override ΔH</summary>
+          <p className="muted">Use a different ΔH for this step. Proxy-kinetics ΔH counts as estimated unless you mark it measured.</p>
+          <div className="form-row">
+            <NumberField label="ΔH override (kJ/mol, 0 = use Step 2)" value={inputs.dhOverride} onChange={(dhOverride) => set({ dhOverride })} />
+            <SelectField
+              label="Override ΔH measured?"
+              value={inputs.dhMeasured}
+              options={enums.DhBasis ?? []}
+              onChange={(v) => set({ dhMeasured: v as Inputs["dhMeasured"] })}
+            />
+          </div>
+        </details>
         {res && (
           <ResultBox tone={stepTone(4)}>
             {res.dt_ad_caption && <Markdown>{res.dt_ad_caption}</Markdown>}
@@ -465,17 +460,44 @@ export function MixingSensitivity() {
 
       <Card title="Step 7 - Mixing Time vs Reaction Time">
         <p>
-          <strong>Da = mixing time / reaction time.</strong> Below 0.1 mixing is not limiting; above 1 the reaction outruns mixing.
-          Without a vessel the screen uses reaction-time bands; select a vessel for the actual Da<sub>macro</sub> and
-          Da<sub>micro</sub>.
+          <strong>Da = mixing time / reaction time.</strong> Below 0.1 mixing does not limit; above 1 it does. Pick a vessel for
+          actual values.
         </p>
         <Switch label="Compute Damköhler numbers for a vessel" checked={inputs.daOn} onChange={(daOn) => set({ daOn })} />
         {inputs.daOn && (
-          <div className="form-row">
-            <SelectField label="Vessel" value={inputs.daReactor} options={options.data?.reactors ?? []} onChange={(v) => report(loadVessel(v))} />
-            <NumberField label="Agitation speed N (RPM)" value={inputs.daRpm} onChange={(daRpm) => set({ daRpm })} />
-            <NumberField label="Working volume (L)" value={inputs.daVl} onChange={(daVl) => set({ daVl })} />
-          </div>
+          <>
+            <div className="form-row">
+              <SelectField label="Vessel" value={inputs.daReactor} options={options.data?.reactors ?? []} onChange={(v) => report(loadVessel(v))} />
+            </div>
+            <InstrumentPanel title="Operating point">
+              {daRanges && daRanges.N[1] > daRanges.N[0] ? (
+                <Knob
+                  label="Stir speed"
+                  value={inputs.daRpm}
+                  onChange={(daRpm) => set({ daRpm })}
+                  min={daRanges.N[0]}
+                  max={daRanges.N[1]}
+                  step={sliderStep(daRanges.N[1] - daRanges.N[0])}
+                  unit="RPM"
+                />
+              ) : (
+                <NumberField label="Agitation speed N (RPM)" value={inputs.daRpm} onChange={(daRpm) => set({ daRpm })} />
+              )}
+              {daRanges && daRanges.V[1] > daRanges.V[0] ? (
+                <Fader
+                  label="Working volume"
+                  value={inputs.daVl}
+                  onChange={(daVl) => set({ daVl })}
+                  min={daRanges.V[0]}
+                  max={daRanges.V[1]}
+                  step={sliderStep(daRanges.V[1] - daRanges.V[0])}
+                  unit="L"
+                />
+              ) : (
+                <NumberField label="Working volume (L)" value={inputs.daVl} onChange={(daVl) => set({ daVl })} />
+              )}
+            </InstrumentPanel>
+          </>
         )}
         {res && step(5) && (
           <ResultBox tone={stepTone(5)}>
@@ -502,16 +524,15 @@ export function MixingSensitivity() {
         <details>
           <summary>How it&apos;s calculated</summary>
           <Markdown>
-            {"Micromixing time $t_E \\approx 17.3\\sqrt{\\nu/\\varepsilon}$; bulk blend time $\\theta_{95} = 5.2\\,T^{1.5}H^{0.5}/(N_p^{1/3} N D^2)$. " +
-              "For geometrically similar vessels at constant P/V the blend time grows roughly as $T^{2/3}$, so a vessel that mixes well " +
-              "at small scale still needs a check at the next scale."}
+            {"Micromixing time $t_E \\approx 17.3\\sqrt{\\nu/\\varepsilon}$; blend time $\\theta_{95} = 5.2\\,T^{1.5}H^{0.5}/(N_p^{1/3} N D^2)$. " +
+              "At constant P/V the blend time grows roughly as $T^{2/3}$, so re-check at each scale."}
           </Markdown>
         </details>
       </Card>
 
       {!started && (
         <Card title="Ready?">
-          <p>Once you&apos;ve worked through the steps above, start the assessment to generate the per-step findings and the overall verdict.</p>
+          <p>Run the assessment to see each step&apos;s result and the overall verdict.</p>
           <button
             type="button"
             className="primary"
@@ -535,7 +556,7 @@ export function MixingSensitivity() {
 
       {res?.ready && (
         <Card title="Step 9 - Export Report">
-          <p>Generate a PDF capturing the inputs, findings, overall verdict, and next steps.</p>
+          <p>PDF with the inputs, findings, verdict and next steps.</p>
           <button type="button" className="primary" disabled={pdf.isPending || stale} onClick={() => pdf.mutate()}>
             Download PDF report
           </button>

@@ -2205,9 +2205,9 @@
    }
   ],
   "bp_t1_ctr_info": "Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = 425 RPM**. Within reactor range (50–1000 RPM).",
-  "bp_t1_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). Response moved across the 100× P/m range, so **mixing matters**. Proceed to **Test 2** to distinguish micro- vs meso-mixing.",
-  "bp_t2_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). Feed rate matters — the response is **consistent with mesomixing** (feed-plume dispersion). Proceed to **Test 3** to distinguish meso- vs macro-mixing.",
-  "bp_t3_verdict": "✅ **Not sensitive** — no KPI changed ≥ 5% across 1 KPI(s). The response is **consistent with macromixing**. Scale-up: keep **blend/circulation times short** (bulk homogeneity governs the outcome).",
+  "bp_t1_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). **Mixing matters.** Next: Test 2.",
+  "bp_t2_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). Feed rate matters (**mesomixing** likely). Next: Test 3.",
+  "bp_t3_verdict": "✅ **Not sensitive** — no KPI changed ≥ 5% across 1 KPI(s). **Macromixing** controls. Scale-up: keep blend times short.",
   "bp_t1_kpi_result_df": [
    {
     "KPI": "Yield (%)",
@@ -2219,7 +2219,7 @@
     "Sensitive?": "Yes"
    }
   ],
-  "bp_summary": "### Decision-tree conclusion\n\n- **Test 1:** sensitive to impeller speed → mixing matters.\n- **Test 2:** sensitive to feed rate.\n- **Test 3:** insensitive to feed location.\n\n**Dominant regime: MACROMIXING.** Scale-up rule: **keep blend/circulation times short** — bulk homogeneity governs the outcome.",
+  "bp_summary": "### Decision-tree conclusion\n\n- **Test 1:** sensitive to impeller speed.\n- **Test 2:** sensitive to feed rate.\n- **Test 3:** not sensitive to feed location.\n\n**Macromixing controls.** Scale-up rule: **keep blend times short.**",
   "t1_max_pct": 11.11111111111111,
   "range_ratio": 100.0,
   "sens_csv": "field,value\r\nrecord_type,bourne_results\r\nprotocol_version,2\r\nproject_name,E2E\r\nstep_number,3\r\nunit_operation,\r\nprocess_version,\r\nreactor,TMA EasyMax-102\r\nfluid,Water\r\nworking_volume_L,0.055\r\ntest1_pm_range_ratio,100.0\r\ntest1_assessed,yes\r\ntest1_status,sensitive\r\ntest1_finding,Mixing-sensitive (impeller speed)\r\ntest1_sensitive_kpis,Yield (11.1%)\r\ntest2_assessed,yes\r\ntest2_status,sensitive\r\ntest2_finding,Sensitive to feed rate (mesomixing)\r\ntest2_sensitive_kpis,Yield (11.1%)\r\ntest3_assessed,yes\r\ntest3_status,not_sensitive\r\ntest3_finding,Insensitive to feed location (macromixing-controlled)\r\ntest3_sensitive_kpis,\r\noverall_sensitive,yes\r\ndominant_mechanism,Macromixing\r\ndominant_mechanism_tentative,\r\n",
@@ -2254,56 +2254,56 @@
   "ms_da_rpm": 525.0,
   "ms_da_vl": 0.055,
   "ms_rxn_T": 30.0,
-  "ms_kinetics_md": "**Kinetic model** (order pseudo-1): −dC/dt = k'·C\n\nCharacteristic reaction time **t_rxn = 69 s** (specified directly). This is the initial-rate time constant used in every Damköhler comparison below — the shortest (most conservative) estimate for mixing sensitivity.",
-  "ms_dt_ad_caption": "ΔT_ad = |ΔH|·C₀·1000/(ρ·Cp) ≈ **2 K**  -  Thermal severity: low; the exothermic profile is modest and heat-transfer capability is likely adequate, though a heat balance should still be checked.",
+  "ms_kinetics_md": "**Rate law** (order pseudo-1): −dC/dt = k'·C\n\n**t_rxn = 69 s** (specified directly) - the initial-rate time constant used for every Damköhler check.",
+  "ms_dt_ad_caption": "ΔT_ad ≈ **2 K** - Low thermal severity. Cooling is likely adequate; confirm with a heat balance.",
   "ms_da_caption": "**TMA EasyMax-102** at 525 RPM, 0.055 L, Methanol — Re = 12,168, P/V = 0.294 W/L, θ₉₅ = 1.22 s, t_E = 0.0227 s  →  **Da_macro = 0.0176** (insensitive), **Da_micro = 0.000329** (insensitive).",
   "ms_trxn_caption": "Your reaction time: **t_rxn = 69 s**.",
   "ms_summary_note": "",
-  "ms_verdict": "🔴 **Mixing sensitivity confirmed** - the Bourne pre-screen shows a sensitivity, and the theoretical screen flags **micro/mesomixing** as likely. To pinpoint the controlling scale, complete Test 3 of the Bourne Protocol.",
+  "ms_verdict": "🔴 **Mixing sensitivity confirmed** - the Bourne pre-screen shows a sensitivity and theory points to **micro/mesomixing**. To confirm the scale, complete Test 3 of the Bourne Protocol.",
   "ms_ready": true,
   "ms_show_dh_action": false,
   "ms_findings_df": [
    {
     "Sensitivity Type": "Bourne pre-screen",
-    "Finding": "🔴 Mixing sensitivity confirmed - Experimental pre-screen showed Yield changed with mixing conditions. Controlling scale not yet identified - complete Test 3 of the Bourne Protocol."
+    "Finding": "🔴 Mixing sensitivity confirmed - Mixing changed Yield. Controlling scale unknown - complete Test 3 of the Bourne Protocol."
    },
    {
     "Sensitivity Type": "Micromixing",
-    "Finding": "🟢 Unlikely - Da_micro = 0.000329 in TMA EasyMax-102 (525 RPM, 0.055 L): t_E = 0.0227 s vs t_rxn = 69 s."
+    "Finding": "🟢 Unlikely - Da_micro = 0.000329 (t_E 0.0227 s vs t_rxn 69 s) in TMA EasyMax-102 at 525 RPM, 0.055 L."
    },
    {
     "Sensitivity Type": "Micro/mesomixing (selectivity)",
-    "Finding": "🔴 Likely sensitive - Competing reactions present - both micromixing (local ε) and mesomixing (feed dispersion) may affect selectivity. In semi-batch operation the feed rate and feed location set the local concentration at the feed point (Bourne Tests 2 & 3)."
+    "Finding": "🔴 Likely sensitive - Competing reactions present - local mixing at the feed can shift selectivity. Feed rate and location matter (Bourne Tests 2 & 3)."
    },
    {
     "Sensitivity Type": "Macromixing (blend time)",
-    "Finding": "🟢 Unlikely - Da_macro = 0.0176 in TMA EasyMax-102: θ₉₅ = 1.22 s vs t_rxn = 69 s. Blend time grows ~T^(2/3) at constant P/V - re-check at the next scale."
+    "Finding": "🟢 Unlikely - Da_macro = 0.0176 (θ₉₅ 1.22 s vs t_rxn 69 s) in TMA EasyMax-102. Blend time grows with scale - re-check at the next scale."
    },
    {
     "Sensitivity Type": "Mass transfer (Liquid + Gas)",
-    "Finding": "🟡 System-dependent - Multi-phase system - interphase transport may limit the observed rate. Characterise gas–liquid kLa and liquid–solid transport, including dissolution, adsorption, or desorption, for each reactor."
+    "Finding": "🟡 System-dependent - Interphase transport may limit the rate. Check gas–liquid kLa and solid–liquid transport."
    },
    {
     "Sensitivity Type": "Heat transfer",
-    "Finding": "🟢 Manageable - |ΔH| = 10.0 kJ/mol, ΔT_ad ≈ 2 K - modest thermal load, unlikely to be limiting in most configurations."
+    "Finding": "🟢 Manageable - |ΔH| = 10.0 kJ/mol, ΔT_ad ≈ 2 K - modest load, unlikely to limit."
    }
   ],
   "ms_nextsteps_df": [
    {
     "Area": "Bourne Protocol",
-    "Recommended action": "Complete Test 3 (feed location) to identify the controlling scale."
+    "Recommended action": "Complete Test 3 (feed location) to find the controlling scale."
    },
    {
     "Area": "Mass transfer",
     "Recommended action": "Assess Da_GL / Da_SL on the Vessel Assessment page."
    }
   ],
-  "ms_step0_assess": "🔴 Bourne Protocol confirmed **mixing sensitivity**, but the controlling scale is not yet resolved. Complete **Test 3** (feed location) to pinpoint the controlling scale.",
-  "ms_step1_assess": "🟢 **Kinetics available** - characteristic reaction time shown above.",
-  "ms_step2_assess": "🟡 **Multi-phase system** (Liquid + Gas) - interphase mass transfer may limit the observed rate. Characterise kLa (gas–liquid) and/or solid–liquid transport, including dissolution, adsorption, or desorption, and compute Da_GL / Da_SL for your reactor on the Vessel Assessment page.",
-  "ms_step3_assess": "🔴 **Competing reactions present** - both micromixing (local ε) and mesomixing (feed dispersion) can shift selectivity; likely mixing-sensitive.",
+  "ms_step0_assess": "🔴 **Mixing sensitivity confirmed**; controlling scale not yet resolved. Run **Test 3** (feed location) to find it.",
+  "ms_step1_assess": "🟢 **Kinetics available.**",
+  "ms_step2_assess": "🟡 **Multi-phase** (Liquid + Gas) - interphase transfer may limit the rate. Check Da_GL / Da_SL on the Vessel Assessment page.",
+  "ms_step3_assess": "🔴 **Competing reactions** - mixing at the feed can shift selectivity; likely mixing-sensitive.",
   "ms_step4_assess": "🟢 **Weakly exothermic** reaction - |ΔH| = 10.0 kJ/mol, ΔT_ad ≈ 2 K.",
-  "ms_step5_assess": "🟢 **Mixing-insensitive in this vessel** - Da_micro = 0.000329 (insensitive), Da_macro = 0.0176 (insensitive). Both timescales are well below t_rxn; re-run this screen for the larger vessel before scale-up.",
+  "ms_step5_assess": "🟢 **Mixing-insensitive in this vessel** - Da_micro = 0.000329 (insensitive), Da_macro = 0.0176 (insensitive). Re-check in the larger vessel before scale-up.",
   "bourne_status": "confirmed",
   "bourne_findings": [
    {

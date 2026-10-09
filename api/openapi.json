@@ -10264,6 +10264,84 @@
         ]
       }
     },
+    "/api/v1/media/vessels/{name}/drawing": {
+      "get": {
+        "operationId": "vessel_drawing_api_v1_media_vessels__name__drawing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fill_L",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fill L"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rpm",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rpm"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vessel Drawing Api V1 Media Vessels  Name  Drawing Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Geometry for the interactive cross-section (mm; z = 0 at the bottom tangent)",
+        "tags": [
+          "Reference"
+        ]
+      }
+    },
     "/api/v1/media/vessels/{name}/fill": {
       "get": {
         "operationId": "vessel_fill_api_v1_media_vessels__name__fill_get",

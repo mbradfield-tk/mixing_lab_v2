@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, File, Query, Response, UploadFile
 
 from api import cache
+from api.routers import attachment
 from api.routers.databases import read_upload
 from core import fluids, units
 from core import schemas as s
@@ -164,8 +165,7 @@ def bourne_defaults(name: str) -> s.BourneDefaults:
              responses={200: {"content": {"text/csv": {}}}})
 def bourne_sensitivity_csv(req: s.BourneReportRequest) -> Response:
     f = report_service.bourne_sensitivity_csv(req)
-    return Response(f.content, media_type=f.media_type,
-                    headers={"Content-Disposition": f'attachment; filename="{f.filename}"'})
+    return Response(f.content, media_type=f.media_type, headers=attachment(f.filename))
 
 
 @heat.post("/heat-cool", summary="Batch heat-up / cool-down")

@@ -4,6 +4,7 @@ import { useDebounced } from "../hooks";
 import { useIsAdmin } from "./Admin";
 import { DataTable, parseCell } from "./DataTable";
 import type { useNotice } from "./Notice";
+import { PropertyTable, type PropertyRow } from "./PropertyTable";
 import { Card, ErrorNote } from "./ui";
 
 type Run = ReturnType<typeof useNotice>["run"];
@@ -126,29 +127,31 @@ export function AddForm({
       .catch(() => undefined);
   }
 
+  const rows: PropertyRow[] = fields.map((f) => {
+    const m = f.type === "number" && typeof f.label === "string" ? /^(.*) \(([^)]+)\)$/.exec(f.label) : null;
+    return {
+      label: m ? m[1] : f.label,
+      unit: m?.[2],
+      value: values[f.key] ?? "",
+      options: f.type === "select" ? f.options : undefined,
+      text: f.type !== "number" && f.type !== "select",
+      onChange: (v: string) => setValues((s) => ({ ...s, [f.key]: v })),
+    };
+  });
+  const half = Math.ceil(rows.length / 2);
+
   return (
     <form onSubmit={submit}>
-      <div className="form-row">
-        {fields.map((f) => (
-          <label key={f.key}>
-            {f.label}
-            {f.type === "select" ? (
-              <select value={values[f.key]} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}>
-                {f.options?.map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type={f.type === "number" ? "number" : "text"}
-                step="any"
-                value={values[f.key]}
-                onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-              />
-            )}
-          </label>
-        ))}
-      </div>
+      {rows.length > 6 ? (
+        <div className="grid-2 prop-grid">
+          <PropertyTable groups={[{ title: `New ${noun}`, rows: rows.slice(0, half) }]} />
+          <PropertyTable groups={[{ title: "\u00a0", rows: rows.slice(half) }]} />
+        </div>
+      ) : (
+        <div className="prop-narrow">
+          <PropertyTable groups={[{ title: `New ${noun}`, rows }]} />
+        </div>
+      )}
       <button type="submit" disabled={!isAdmin || create.isPending}>
         {submitLabel}
       </button>

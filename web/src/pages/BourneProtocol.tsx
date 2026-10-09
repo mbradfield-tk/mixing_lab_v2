@@ -9,6 +9,7 @@ import {
 } from "../components/Insights";
 import { Markdown } from "../components/Markdown";
 import { NoticeBar, useNotice } from "../components/Notice";
+import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
@@ -391,42 +392,86 @@ export function BourneProtocol() {
     </InstrumentPanel>
   );
   const centreFields = (
-    <div className="form-row">
-      <SelectField
-        label="Centre-point method"
-        value={inputs.centreMode}
-        options={CENTRE_MODES}
-        onChange={(m) => set({ centreMode: m as Inputs["centreMode"] })}
+    <div className="prop-narrow">
+      <PropertyTable
+        groups={[
+          {
+            title: "Centre point",
+            rows: [
+              {
+                label: "Method",
+                value: inputs.centreMode,
+                options: CENTRE_MODES,
+                onChange: (m) => set({ centreMode: m as Inputs["centreMode"] }),
+              },
+              {
+                label: "Centre P/m",
+                unit: "W/kg",
+                value: inputs.pmCentre,
+                disabled: inputs.centreMode !== "custom_pm",
+                onChange: (pmCentre) => set({ pmCentre }),
+              },
+              {
+                label: "Centre stir speed",
+                unit: "RPM",
+                value: inputs.rpmCentre,
+                disabled: inputs.centreMode !== "custom_rpm",
+                onChange: (rpmCentre) => set({ rpmCentre }),
+              },
+            ],
+          },
+        ]}
       />
-      <label>
-        Centre P/m (W/kg)
-        <input type="number" step="any" value={inputs.pmCentre} disabled={inputs.centreMode !== "custom_pm"} onChange={(e) => set({ pmCentre: e.target.value })} />
-      </label>
-      <label>
-        Centre RPM
-        <input type="number" step="any" value={inputs.rpmCentre} disabled={inputs.centreMode !== "custom_rpm"} onChange={(e) => set({ rpmCentre: e.target.value })} />
-      </label>
     </div>
   );
   const feedFields = (
-    <div className="form-row">
-      <NumberField label="Total feed volume (mL)" value={inputs.feedVolume} onChange={(feedVolume) => set({ feedVolume })} />
-      <Segmented label="Define by" value={inputs.feedBasis} options={FEED_BASES} onChange={(b) => set({ feedBasis: b as Inputs["feedBasis"] })} />
-      <label>
-        Feed rate (mL/min)
-        <input type="number" step="any" value={inputs.feedRate} disabled={inputs.feedBasis !== "rate"} onChange={(e) => set({ feedRate: e.target.value })} />
-      </label>
-      <label>
-        Feed time (min)
-        <input type="number" step="any" value={inputs.feedTime} disabled={inputs.feedBasis !== "time"} onChange={(e) => set({ feedTime: e.target.value })} />
-      </label>
+    <div className="prop-narrow">
+      <PropertyTable
+        groups={[
+          {
+            title: "Feed",
+            rows: [
+              { label: "Total feed volume", unit: "mL", value: inputs.feedVolume, onChange: (feedVolume) => set({ feedVolume }) },
+              {
+                label: "Define by",
+                value: inputs.feedBasis,
+                options: FEED_BASES,
+                onChange: (b) => set({ feedBasis: b as Inputs["feedBasis"] }),
+              },
+              {
+                label: "Feed rate",
+                unit: "mL/min",
+                value: inputs.feedRate,
+                disabled: inputs.feedBasis !== "rate",
+                onChange: (feedRate) => set({ feedRate }),
+              },
+              {
+                label: "Feed time",
+                unit: "min",
+                value: inputs.feedTime,
+                disabled: inputs.feedBasis !== "time",
+                onChange: (feedTime) => set({ feedTime }),
+              },
+            ],
+          },
+        ]}
+      />
     </div>
   );
   const ratioFields = (
-    <div className="form-row">
-      <NumberField label="Surface ε_loc/ε_avg" value={inputs.surface} onChange={(surface) => set({ surface })} />
-      <NumberField label="Mid ε_loc/ε_avg" value={inputs.mid} onChange={(mid) => set({ mid })} />
-      <NumberField label="Impeller ε_loc/ε_avg" value={inputs.impeller} onChange={(impeller) => set({ impeller })} />
+    <div className="prop-narrow">
+      <PropertyTable
+        groups={[
+          {
+            title: "Local dissipation ratio ε_loc/ε_avg",
+            rows: [
+              { label: "Surface", unit: "–", value: inputs.surface, onChange: (surface) => set({ surface }) },
+              { label: "Mid", unit: "–", value: inputs.mid, onChange: (mid) => set({ mid }) },
+              { label: "Impeller", unit: "–", value: inputs.impeller, onChange: (impeller) => set({ impeller }) },
+            ],
+          },
+        ]}
+      />
     </div>
   );
   const inputError = "error" in built ? <p className="stale-note">{built.error}</p> : null;
@@ -491,25 +536,38 @@ export function BourneProtocol() {
           </details>
 
           <Card title="Project Information">
-            <div className="form-row">
-              <label>
-                Project name
-                <input value={project.projectName} onChange={(e) => setProject({ ...project, projectName: e.target.value })} />
-              </label>
-              <label>
-                Step
-                <input value={project.step} onChange={(e) => setProject({ ...project, step: e.target.value })} />
-              </label>
-              <SelectField
-                label="Unit operation"
-                value={project.unitOperation}
-                options={[{ code: "", label: "- select -" }, ...(bourneOptions.data?.unit_operations ?? []).map((u) => ({ code: u, label: u }))]}
-                onChange={(unitOperation) => setProject({ ...project, unitOperation })}
+            <div className="prop-narrow">
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Project",
+                    rows: [
+                      {
+                        label: "Project name",
+                        text: true,
+                        value: project.projectName,
+                        onChange: (projectName) => setProject({ ...project, projectName }),
+                      },
+                      { label: "Step", text: true, value: project.step, onChange: (step) => setProject({ ...project, step }) },
+                      {
+                        label: "Unit operation",
+                        value: project.unitOperation,
+                        options: [
+                          { code: "", label: "- select -" },
+                          ...(bourneOptions.data?.unit_operations ?? []).map((u) => ({ code: u, label: u })),
+                        ],
+                        onChange: (unitOperation) => setProject({ ...project, unitOperation }),
+                      },
+                      {
+                        label: "Process version",
+                        text: true,
+                        value: project.processVersion,
+                        onChange: (processVersion) => setProject({ ...project, processVersion }),
+                      },
+                    ],
+                  },
+                ]}
               />
-              <label>
-                Process version
-                <input value={project.processVersion} onChange={(e) => setProject({ ...project, processVersion: e.target.value })} />
-              </label>
             </div>
           </Card>
 

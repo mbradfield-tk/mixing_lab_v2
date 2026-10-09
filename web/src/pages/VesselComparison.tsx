@@ -4,10 +4,11 @@ import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
 import { Chart } from "../components/Chart";
-import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
+import { Segmented, SelectField, Switch } from "../components/Form";
 import { InstrumentPanel, Setpoint } from "../components/Instrument";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
+import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
@@ -289,40 +290,52 @@ export function VesselComparison() {
           <Setpoint label="Pressure" value={inputs.P} onChange={(P) => set({ P })} unit="atm" step={0.1} min={0} />
           <Setpoint label="Coolant temp" value={inputs.Tcool} onChange={(Tcool) => set({ Tcool })} unit="°C" />
         </InstrumentPanel>
-        <div className="form-row three">
-          <SelectField
-            label="Reaction source"
-            value={inputs.reactionSource}
-            options={[
-              { code: "measured", label: "Measured kinetics" },
-              { code: "classes", label: "Reaction classes" },
+        <p className="muted">Reaction kinetics are auto-filled from the database; edit any value to override.</p>
+        <div className="grid-2 prop-grid">
+          <PropertyTable
+            groups={[
+              {
+                title: "Reaction (for Da numbers)",
+                rows: [
+                  {
+                    label: "Source",
+                    value: inputs.reactionSource,
+                    options: [
+                      { code: "measured", label: "Measured kinetics" },
+                      { code: "classes", label: "Reaction classes" },
+                    ],
+                    onChange: (v) => {
+                      const source = v as Inputs["reactionSource"];
+                      const list = (source === "classes" ? options.data?.reaction_classes : options.data?.reactions_measured) ?? [];
+                      set({ reactionSource: source });
+                      const next = list.includes(inputs.reaction) ? inputs.reaction : list[0];
+                      if (next) report(loadReaction(next));
+                    },
+                  },
+                  { label: "Reaction", value: inputs.reaction, options: reactionList, onChange: (v) => report(loadReaction(v)) },
+                  {
+                    label: "Order",
+                    value: inputs.order,
+                    options: ["0", "1", "2", "pseudo-1", "pseudo-2"],
+                    onChange: (order) => set({ order: order as Inputs["order"] }),
+                  },
+                ],
+              },
             ]}
-            onChange={(v) => {
-              const source = v as Inputs["reactionSource"];
-              const list = (source === "classes" ? options.data?.reaction_classes : options.data?.reactions_measured) ?? [];
-              set({ reactionSource: source });
-              const next = list.includes(inputs.reaction) ? inputs.reaction : list[0];
-              if (next) report(loadReaction(next));
-            }}
           />
-          <SelectField label="Reaction (for Da numbers)" value={inputs.reaction} options={reactionList} onChange={(v) => report(loadReaction(v))} />
-        </div>
-        <p>
-          <strong>Reaction conditions &amp; kinetics</strong> — auto-filled from the database; edit any value to override.
-        </p>
-        <div className="form-row three">
-          <SelectField
-            label="Reaction order"
-            value={inputs.order}
-            options={["0", "1", "2", "pseudo-1", "pseudo-2"]}
-            onChange={(order) => set({ order: order as Inputs["order"] })}
+          <PropertyTable
+            groups={[
+              {
+                title: "Kinetics",
+                rows: [
+                  { label: "Rate constant k", unit: "1/s or L/mol·s", value: inputs.k, onChange: (k) => set({ k }) },
+                  { label: "Initial concentration C₀", unit: "mol/L", value: inputs.c0, onChange: (c0) => set({ c0 }) },
+                  { label: "Reaction time t_rxn", unit: "s (0 = from k)", value: inputs.trxn, onChange: (trxn) => set({ trxn }) },
+                  { label: "Heat of reaction ΔH", unit: "kJ/mol", value: inputs.dH, onChange: (dH) => set({ dH }) },
+                ],
+              },
+            ]}
           />
-          <NumberField label="Rate constant k (1/s or L/mol·s)" value={inputs.k} onChange={(k) => set({ k })} />
-          <NumberField label="C₀ (mol/L)" value={inputs.c0} onChange={(c0) => set({ c0 })} />
-        </div>
-        <div className="form-row three">
-          <NumberField label="t_rxn (s, 0 = derive from k)" value={inputs.trxn} onChange={(trxn) => set({ trxn })} />
-          <NumberField label="ΔH (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
         </div>
         {md(caption)}
       </Card>
@@ -346,15 +359,27 @@ export function VesselComparison() {
             {inputs.solids ? (
               <>
                 <SelectField label="Particle" value={inputs.particle} options={options.data?.particles ?? []} onChange={(v) => report(loadParticle(v))} />
-                <div className="form-row two">
-                  <NumberField label="ρ_p (kg/m³)" value={inputs.rhoP} onChange={(rhoP) => set({ rhoP })} />
-                  <NumberField label="d50 (µm)" value={inputs.d50} onChange={(d50) => set({ d50 })} />
-                  <NumberField label="Shape factor φ" value={inputs.phi} onChange={(phi) => set({ phi })} />
-                  <NumberField label="Solids loading (wt-%)" value={inputs.xWt} onChange={(xWt) => set({ xWt })} />
-                  <NumberField label="Zwietering S" value={inputs.szw} onChange={(szw) => set({ szw })} />
-                  <NumberField label="GMB z constant" value={inputs.gmbZ} onChange={(gmbZ) => set({ gmbZ })} />
-                  <NumberField label="C/D (clearance / dia)" value={inputs.cd} onChange={(cd) => set({ cd })} />
-                </div>
+                <PropertyTable
+                  groups={[
+                    {
+                      title: "Particle",
+                      rows: [
+                        { label: "Density ρ_p", unit: "kg/m³", value: inputs.rhoP, onChange: (rhoP) => set({ rhoP }) },
+                        { label: "Size d50", unit: "µm", value: inputs.d50, onChange: (d50) => set({ d50 }) },
+                        { label: "Shape factor φ", unit: "–", value: inputs.phi, onChange: (phi) => set({ phi }) },
+                        { label: "Solids loading", unit: "wt-%", value: inputs.xWt, onChange: (xWt) => set({ xWt }) },
+                      ],
+                    },
+                    {
+                      title: "Suspension constants",
+                      rows: [
+                        { label: "Zwietering S", unit: "–", value: inputs.szw, onChange: (szw) => set({ szw }) },
+                        { label: "GMB z", unit: "–", value: inputs.gmbZ, onChange: (gmbZ) => set({ gmbZ }) },
+                        { label: "Clearance C/D", unit: "–", value: inputs.cd, onChange: (cd) => set({ cd }) },
+                      ],
+                    },
+                  ]}
+                />
               </>
             ) : (
               <p className="muted">
@@ -370,10 +395,22 @@ export function VesselComparison() {
               <>
                 <Segmented label="Mass-transfer mode" value={inputs.gasTransfer} options={enums.GasTransfer ?? []} onChange={(gasTransfer) => set({ gasTransfer })} />
                 {inputs.gasTransfer === "sparging" && (
-                  <>
-                    <NumberField label="Superficial gas velocity v_s (m/s)" value={inputs.vs} onChange={(vs) => set({ vs })} />
-                    <SelectField label="Liquid type (for kLa)" value={inputs.coalescing} options={COALESCENCE} onChange={(coalescing) => set({ coalescing })} />
-                  </>
+                  <PropertyTable
+                    groups={[
+                      {
+                        title: "Sparging",
+                        rows: [
+                          { label: "Superficial gas velocity v_s", unit: "m/s", value: inputs.vs, onChange: (vs) => set({ vs }) },
+                          {
+                            label: "Liquid type (for kLa)",
+                            value: inputs.coalescing,
+                            options: COALESCENCE,
+                            onChange: (coalescing) => set({ coalescing }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
                 )}
               </>
             ) : (
@@ -386,19 +423,31 @@ export function VesselComparison() {
             <Switch label="Fed-batch addition" checked={inputs.fed} onChange={(fed) => set({ fed })} />
             {inputs.fed ? (
               <>
-                <SelectField label="Feed location" value={inputs.feedLocation} options={enums.FeedLocation ?? []} onChange={(feedLocation) => set({ feedLocation })} />
+                <p>
+                  <strong>Feed schedule</strong> — feed volume is set at the basis vessel and scaled to the others by V_L_max.
+                </p>
+                <PropertyTable
+                  groups={[
+                    {
+                      title: "Feed",
+                      rows: [
+                        {
+                          label: "Feed location",
+                          value: inputs.feedLocation,
+                          options: enums.FeedLocation ?? [],
+                          onChange: (feedLocation) => set({ feedLocation }),
+                        },
+                        { label: "Basis vessel", value: inputs.feedBasis, options: vessels, onChange: (feedBasis) => set({ feedBasis }) },
+                        { label: "Feed volume", unit: "mL", value: inputs.feedVolume, onChange: (feedVolume) => set({ feedVolume }) },
+                        { label: "Feed time", unit: "h", value: inputs.feedTime, onChange: (feedTime) => set({ feedTime }) },
+                      ],
+                    },
+                  ]}
+                />
                 <p>
                   <strong>Feed pipe diameter per vessel</strong> — defaults from each reactor's recorded feed-pipe ID; edit to override.
                 </p>
                 <PerVesselInputs title="Feed pipe ID (mm)" vessels={vessels} values={inputs.feedPipe} onChange={(feedPipe) => set({ feedPipe })} />
-                <p>
-                  <strong>Feed schedule</strong> — feed volume is set at the basis vessel and scaled to the others by V_L_max.
-                </p>
-                <SelectField label="Basis vessel" value={inputs.feedBasis} options={vessels} onChange={(feedBasis) => set({ feedBasis })} />
-                <div className="form-row two">
-                  <NumberField label="Feed volume (mL)" value={inputs.feedVolume} onChange={(feedVolume) => set({ feedVolume })} />
-                  <NumberField label="Feed time (h)" value={inputs.feedTime} onChange={(feedTime) => set({ feedTime })} />
-                </div>
               </>
             ) : (
               <p className="muted">Enable to add the mesomixing Damköhler number (Da_meso), evaluated at the feed point.</p>
@@ -415,27 +464,39 @@ export function VesselComparison() {
         <Switch label="Perform scale-up matching" checked={inputs.scaling} onChange={(scaling) => set({ scaling })} />
         {inputs.scaling && (
           <>
-            <div className="form-row two">
-              <SelectField label="Basis vessel" value={inputs.basis} options={vessels} onChange={(basis) => set({ basis })} />
-              <SelectField
-                label="Parameter to hold constant"
-                value={inputs.scaleParam}
-                options={(setup.data?.scalable ?? []).map((p) => ({ code: p.field, label: p.label }))}
-                onChange={(scaleParam) => set({ scaleParam })}
+            <div className="prop-narrow">
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Basis",
+                    rows: [
+                      { label: "Basis vessel", value: inputs.basis, options: vessels, onChange: (basis) => set({ basis }) },
+                      {
+                        label: "Parameter to hold constant",
+                        value: inputs.scaleParam,
+                        options: (setup.data?.scalable ?? []).map((p) => ({ code: p.field, label: p.label })),
+                        onChange: (scaleParam) => set({ scaleParam }),
+                      },
+                      { label: "Basis stir speed", unit: "RPM", value: inputs.basisRpm, onChange: (basisRpm) => set({ basisRpm }) },
+                      { label: "Basis volume", unit: "L", value: inputs.basisVol, onChange: (basisVol) => set({ basisVol }) },
+                    ],
+                  },
+                  {
+                    title: "Target vessels",
+                    rows: [
+                      {
+                        label: "Solve for",
+                        value: inputs.solveFor,
+                        options: [
+                          { code: "N_rpm", label: "RPM (specify volume)" },
+                          { code: "V_L", label: "Volume (specify RPM)" },
+                        ],
+                        onChange: (v) => set({ solveFor: v as Inputs["solveFor"] }),
+                      },
+                    ],
+                  },
+                ]}
               />
-            </div>
-            <SelectField
-              label="For target vessels, solve for"
-              value={inputs.solveFor}
-              options={[
-                { code: "N_rpm", label: "RPM (specify volume)" },
-                { code: "V_L", label: "Volume (specify RPM)" },
-              ]}
-              onChange={(v) => set({ solveFor: v as Inputs["solveFor"] })}
-            />
-            <div className="form-row two">
-              <NumberField label="Basis RPM" value={inputs.basisRpm} onChange={(basisRpm) => set({ basisRpm })} />
-              <NumberField label="Basis volume (L)" value={inputs.basisVol} onChange={(basisVol) => set({ basisVol })} />
             </div>
             <p>
               <strong>Target vessel known values</strong>

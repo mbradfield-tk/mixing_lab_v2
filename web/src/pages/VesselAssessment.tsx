@@ -11,6 +11,7 @@ import {
 } from "../components/Insights";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
+import { PropertyTable } from "../components/PropertyTable";
 import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
@@ -673,12 +674,19 @@ export function VesselAssessment() {
             </InstrumentPanel>
             <details>
               <summary>Advanced: vessel geometry overrides</summary>
-              <div className="form-row">
-                <NumberField label="D_tank (m)" value={inputs.dTank} onChange={(dTank) => set({ dTank })} />
-                <NumberField label="D_imp (m)" value={inputs.dImp} onChange={(dImp) => set({ dImp })} />
-                <NumberField label="Np" value={inputs.Np} onChange={(Np) => set({ Np })} />
-                <NumberField label="Nq" value={inputs.Nq} onChange={(Nq) => set({ Nq })} />
-              </div>
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Geometry",
+                    rows: [
+                      { label: "Tank diameter D_tank", unit: "m", value: inputs.dTank, onChange: (dTank) => set({ dTank }) },
+                      { label: "Impeller diameter D_imp", unit: "m", value: inputs.dImp, onChange: (dImp) => set({ dImp }) },
+                      { label: "Power number Np", unit: "–", value: inputs.Np, onChange: (Np) => set({ Np }) },
+                      { label: "Flow number Nq", unit: "–", value: inputs.Nq, onChange: (Nq) => set({ Nq }) },
+                    ],
+                  },
+                ]}
+              />
             </details>
           </div>
           <div className="media-box">
@@ -706,12 +714,19 @@ export function VesselAssessment() {
                 setNotice({ kind: "info", text: "Fluid properties loaded." });
               }}
             />
-            <div className="form-row two">
-              <NumberField label="ρ (kg/m³)" value={inputs.rho} onChange={(rho) => set({ rho })} />
-              <NumberField label="μ (Pa·s)" value={inputs.mu} onChange={(mu) => set({ mu })} />
-              <NumberField label="D_mol (m²/s)" value={inputs.dmol} onChange={(dmol) => set({ dmol })} />
-              <NumberField label="σ (N/m)" value={inputs.sigma} onChange={(sigma) => set({ sigma })} />
-            </div>
+            <PropertyTable
+              groups={[
+                {
+                  title: "Properties",
+                  rows: [
+                    { label: "Density ρ", unit: "kg/m³", value: inputs.rho, onChange: (rho) => set({ rho }) },
+                    { label: "Viscosity μ", unit: "Pa·s", value: inputs.mu, onChange: (mu) => set({ mu }) },
+                    { label: "Diffusivity D_mol", unit: "m²/s", value: inputs.dmol, onChange: (dmol) => set({ dmol }) },
+                    { label: "Surface tension σ", unit: "N/m", value: inputs.sigma, onChange: (sigma) => set({ sigma }) },
+                  ],
+                },
+              ]}
+            />
             {fluidNote && <p className="muted">{fluidNote}</p>}
           </section>
 
@@ -728,17 +743,27 @@ export function VesselAssessment() {
                   options={options.data?.particles ?? []}
                   onChange={(v) => report(loadParticle(v))}
                 />
-                <div className="form-row two">
-                  <NumberField label="ρ_p (kg/m³)" value={inputs.rhoP} onChange={(rhoP) => set({ rhoP })} />
-                  <NumberField label="d50 (µm)" value={inputs.d50} onChange={(d50) => set({ d50 })} />
-                  <NumberField label="Shape factor φ" value={inputs.phi} onChange={(phi) => set({ phi })} />
-                  <NumberField label="Solids loading (wt-%)" value={inputs.xWt} onChange={(xWt) => set({ xWt })} />
-                </div>
-                <div className="form-row three">
-                  <NumberField label="Zwietering S" value={inputs.szw} onChange={(szw) => set({ szw })} />
-                  <NumberField label="GMB z" value={inputs.gmbZ} onChange={(gmbZ) => set({ gmbZ })} />
-                  <NumberField label="C/D" value={inputs.cd} onChange={(cd) => set({ cd })} />
-                </div>
+                <PropertyTable
+                  groups={[
+                    {
+                      title: "Particle",
+                      rows: [
+                        { label: "Density ρ_p", unit: "kg/m³", value: inputs.rhoP, onChange: (rhoP) => set({ rhoP }) },
+                        { label: "Size d50", unit: "µm", value: inputs.d50, onChange: (d50) => set({ d50 }) },
+                        { label: "Shape factor φ", unit: "–", value: inputs.phi, onChange: (phi) => set({ phi }) },
+                        { label: "Solids loading", unit: "wt-%", value: inputs.xWt, onChange: (xWt) => set({ xWt }) },
+                      ],
+                    },
+                    {
+                      title: "Suspension constants",
+                      rows: [
+                        { label: "Zwietering S", unit: "–", value: inputs.szw, onChange: (szw) => set({ szw }) },
+                        { label: "GMB z", unit: "–", value: inputs.gmbZ, onChange: (gmbZ) => set({ gmbZ }) },
+                        { label: "Clearance C/D", unit: "–", value: inputs.cd, onChange: (cd) => set({ cd }) },
+                      ],
+                    },
+                  ]}
+                />
               </>
             ) : (
               <p className="muted">
@@ -788,39 +813,35 @@ export function VesselAssessment() {
             <p className="muted">
               Adds the <strong>mesomixing</strong> check and the feed&apos;s sensible heat to the heat balance.
             </p>
-            <div className="form-row">
-              <NumberField label="Dosing Time [h]" value={inputs.dosingTime} onChange={(dosingTime) => set({ dosingTime })} />
-              <NumberField
-                label="Dosing Amount [L]"
-                value={inputs.dosingAmount}
-                onChange={(dosingAmount) => set({ dosingAmount })}
-              />
-              <label>
-                Feed rate [mL/min]
-                <input
-                  readOnly
-                  className="computed"
-                  value={(() => {
-                    const r = feedRateMlMin(inputs.dosingAmount, inputs.dosingTime);
-                    return Number.isFinite(r) ? formatG(r, 4) : "—";
-                  })()}
-                />
-              </label>
-            </div>
-            <div className="form-row">
-              <SelectField
-                label="Dosed fluid"
-                value={inputs.feedFluid}
-                options={options.data?.fluids ?? []}
-                onChange={(feedFluid) => set({ feedFluid })}
-              />
-              <NumberField label="Dosing temperature (°C)" value={inputs.feedT} onChange={(feedT) => set({ feedT })} />
-              <NumberField label="Feed pipe ID (mm)" value={inputs.feedDiam} onChange={(feedDiam) => set({ feedDiam })} />
-              <SelectField
-                label="Feed location"
-                value={inputs.feedLocation}
-                options={enums.FeedLocation ?? []}
-                onChange={(feedLocation) => set({ feedLocation })}
+            <div className="prop-narrow">
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Feed",
+                    rows: [
+                      { label: "Dosed fluid", value: inputs.feedFluid, options: options.data?.fluids ?? [], onChange: (feedFluid) => set({ feedFluid }) },
+                      { label: "Dosing time", unit: "h", value: inputs.dosingTime, onChange: (dosingTime) => set({ dosingTime }) },
+                      { label: "Dosing amount", unit: "L", value: inputs.dosingAmount, onChange: (dosingAmount) => set({ dosingAmount }) },
+                      {
+                        label: "Feed rate (calculated)",
+                        unit: "mL/min",
+                        readOnly: true,
+                        value: (() => {
+                          const r = feedRateMlMin(inputs.dosingAmount, inputs.dosingTime);
+                          return Number.isFinite(r) ? formatG(r, 4) : "—";
+                        })(),
+                      },
+                      { label: "Dosing temperature", unit: "°C", value: inputs.feedT, onChange: (feedT) => set({ feedT }) },
+                      { label: "Feed pipe ID", unit: "mm", value: inputs.feedDiam, onChange: (feedDiam) => set({ feedDiam }) },
+                      {
+                        label: "Feed location",
+                        value: inputs.feedLocation,
+                        options: enums.FeedLocation ?? [],
+                        onChange: (feedLocation) => set({ feedLocation }),
+                      },
+                    ],
+                  },
+                ]}
               />
             </div>
             <Switch
@@ -892,12 +913,20 @@ export function VesselAssessment() {
             ) : (
               <p className="muted">No reaction selected.</p>
             )}
-            <h4>Kinetics (editable)</h4>
-            <div className="form-row">
-              <NumberField label="Rate constant k" value={inputs.k} onChange={(k) => set({ k })} />
-              <NumberField label="C0 (mol/L)" value={inputs.c0} onChange={(c0) => set({ c0 })} />
-              <NumberField label="t_rxn (s, 0 = auto)" value={inputs.trxn} onChange={(trxn) => set({ trxn })} />
-              <NumberField label="ΔH_rxn (kJ/mol, − = exothermic)" value={inputs.dH} onChange={(dH) => set({ dH })} />
+            <div className="prop-narrow">
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Kinetics (editable)",
+                    rows: [
+                      { label: "Rate constant k", unit: "1/s or L/mol·s", value: inputs.k, onChange: (k) => set({ k }) },
+                      { label: "Initial concentration C₀", unit: "mol/L", value: inputs.c0, onChange: (c0) => set({ c0 }) },
+                      { label: "Reaction time t_rxn", unit: "s (0 = auto)", value: inputs.trxn, onChange: (trxn) => set({ trxn }) },
+                      { label: "Heat of reaction ΔH", unit: "kJ/mol (− = exo)", value: inputs.dH, onChange: (dH) => set({ dH }) },
+                    ],
+                  },
+                ]}
+              />
             </div>
           </>
         )}
@@ -1015,18 +1044,27 @@ export function VesselAssessment() {
         <p>
           Find the speed (or fill volume) that gives a target value. The other variable stays at its Section 1 input.
         </p>
-        <div className="form-row">
-          <SelectField
-            label="Solve for"
-            value={solveFor}
-            options={[
-              { code: "N_rpm", label: "Agitation speed N (RPM)" },
-              { code: "V_L", label: "Fill volume V (L)" },
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              {
+                title: "Target",
+                rows: [
+                  {
+                    label: "Solve for",
+                    value: solveFor,
+                    options: [
+                      { code: "N_rpm", label: "Agitation speed N (RPM)" },
+                      { code: "V_L", label: "Fill volume V (L)" },
+                    ],
+                    onChange: (v) => setSolveFor(v as "N_rpm" | "V_L"),
+                  },
+                  { label: "Target parameter", value: solveParam, options: paramOptions, onChange: setSolveParam },
+                  { label: "Target value", value: solveTarget, onChange: setSolveTarget },
+                ],
+              },
             ]}
-            onChange={(v) => setSolveFor(v as "N_rpm" | "V_L")}
           />
-          <SelectField label="Target parameter" value={solveParam} options={paramOptions} onChange={setSolveParam} />
-          <NumberField label="Target value" value={solveTarget} onChange={setSolveTarget} />
         </div>
         <button type="button" className="compute-btn primary" disabled={solve.isPending} onClick={onSolve}>
           {solve.isPending ? "Solving…" : "Solve"}

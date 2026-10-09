@@ -9,6 +9,7 @@ import {
 import { Markdown } from "../components/Markdown";
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
+import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
@@ -207,25 +208,35 @@ export function MixingSensitivity() {
       </details>
 
       <Card title="Project Information">
-        <div className="form-row">
-          <label>
-            Project name
-            <input value={project.projectName} onChange={(e) => setProject({ ...project, projectName: e.target.value })} />
-          </label>
-          <label>
-            Step
-            <input value={project.step} onChange={(e) => setProject({ ...project, step: e.target.value })} />
-          </label>
-          <SelectField
-            label="Unit operation"
-            value={project.unitOperation}
-            options={[SELECT, ...unitOperations.map((u) => ({ code: u, label: u }))]}
-            onChange={(unitOperation) => setProject({ ...project, unitOperation })}
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              {
+                title: "Project",
+                rows: [
+                  {
+                    label: "Project name",
+                    text: true,
+                    value: project.projectName,
+                    onChange: (projectName) => setProject({ ...project, projectName }),
+                  },
+                  { label: "Step", text: true, value: project.step, onChange: (step) => setProject({ ...project, step }) },
+                  {
+                    label: "Unit operation",
+                    value: project.unitOperation,
+                    options: [SELECT, ...unitOperations.map((u) => ({ code: u, label: u }))],
+                    onChange: (unitOperation) => setProject({ ...project, unitOperation }),
+                  },
+                  {
+                    label: "Process version",
+                    text: true,
+                    value: project.processVersion,
+                    onChange: (processVersion) => setProject({ ...project, processVersion }),
+                  },
+                ],
+              },
+            ]}
           />
-          <label>
-            Process version
-            <input value={project.processVersion} onChange={(e) => setProject({ ...project, processVersion: e.target.value })} />
-          </label>
         </div>
       </Card>
 
@@ -316,39 +327,55 @@ export function MixingSensitivity() {
           The reaction time <strong>t<sub>rxn</sub></strong> is compared with each mixing time below. Values are filled from the
           database; edit any to override.
         </p>
-        <div className="form-row">
-          <SelectField
-            label="Are kinetics available?"
-            value={inputs.kineticsAvail}
-            options={enums.Kinetics ?? []}
-            onChange={(v) => {
-              const list = reactionList(v, options.data?.reactions_measured ?? [], options.data?.reaction_classes ?? []);
-              set({ kineticsAvail: v as Inputs["kineticsAvail"] });
-              if (!list.includes(inputs.reaction)) report(loadReaction(list[0]));
-            }}
+        <div className="grid-2 prop-grid">
+          <PropertyTable
+            groups={[
+              {
+                title: "Reaction",
+                rows: [
+                  {
+                    label: "Kinetics available?",
+                    value: inputs.kineticsAvail,
+                    options: enums.Kinetics ?? [],
+                    onChange: (v) => {
+                      const list = reactionList(v, options.data?.reactions_measured ?? [], options.data?.reaction_classes ?? []);
+                      set({ kineticsAvail: v as Inputs["kineticsAvail"] });
+                      if (!list.includes(inputs.reaction)) report(loadReaction(list[0]));
+                    },
+                  },
+                  { label: "Reaction or proxy class", value: inputs.reaction, options: reactions, onChange: (v) => report(loadReaction(v)) },
+                  { label: "Order", value: inputs.order, options: msOptions.data?.reaction_orders ?? [], onChange: (order) => set({ order }) },
+                ],
+              },
+            ]}
           />
-          <SelectField label="Reaction or proxy class" value={inputs.reaction} options={reactions} onChange={(v) => report(loadReaction(v))} />
-        </div>
-        <div className="form-row">
-          <SelectField label="Reaction order" value={inputs.order} options={msOptions.data?.reaction_orders ?? []} onChange={(order) => set({ order })} />
-          <NumberField label="Rate constant k (1/s or L/mol·s)" value={inputs.k} onChange={(k) => set({ k })} />
-          <NumberField
-            label="C₀ (mol/L)"
-            value={inputs.c0}
-            onChange={(c0) => set(sf(c0) > 0 ? { c0, c0Heat: String(Math.round(sf(c0) * 1e4) / 1e4) } : { c0 })}
+          <PropertyTable
+            groups={[
+              {
+                title: "Kinetics",
+                rows: [
+                  { label: "Rate constant k", unit: "1/s or L/mol·s", value: inputs.k, onChange: (k) => set({ k }) },
+                  {
+                    label: "Initial concentration C₀",
+                    unit: "mol/L",
+                    value: inputs.c0,
+                    onChange: (c0) => set(sf(c0) > 0 ? { c0, c0Heat: String(Math.round(sf(c0) * 1e4) / 1e4) } : { c0 }),
+                  },
+                  { label: "Reaction time t_rxn", unit: "s (0 = from k)", value: inputs.tRxn, onChange: (tRxn) => set({ tRxn }) },
+                  {
+                    label: "Temperature",
+                    unit: "°C",
+                    value: inputs.T,
+                    onChange: (T) => {
+                      set({ T });
+                      report(updateRhoCp(T));
+                    },
+                  },
+                  { label: "Heat of reaction ΔH", unit: "kJ/mol", value: inputs.dH, onChange: (dH) => set({ dH }) },
+                ],
+              },
+            ]}
           />
-        </div>
-        <div className="form-row">
-          <NumberField label="Reaction time (s, 0 = derive from k)" value={inputs.tRxn} onChange={(tRxn) => set({ tRxn })} />
-          <NumberField
-            label="Temperature (°C)"
-            value={inputs.T}
-            onChange={(T) => {
-              set({ T });
-              report(updateRhoCp(T));
-            }}
-          />
-          <NumberField label="ΔH (kJ/mol)" value={inputs.dH} onChange={(dH) => set({ dH })} />
         </div>
         {res && (
           <ResultBox tone={stepTone(1)}>
@@ -410,46 +437,54 @@ export function MixingSensitivity() {
           Screened by the <strong>adiabatic temperature rise</strong> ΔT<sub>ad</sub> = |ΔH|·C₀·1000/(ρ·Cp): the temperature
           change at full conversion with no cooling.
         </p>
-        {res?.show_dh_action && (
-          <>
-            <p>
-              The selected reaction has <strong>no ΔH data</strong>. Choose how to proceed:
-            </p>
-            <div className="form-row">
-              <SelectField
-                label="ΔH source"
-                value={inputs.dhAction}
-                options={[SELECT, ...(enums.DhAction ?? [])]}
-                onChange={(v) => set({ dhAction: v as Inputs["dhAction"] })}
-              />
-              <label>
-                Reference reaction for ΔH
-                <select value={inputs.dhRef} disabled={inputs.dhAction !== "estimate"} onChange={(e) => set({ dhRef: e.target.value })}>
-                  {dhRefNames.map((n) => (
-                    <option key={n}>{n}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </>
-        )}
-        <div className="form-row">
-          <NumberField label="Volumetric heat capacity ρ·Cp (kJ/m³·K)" value={inputs.rhoCp} onChange={(rhoCp) => set({ rhoCp })} />
-          <NumberField label="Limiting-reagent C₀ (mol/L)" value={inputs.c0Heat} onChange={(c0Heat) => set({ c0Heat })} />
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              ...(res?.show_dh_action
+                ? [
+                    {
+                      title: "No ΔH data for this reaction",
+                      rows: [
+                        {
+                          label: "ΔH source",
+                          value: inputs.dhAction,
+                          options: [SELECT, ...(enums.DhAction ?? [])],
+                          onChange: (v: string) => set({ dhAction: v as Inputs["dhAction"] }),
+                        },
+                        {
+                          label: "Reference reaction",
+                          value: inputs.dhRef,
+                          options: dhRefNames,
+                          disabled: inputs.dhAction !== "estimate",
+                          onChange: (dhRef: string) => set({ dhRef }),
+                        },
+                      ],
+                    },
+                  ]
+                : []),
+              {
+                title: "Heat balance",
+                rows: [
+                  { label: "Volumetric heat capacity ρ·Cp", unit: "kJ/m³·K", value: inputs.rhoCp, onChange: (rhoCp) => set({ rhoCp }) },
+                  { label: "Limiting-reagent C₀", unit: "mol/L", value: inputs.c0Heat, onChange: (c0Heat) => set({ c0Heat }) },
+                  {
+                    label: "ΔH override",
+                    unit: "kJ/mol (0 = Step 2)",
+                    value: inputs.dhOverride,
+                    onChange: (dhOverride) => set({ dhOverride }),
+                  },
+                  {
+                    label: "Override ΔH measured?",
+                    value: inputs.dhMeasured,
+                    options: enums.DhBasis ?? [],
+                    onChange: (v) => set({ dhMeasured: v as Inputs["dhMeasured"] }),
+                  },
+                ],
+              },
+            ]}
+          />
         </div>
-        <details>
-          <summary>Override ΔH</summary>
-          <p className="muted">Use a different ΔH for this step. Proxy-kinetics ΔH counts as estimated unless you mark it measured.</p>
-          <div className="form-row">
-            <NumberField label="ΔH override (kJ/mol, 0 = use Step 2)" value={inputs.dhOverride} onChange={(dhOverride) => set({ dhOverride })} />
-            <SelectField
-              label="Override ΔH measured?"
-              value={inputs.dhMeasured}
-              options={enums.DhBasis ?? []}
-              onChange={(v) => set({ dhMeasured: v as Inputs["dhMeasured"] })}
-            />
-          </div>
-        </details>
+        <p className="muted">Proxy-kinetics ΔH counts as estimated unless the override is marked measured.</p>
         {res && (
           <ResultBox tone={stepTone(4)}>
             {res.dt_ad_caption && <Markdown>{res.dt_ad_caption}</Markdown>}

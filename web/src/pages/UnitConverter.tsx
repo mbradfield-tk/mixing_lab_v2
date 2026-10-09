@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, unwrap } from "../api/client";
+import { PropertyTable } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { formatConverted, formatG } from "../format";
 
@@ -57,45 +58,35 @@ export function UnitConverter() {
 
       <Card title="Convert">
         {table.isError && <ErrorNote error={table.error} />}
-        <div className="form-row">
-          <label>
-            Physical property
-            <select value={property} onChange={(e) => setProperty(e.target.value)}>
-              {Object.keys(table.data?.properties ?? {}).map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            From unit
-            <select value={fromUnit} onChange={(e) => setFromUnit(e.target.value)}>
-              {units.map((u) => (
-                <option key={u}>{u}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Value
-            <input type="number" value={value} onChange={(e) => setValue(e.target.value)} />
-          </label>
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              {
+                title: "Input",
+                rows: [
+                  { label: "Physical property", value: property, options: Object.keys(table.data?.properties ?? {}), onChange: setProperty },
+                  { label: "From unit", value: fromUnit, options: units, onChange: setFromUnit },
+                  { label: "Value", unit: fromUnit, value, onChange: setValue },
+                ],
+              },
+              ...(property === GAS_FLOW
+                ? [
+                    {
+                      title: "Actual gas conditions",
+                      rows: [
+                        { label: "Gas temperature", unit: "°C", value: gasT, onChange: setGasT },
+                        { label: "Gas pressure", unit: "atm", value: gasP, onChange: setGasP },
+                      ],
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </div>
 
         {property === GAS_FLOW && (
           <>
-            <p>
-              Gas flow conversions use the ideal-gas law. Specify the <strong>actual</strong> gas
-              temperature and pressure.
-            </p>
-            <div className="form-row">
-              <label>
-                Gas temperature (°C)
-                <input type="number" value={gasT} onChange={(e) => setGasT(e.target.value)} />
-              </label>
-              <label>
-                Gas pressure (atm)
-                <input type="number" value={gasP} onChange={(e) => setGasP(e.target.value)} />
-              </label>
-            </div>
+            <p className="muted">Gas flow conversions use the ideal-gas law at the actual temperature and pressure above.</p>
             <details>
               <summary>Reference conditions</summary>
               <table>

@@ -8,6 +8,7 @@ import { Chart } from "../components/Chart";
 import { AddForm, DatabaseTable, ImportExport, type Field } from "../components/Database";
 import { DataTable } from "../components/DataTable";
 import { NoticeBar, useNotice, type Notice } from "../components/Notice";
+import { PropertyTable, type PropertyRow } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { formatE, formatF, formatG } from "../format";
 
@@ -139,23 +140,19 @@ function PropertiesTab() {
         Compute physical properties for a built-in solvent at any liquid-phase temperature and
         pressure. The Antoine equation adjusts the boiling point for non-atmospheric pressure.
       </p>
-      <div className="form-row">
-        <label>
-          Solvent
-          <select value={solvent} onChange={(e) => setSolvent(e.target.value)}>
-            {names.map((n) => (
-              <option key={n}>{n}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Pressure (atm)
-          <input type="number" step="any" min="0" value={P} onChange={(e) => setP(e.target.value)} />
-        </label>
-        <label>
-          Temperature (°C)
-          <input type="number" step="any" value={T} onChange={(e) => setT(e.target.value)} />
-        </label>
+      <div className="prop-narrow">
+        <PropertyTable
+          groups={[
+            {
+              title: "Conditions",
+              rows: [
+                { label: "Solvent", value: solvent, options: names, onChange: setSolvent },
+                { label: "Pressure", unit: "atm", value: P, onChange: setP },
+                { label: "Temperature", unit: "°C", value: T, onChange: setT },
+              ],
+            },
+          ]}
+        />
       </div>
       {!ready && <p className="error-note">Enter a temperature and a pressure above 0 atm.</p>}
       {state.isError && <ErrorNote error={state.error} />}
@@ -313,17 +310,12 @@ function BlendTab() {
     });
   }
 
-  const numberInput = (key: keyof typeof inputs, label: string) => (
-    <label>
-      {label}
-      <input
-        type="number"
-        step="any"
-        value={inputs[key]}
-        onChange={(e) => setInputs({ ...inputs, [key]: e.target.value })}
-      />
-    </label>
-  );
+  const numberRow = (key: keyof typeof inputs, label: string, unit: string): PropertyRow => ({
+    label,
+    unit,
+    value: inputs[key],
+    onChange: (v) => setInputs({ ...inputs, [key]: v }),
+  });
 
   const res = compute.data?.result;
   const status = res ? blendStatus(res) : null;
@@ -354,14 +346,6 @@ function BlendTab() {
                 ))}
               </select>
             </label>
-            <label>
-              Input basis
-              <select value={basis} onChange={(e) => setBasis(e.target.value as "volume" | "mass")}>
-                <option value="volume">Volume</option>
-                <option value="mass">Mass</option>
-              </select>
-            </label>
-            {numberInput("T", "Temperature (°C)")}
           </div>
 
           <h3>Component amounts</h3>
@@ -408,16 +392,39 @@ function BlendTab() {
             <p className="muted">Select two or more components, enter amounts, then compute.</p>
           )}
 
-          <h3>Liquid-liquid dispersion screen</h3>
-          <p>
-            For immiscible pairs, estimate dispersion stability using the entered operating
-            assumptions. Interfacial tension and impeller inputs are screening values.
+          <h3>Conditions &amp; liquid-liquid dispersion screen</h3>
+          <p className="muted">
+            For immiscible pairs, dispersion stability is estimated from the screening values below.
           </p>
-          <div className="form-row">
-            {numberInput("speed", "Impeller speed (1/s)")}
-            {numberInput("D", "Impeller diameter (m)")}
-            {numberInput("H", "Separation height (m)")}
-            {numberInput("sigma", "Interfacial tension σ_LL (N/m)")}
+          <div className="prop-narrow">
+            <PropertyTable
+              groups={[
+                {
+                  title: "Blend",
+                  rows: [
+                    {
+                      label: "Input basis",
+                      value: basis,
+                      options: [
+                        { code: "volume", label: "Volume" },
+                        { code: "mass", label: "Mass" },
+                      ],
+                      onChange: (v) => setBasis(v as "volume" | "mass"),
+                    },
+                    numberRow("T", "Temperature", "°C"),
+                  ],
+                },
+                {
+                  title: "Dispersion screen",
+                  rows: [
+                    numberRow("speed", "Impeller speed", "1/s"),
+                    numberRow("D", "Impeller diameter", "m"),
+                    numberRow("H", "Separation height", "m"),
+                    numberRow("sigma", "Interfacial tension σ_LL", "N/m"),
+                  ],
+                },
+              ]}
+            />
           </div>
           <button type="submit" className="primary" disabled={!components.length || compute.isPending}>
             {compute.isPending ? "Computing…" : "Compute blend"}

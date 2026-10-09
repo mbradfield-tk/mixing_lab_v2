@@ -17,7 +17,8 @@ export default function Plot({ figure, height }: { figure: Figure; height?: numb
       el,
       (figure.data ?? []) as Plotly.Data[],
       { ...figure.layout, autosize: true, ...(height ? { height } : {}) } as Partial<Plotly.Layout>,
-      { responsive: true, displaylogo: false },
+      { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"],
+        toImageButtonOptions: { format: "png", scale: 2 } },
     );
   }, [figure, height]);
 

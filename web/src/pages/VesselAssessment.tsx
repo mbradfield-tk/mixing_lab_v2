@@ -954,8 +954,8 @@ export function VesselAssessment() {
 
           <Card title="Response Surfaces (3D)">
             <p className="muted">
-              The parameters above over the full speed × fill window (drag to rotate). Red ◆: current point; planes (Da panels):
-              0.1 and 1 thresholds.
+              The parameters above over the full speed × fill window (drag to rotate). Red ◆: current point; planes: Da 0.1 and 1
+              thresholds, and the Re 10 / 10⁴ flow-regime transitions.
             </p>
             <button
               type="button"

@@ -5,8 +5,9 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-PHASE_COLORS = ["#4E79A7", "#F28E2B", "#76B7B2", "#59A14F",
-                "#B07AA1", "#EDC948", "#E15759", "#9C755F"]
+from viz import theme
+
+PHASE_COLORS = theme.SERIES
 
 
 def property_curves(name: str, curves: dict, T_C: float) -> go.Figure:
@@ -19,13 +20,13 @@ def property_curves(name: str, curves: dict, T_C: float) -> go.Figure:
     for i, (_, y_arr) in enumerate(curves["series"]):
         r, c = i // 2 + 1, i % 2 + 1
         fig.add_trace(go.Scatter(x=T_arr, y=y_arr, mode="lines",
-                                 line={"width": 2}, showlegend=False), row=r, col=c)
+                                 line={"width": 2, "color": theme.PRIMARY}, showlegend=False), row=r, col=c)
         fig.add_trace(go.Scatter(x=[T_C], y=[y_arr[idx]], mode="markers",
-                                 marker={"size": 10, "color": "red"}, showlegend=False),
+                                 marker={"size": 9, "color": theme.TEXT, "line": {"width": 2, "color": "#FFFFFF"}},
+                                 showlegend=False),
                       row=r, col=c)
         fig.update_xaxes(title_text="T (°C)", row=r, col=c)
-    fig.update_layout(height=760, margin={"t": 40, "b": 40},
-                      title=f"{name} — properties vs temperature")
+    fig.update_layout(height=780, title=f"{name} — properties vs temperature")
     return fig
 
 
@@ -50,7 +51,7 @@ def phase_stack(phases: list[dict], unknown_split: bool) -> go.Figure:
         h = ph["vol"] * liquid_top
         fig.add_shape(type="rect", x0=x0, x1=x1, y0=y, y1=y + h,
                       fillcolor=PHASE_COLORS[i % len(PHASE_COLORS)],
-                      opacity=0.75, line={"width": 0}, layer="below")
+                      opacity=0.55, line={"width": 0}, layer="below")
         fig.add_annotation(
             x=(x0 + x1) / 2, y=y + h / 2,
             text=(f"<b>{ph['label']}</b><br>"
@@ -59,14 +60,11 @@ def phase_stack(phases: list[dict], unknown_split: bool) -> go.Figure:
             bgcolor="rgba(255,255,255,0.75)")
         y += h
     # Vessel outline (open top)
-    fig.add_shape(type="line", x0=x0, x1=x1, y0=0, y1=0,
-                  line={"color": "#808080", "width": 3})
-    fig.add_shape(type="line", x0=x0, x1=x0, y0=0, y1=1.0,
-                  line={"color": "#808080", "width": 3})
-    fig.add_shape(type="line", x0=x1, x1=x1, y0=0, y1=1.0,
-                  line={"color": "#808080", "width": 3})
+    for x0_, x1_, y0_, y1_ in ((x0, x1, 0, 0), (x0, x0, 0, 1.0), (x1, x1, 0, 1.0)):
+        fig.add_shape(type="line", x0=x0_, x1=x1_, y0=y0_, y1=y1_,
+                      line={"color": theme.SLATE, "width": 3})
     fig.add_shape(type="line", x0=x0, x1=x1, y0=liquid_top, y1=liquid_top,
-                  line={"color": "#808080", "width": 1, "dash": "dot"})
+                  line={"color": theme.SLATE, "width": 1, "dash": "dot"})
 
     n_ph = len(phases)
     title = ("Single-phase blend (settled)" if n_ph == 1

@@ -15,6 +15,8 @@ import numpy as np
 
 from fpdf import FPDF
 
+from viz import theme as _theme
+
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _LOGO = _ROOT / "images" / "general" / "logo.png"
 
@@ -88,7 +90,7 @@ DISPLAY_NAMES = {
     "Q_gen/Q_cool (%)": "Heat Capacity (Q_gen/Q_cool %)",
 }
 
-MODE_COLORS = {"Literature": "#3366CC", "ROM": "#33AA66", "Experimental": "#FF8800"}
+MODE_COLORS = {"Literature": _theme.PRIMARY, "ROM": _theme.BLUE, "Experimental": _theme.AMBER}
 
 
 def da_text(Da: float) -> str:
@@ -144,6 +146,7 @@ def fig_to_png_bytes(fig) -> bytes:
     """PNG of a Plotly figure: kaleido (needs Chrome) when available, otherwise the
     matplotlib renderer in :mod:`viz.static`."""
     global _kaleido_ok
+    _theme.apply(fig)
     mode = os.environ.get(CHART_RENDERER_ENV, "auto").strip().lower()
     if mode != "matplotlib" and (_kaleido_ok is not False or mode == "kaleido"):
         try:
@@ -534,15 +537,12 @@ def build_envelope_fig(param: str, envelope: dict, V_L: float = 0.0):
             y_interp = np.interp(current_pct, pct_arr, y_maxp)
         fig.add_trace(go.Scatter(
             x=[current_pct], y=[y_interp],
-            mode="markers", marker=dict(size=12, color="red", symbol="star",
-                                         line=dict(width=1, color="white")),
+            mode="markers", marker=_theme.OP_MARKER,
             name="Current",
         ))
 
     if param in ("Da_macro", "Da_micro", "Da_GL"):
-        for da_val, da_color, label in [
-            (0.1, "orange", "Da=0.1"), (1.0, "red", "Da=1"),
-        ]:
+        for da_val, da_color in _theme.DA_THRESHOLDS:
             fig.add_shape(type="line", x0=0, x1=1, y0=da_val, y1=da_val,
                           xref="paper", yref="y",
                           line=dict(color=da_color, width=1.5, dash="dash"))
@@ -550,7 +550,7 @@ def build_envelope_fig(param: str, envelope: dict, V_L: float = 0.0):
     if param == "Q_gen/Q_cool (%)":
         fig.add_shape(type="line", x0=0, x1=1, y0=100, y1=100,
                       xref="paper", yref="y",
-                      line=dict(color="red", width=1.5, dash="dash"))
+                      line=dict(color=_theme.LIMIT, width=1.5, dash="dash"))
 
     display = DISPLAY_NAMES.get(param, param)
     fig.update_layout(
@@ -766,11 +766,7 @@ def build_comparison_envelope_fig(param: str, curve_data: dict,
     """Build a multi-reactor operating-envelope Plotly figure for *param* (None if no data)."""
     import plotly.graph_objects as go
 
-    _PALETTE = [
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-        "#bcbd22", "#17becf",
-    ]
+    _PALETTE = _theme.SERIES
 
     reactor_names = list(curve_data.keys())
     if not reactor_names:
@@ -815,9 +811,7 @@ def build_comparison_envelope_fig(param: str, curve_data: dict,
 
     # Reference lines
     if param in ("Da_macro", "Da_micro", "Da_GL", "Da_SL"):
-        for da_val, da_color, label in [
-            (0.1, "orange", "Da=0.1"), (1.0, "red", "Da=1"),
-        ]:
+        for da_val, da_color in _theme.DA_THRESHOLDS:
             fig.add_shape(
                 type="line", x0=0, x1=1, y0=da_val, y1=da_val,
                 xref="paper", yref="y",
@@ -829,7 +823,7 @@ def build_comparison_envelope_fig(param: str, curve_data: dict,
         fig.add_shape(
             type="line", x0=0, x1=1, y0=100.0, y1=100.0,
             xref="paper", yref="y",
-            line=dict(color="red", width=1.5, dash="dash"),
+            line=dict(color=_theme.LIMIT, width=1.5, dash="dash"),
         )
 
     display = DISPLAY_NAMES.get(param, param)

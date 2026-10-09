@@ -4338,10 +4338,10 @@ export interface components {
             V_L?: number | null;
             /**
              * Color Theme
-             * @default Turbo
+             * @default Takeda
              * @enum {string}
              */
-            color_theme: "Turbo" | "Viridis" | "Cool/Warm" | "X-ray";
+            color_theme: "Takeda" | "Turbo" | "Viridis" | "Cool/Warm" | "X-ray";
             /**
              * Cp J Kgk
              * @description Overrides the fluid's heat capacity

@@ -1092,7 +1092,7 @@ class UaSurfaceRequest(HeatTransferRequest):
     x_range: tuple[float, float] | None = Field(None, description="Default: vessel range or ±50%")
     y_range: tuple[float, float] | None = None
     n_points: int = Field(30, ge=2, le=100)
-    color_theme: Literal["Turbo", "Viridis", "Cool/Warm", "X-ray"] = "Turbo"
+    color_theme: Literal["Takeda", "Turbo", "Viridis", "Cool/Warm", "X-ray"] = "Takeda"
     U_color_range: tuple[float, float] | None = Field(None, description="Default: data min/max")
     UA_color_range: tuple[float, float] | None = None
 

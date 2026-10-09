@@ -48,7 +48,7 @@ export interface Inputs extends Record<SweepKey, string> {
   xMax: string;
   yMin: string;
   yMax: string;
-  colorTheme: "Turbo" | "Viridis" | "Cool/Warm" | "X-ray";
+  colorTheme: "Takeda" | "Turbo" | "Viridis" | "Cool/Warm" | "X-ray";
   colorMode: "Automatic" | "Custom";
   uMin: string;
   uMax: string;
@@ -105,7 +105,7 @@ export const INITIAL: Inputs = {
   xMax: "",
   yMin: "",
   yMax: "",
-  colorTheme: "Turbo",
+  colorTheme: "Takeda",
   colorMode: "Automatic",
   uMin: "0",
   uMax: "0",

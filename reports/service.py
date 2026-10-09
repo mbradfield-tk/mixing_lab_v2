@@ -25,6 +25,7 @@ from reports import bourne_tables as btables
 from reports import comparison_tables as ctables
 from reports.tables import assessment_tables
 from reports import pdf as rb
+from viz import theme
 from viz import vessel as viz_vessel
 
 
@@ -36,8 +37,9 @@ class ReportFile:
 
 
 def figure_json(fig: go.Figure) -> dict:
-    """Plain-JSON Plotly figure (``{"data": [...], "layout": {...}}``) for react-plotly.js."""
-    return json.loads(fig.to_json())
+    """Plain-JSON Plotly figure (``{"data": [...], "layout": {...}}``) for react-plotly.js,
+    with the shared Takeda chart theme applied."""
+    return json.loads(theme.apply(fig).to_json())
 
 
 def assessment_envelope(req: s.AssessmentReportRequest) -> tuple[go.Figure, str]:

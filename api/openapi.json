@@ -7549,8 +7549,9 @@
             "title": "V L"
           },
           "color_theme": {
-            "default": "Turbo",
+            "default": "Takeda",
             "enum": [
+              "Takeda",
               "Turbo",
               "Viridis",
               "Cool/Warm",

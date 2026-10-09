@@ -634,7 +634,9 @@ export function BourneProtocol() {
                     Lines hold each condition&apos;s P/m as the fill changes. Black dot: centre point; diamonds: fed-batch steps;
                     dashed: RPM limits.
                   </p>
-                  <Chart figure={chart.data} height={480} />
+                  <div className="chart-narrow">
+                    <Chart figure={chart.data} height={380} />
+                  </div>
                 </>
               )}
               </section>

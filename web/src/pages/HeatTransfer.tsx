@@ -469,7 +469,7 @@ export function HeatTransfer() {
             <SelectField
               label="Color theme"
               value={inputs.colorTheme}
-              options={["Turbo", "Viridis", "Cool/Warm", "X-ray"]}
+              options={["Takeda", "Turbo", "Viridis", "Cool/Warm", "X-ray"]}
               onChange={(v) => set({ colorTheme: v as Inputs["colorTheme"] })}
             />
             <SelectField
@@ -573,8 +573,10 @@ export function HeatTransfer() {
             </div>
           </Card>
           <Card title="6. Temperature and Heat-Duty Profiles">
-            <Chart figure={shown.figures.temperature} height={460} />
-            <Chart figure={shown.figures.duty} height={380} />
+            <div className="grid-2">
+              <Chart figure={shown.figures.temperature} height={380} />
+              <Chart figure={shown.figures.duty} height={380} />
+            </div>
           </Card>
           <Card title="7. Correlation and HTM Comparisons">
             <h3>Nusselt correlation comparison</h3>
@@ -592,10 +594,12 @@ export function HeatTransfer() {
       {shown?.mode === "reaction" && (
         <Card title="Reaction Temperature Profile">
           <p>
-            Batch temperature (red) and conversion (blue, right axis) versus time. Dotted lines mark the coolant
+            Batch temperature (red) and conversion (grey dashed, right axis) versus time. Dotted lines mark the coolant
             temperature and the adiabatic temperature (the peak the batch would reach with no cooling).
           </p>
-          <Chart figure={shown.figures.profile} height={460} />
+          <div className="chart-narrow">
+            <Chart figure={shown.figures.profile} height={400} />
+          </div>
           <h2>Reaction and Heat-Transfer Summary</h2>
           <StatGrid size="sm" stats={statsFromRows(shown.result.summary, "Metric")} />
           <TableDetails rows={shown.result.summary} csvName="heat_transfer_reaction_summary.csv" stale={stale} />

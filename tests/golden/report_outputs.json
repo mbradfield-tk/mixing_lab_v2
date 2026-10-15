@@ -759,39 +759,49 @@
    "reactor": "TMA EasyMax-102",
    "sl_df": [
     {
-     "Parameter": "Just-suspended speed N_js",
-     "Units": "RPM",
-     "Value": "666.0"
+     "Parameter": "N_js (Zwietering)",
+     "Value": "486.9",
+     "Units": "RPM"
+    },
+    {
+     "Parameter": "N_js (GMB)",
+     "Value": "666.0",
+     "Units": "RPM"
+    },
+    {
+     "Parameter": "N_js (design, GMB)",
+     "Value": "666.0",
+     "Units": "RPM"
     },
     {
      "Parameter": "Operating speed N",
-     "Units": "RPM",
-     "Value": "525.0"
+     "Value": "525.0",
+     "Units": "RPM"
     },
     {
      "Parameter": "N / N_js",
-     "Units": "–",
-     "Value": "0.79"
+     "Value": "0.79",
+     "Units": "–"
     },
     {
      "Parameter": "Suspension state",
-     "Units": "–",
-     "Value": "Partially suspended (N/Njs=0.79)"
+     "Value": "Partially suspended (N/Njs=0.79)",
+     "Units": "–"
     },
     {
      "Parameter": "Settling velocity v_t",
-     "Units": "m/s",
-     "Value": "0.000887"
+     "Value": "0.000887",
+     "Units": "m/s"
     },
     {
      "Parameter": "Solid-liquid k_SL",
-     "Units": "m/s",
-     "Value": "9.8e-05"
+     "Value": "9.8e-05",
+     "Units": "m/s"
     },
     {
      "Parameter": "Solid-liquid kLa_SL",
-     "Units": "1/s",
-     "Value": "0.289"
+     "Value": "0.289",
+     "Units": "1/s"
     }
    ],
    "t_rxn": 69.0

@@ -55,10 +55,17 @@ const num = (v: unknown, fallback: number) => {
   return Number.isFinite(x) ? x : fallback;
 };
 
+/** "Macromixing (bulk blending)" -> "Macromixing". */
+const stripParen = (s: string) => s.replace(/\s*\([^()]*\)\s*$/, "");
+
+const valueOf = (rows: Row[], parameter: string) => rows.find((r) => r.Parameter === parameter)?.Value ?? "—";
+
 /** Parameter/Value/Units rows as tiles, colouring the row named ``statusRow`` with ``tone``. */
 function toned(rows: Row[], statusRow: string, tone: (v: string) => Stat["tone"]): Stat[] {
   return statsFromRows(rows).map((s, i) =>
-    rows[i].Parameter === statusRow ? { ...s, tone: tone(String(s.value)), wide: true } : s,
+    rows[i].Parameter === statusRow
+      ? { ...s, value: stripParen(stripIcon(String(s.value))), tone: tone(String(s.value)), wide: true }
+      : s,
   );
 }
 
@@ -66,28 +73,50 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
   const hydro = statsFromRows(t.hydro);
   const featured = HYDRO_FEATURED.map((n) => hydro.find((s) => s.label === n)).filter((s): s is Stat => !!s);
   const rest = hydro.filter((s) => !featured.includes(s));
+  const reaction = t.damkohler.length > 0;
+  const suspension = solids ? String(valueOf(t.solids, "Suspension state")) : "";
+  const njsRow = t.solids.find((r) => String(r.Parameter).startsWith("N_js (design"));
+  const balance = String(valueOf(t.heat, "Balance"));
   return (
-    <>
-      <h3>Mixing sensitivity (Damköhler)</h3>
-      {t.damkohler.length === 0 ? (
-        <p className="muted">No reaction selected — Damköhler numbers do not apply (hydrodynamic assessment).</p>
+    <div className="va-results">
+      <h3>Sensitivity at a glance</h3>
+      <InsightGrid>
+        {t.damkohler.map((r, i) => {
+          const regime = String(r.Regime ?? "");
+          return (
+            <InsightCard key={i} tone={toneOf(regime)} title={stripParen(String(r.Type))} status={stripIcon(regime)}>
+              <div className="kpi-change">
+                {String(r["Damköhler"])} = {String(r.Value)}
+              </div>
+            </InsightCard>
+          );
+        })}
+        {solids && (
+          <InsightCard tone={suspensionTone(suspension)} title="Solids suspension" status={stripParen(suspension)}>
+            <div className="kpi-change">N/N_js = {String(valueOf(t.solids, "N / N_js"))}</div>
+            {njsRow && (
+              <div className="muted">
+                N_js = {String(njsRow.Value)} RPM ({String(njsRow.Parameter).replace(/^N_js \(design, (.*)\)$/, "$1")})
+              </div>
+            )}
+          </InsightCard>
+        )}
+        {t.heat.length > 0 && (
+          <InsightCard tone={heatBalanceTone(balance)} title="Heat balance" status={stripParen(stripIcon(balance))}>
+            {t.point.Q_gen_over_Q_cool_pct != null && (
+              <div className="kpi-change">{formatG(t.point.Q_gen_over_Q_cool_pct, 3)}% of cooling</div>
+            )}
+          </InsightCard>
+        )}
+      </InsightGrid>
+      {reaction ? (
+        <p className="muted da-legend">
+          Da &lt; 0.1 mixing-insensitive · 0.1–1 transitional · &gt; 1 mixing-limited.
+        </p>
       ) : (
-        <>
-          <InsightGrid>
-            {t.damkohler.map((r, i) => {
-              const regime = String(r.Regime ?? "");
-              return (
-                <InsightCard key={i} tone={toneOf(regime)} title={String(r.Type)} status={stripIcon(regime)}>
-                  <div className="kpi-change">
-                    {String(r["Damköhler"])} = {String(r.Value)}
-                  </div>
-                </InsightCard>
-              );
-            })}
-          </InsightGrid>
-          <TableDetails rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />
-        </>
+        <p className="muted">No reaction selected — Damköhler numbers do not apply (hydrodynamic assessment).</p>
       )}
+      {reaction && <TableDetails rows={t.damkohler} csvName="vessel_assessment_damkohler.csv" stale={stale} />}
 
       <h3>Hydrodynamics</h3>
       <StatGrid stats={featured} />
@@ -125,8 +154,20 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
 
       {solids && (
         <>
-          <h3>Solid suspension and dissolution</h3>
-          <StatGrid size="sm" stats={toned(t.solids, "Suspension state", suspensionTone)} />
+          <h3>Solids suspension and dissolution</h3>
+          <p className="muted">
+            N_js is the higher of the Zwietering and GMB predictions; the suspension state uses that value.
+          </p>
+          <StatGrid
+            size="sm"
+            stats={statsFromRows(t.solids).map((s) =>
+              s.label === "Suspension state"
+                ? { ...s, value: stripParen(String(s.value)), tone: suspensionTone(suspension), wide: true }
+                : s.label === "N / N_js" || String(s.label).startsWith("N_js (design")
+                  ? { ...s, tone: suspensionTone(suspension) }
+                  : s,
+            )}
+          />
           <TableDetails rows={t.solids} csvName="vessel_assessment_solids.csv" stale={stale} />
         </>
       )}
@@ -143,7 +184,7 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
           (Section 3).
         </p>
       )}
-    </>
+    </div>
   );
 }
 
@@ -767,7 +808,7 @@ export function VesselAssessment() {
               </>
             ) : (
               <p className="muted">
-                Enable to check off-bottom suspension (just-suspended speed) and solid–liquid mass transfer.
+                Enable to check off-bottom suspension (N_js) and solid–liquid mass transfer.
               </p>
             )}
           </section>

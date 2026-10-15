@@ -134,6 +134,14 @@ def solids_static(solids: Solids, fluid: Fluid, geometry: VesselGeometry) -> dic
     }
 
 
+def njs_split(inp: PointInputs) -> tuple[float, float] | None:
+    """(Zwietering, GMB) just-suspended speeds in RPM; None without solids."""
+    if inp.solids is None or inp.solids.d50_um <= 0:
+        return None
+    s = solids_static(inp.solids, inp.fluid, inp.geometry)
+    return s["njs_zw_rps"] * 60.0, s["njs_gmb_rps"] * 60.0
+
+
 def hydro(inp: PointInputs, N_rps: float, V_L: float) -> dict:
     """Hydrodynamic dictionary at (N, V) for the selected correlation source."""
     g = inp.geometry

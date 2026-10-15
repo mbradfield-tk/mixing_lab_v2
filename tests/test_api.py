@@ -340,7 +340,7 @@ def test_created_vessels_get_an_id_and_search_name(client, temp_tables, token):
 
 def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
     from core.envelope import DEFAULT_ENVELOPE, ENVELOPE_PARAMETERS
-    from core.operating_point import evaluate_point
+    from core.operating_point import evaluate_point, njs_split
     from reports.tables import assessment_tables
 
     params = client.get(f"{V1}/assessment/parameters").json()
@@ -364,7 +364,7 @@ def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
     res = client.post(f"{V1}/assessment/tables", json=body).json()
     inp, t_rxn, _row = sv.point_inputs(s.PointRequest.model_validate(body))
     page = assessment_tables(evaluate_point(inp, d["N_rpm"] / 60, d["V_L"]), d["N_rpm"], t_rxn,
-                             solids_on=True, gas_on=True, fed_on=False)
+                             solids_on=True, gas_on=True, fed_on=False, njs_split=njs_split(inp))
     for key in ("hydro", "damkohler", "mass_transfer", "solids", "heat"):
         assert res[key] == page[key].to_dict("records"), key
     assert res["assessment"] == page["assessment"] and res["t_rxn_s"] == t_rxn

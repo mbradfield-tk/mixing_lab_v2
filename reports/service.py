@@ -17,7 +17,7 @@ from core import sensitivity_rules as rules
 from core import services
 from core.envelope import envelope_data, operating_window
 from utils.calculations import compute_reactor_hydro
-from core.operating_point import evaluate_point
+from core.operating_point import evaluate_point, njs_split
 from core.options import Competing, CorrSource
 from core.serialize import jsonable
 from reports import snapshots
@@ -64,7 +64,7 @@ def assessment_result(req: s.PointRequest) -> s.AssessmentTables:
     hydro = evaluate_point(inp, req.N_rpm / 60.0, req.V_L)
     solids_on, gas_on = req.solids is not None, req.gas.present
     tables = assessment_tables(hydro, req.N_rpm, t_rxn, solids_on=solids_on, gas_on=gas_on,
-                               fed_on=req.feed is not None)
+                               fed_on=req.feed is not None, njs_split=njs_split(inp))
     return s.AssessmentTables(
         point=services.point_result(hydro), t_rxn_s=t_rxn,
         **{k: jsonable(tables[k]) for k in ("hydro", "damkohler", "mass_transfer", "solids", "heat")},
@@ -79,7 +79,8 @@ def assessment_snapshot(req: s.AssessmentReportRequest) -> dict:
     services.require_kinetics(p, t_rxn)
     hydro = evaluate_point(inp, p.N_rpm / 60.0, p.V_L)
     tables = assessment_tables(hydro, p.N_rpm, t_rxn, solids_on=p.solids is not None,
-                               gas_on=p.gas.present, fed_on=p.feed is not None)
+                               gas_on=p.gas.present, fed_on=p.feed is not None,
+                               njs_split=njs_split(inp))
     fig, caption = assessment_envelope(req)
     return snapshots.assessment_snapshot(
         reactor=p.reactor, fluid=p.fluid.name, T_C=p.fluid.T_C, P_atm=p.fluid.P_atm, N_rpm=p.N_rpm,

@@ -29,15 +29,21 @@ HYDRO_ROWS = [
 
 
 def assessment_tables(hydro: dict, n_rpm: float, t_rxn: float, *, solids_on: bool,
-                      gas_on: bool, fed_on: bool) -> dict:
+                      gas_on: bool, fed_on: bool,
+                      njs_split: tuple[float, float] | None = None) -> dict:
     """{hydro, damkohler, solids, heat, mass_transfer} DataFrames plus the
-    Markdown ``assessment`` line, from an ``evaluate_point`` result."""
+    Markdown ``assessment`` line, from an ``evaluate_point`` result.
+    ``njs_split`` = (Zwietering, GMB) N_js in RPM."""
     kla_sl = hydro.get("kLa_SL (1/s)", 0.0)
     if solids_on:
         n_js_rpm = hydro.get("N_js (RPM)", 0.0)
+        n_zw, n_gmb = njs_split or (0.0, 0.0)
+        governs = "GMB" if n_gmb > n_zw else "Zwietering"
         assess = particle_suspension_criterion(n_rpm / 60.0, n_js_rpm / 60.0)
         solids = pd.DataFrame([
-            {"Parameter": "Just-suspended speed N_js", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
+            {"Parameter": "N_js (Zwietering)", "Value": f"{n_zw:.1f}", "Units": "RPM"},
+            {"Parameter": "N_js (GMB)", "Value": f"{n_gmb:.1f}", "Units": "RPM"},
+            {"Parameter": f"N_js (design, {governs})", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "Operating speed N", "Value": f"{n_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "N / N_js", "Value": f"{(n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
             {"Parameter": "Suspension state", "Value": assess, "Units": "–"},

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
+import { CaseBar } from "../components/CaseBar";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
 import { Fader, InstrumentPanel, Setpoint } from "../components/Instrument";
@@ -14,6 +15,7 @@ import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { useDebounced } from "../hooks";
+import { usePageRef, usePageState } from "../state/pageState";
 import { downloadBlob, sliderStep } from "./assessment/model";
 import {
   CENTRE_MODES, FEED_BASES, INITIAL, STATUS_LABEL, STATUS_TONE, TEST_TITLES, blankKpi, buildPlan, completeKpis,
@@ -217,15 +219,15 @@ function KpiEditor({
 
 export function BourneProtocol() {
   const { notice, setNotice } = useNotice();
-  const [tab, setTab] = useState<"Protocol" | "Plan">("Protocol");
-  const [inputs, setInputs] = useState<Inputs>(INITIAL);
+  const [tab, setTab] = usePageState<"Protocol" | "Plan">("tab", "Protocol");
+  const [inputs, setInputs] = usePageState<Inputs>("inputs", INITIAL);
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
-  const [project, setProject] = useState<Project>({ projectName: "", step: "", unitOperation: "", processVersion: "" });
-  const [started, setStarted] = useState(false);
-  const [kpis, setKpis] = useState<Record<TestNo, KpiRow[]>>({ 1: [seedKpi()], 2: [seedKpi()], 3: [seedKpi()] });
-  const [results, setResults] = useState<Partial<Record<TestNo, Assessed>>>({});
-  const [limits, setLimits] = useState<Schemas["BourneDefaults"]["reactor_limits"] | null>(null);
-  const [vRange, setVRange] = useState<[number, number] | null>(null);
+  const [project, setProject] = usePageState<Project>("project", { projectName: "", step: "", unitOperation: "", processVersion: "" });
+  const [started, setStarted] = usePageState("started", false);
+  const [kpis, setKpis] = usePageState<Record<TestNo, KpiRow[]>>("kpis", () => ({ 1: [seedKpi()], 2: [seedKpi()], 3: [seedKpi()] }));
+  const [results, setResults] = usePageState<Partial<Record<TestNo, Assessed>>>("results", {});
+  const [limits, setLimits] = usePageState<Schemas["BourneDefaults"]["reactor_limits"] | null>("limits", null);
+  const [vRange, setVRange] = usePageState<[number, number] | null>("vRange", null);
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
   const bourneOptions = useQuery({
@@ -245,7 +247,7 @@ export function BourneProtocol() {
   }
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
 
-  const initialised = useRef(false);
+  const initialised = usePageRef("initialised", false);
   useEffect(() => {
     const o = options.data;
     if (!o || initialised.current) return;
@@ -512,6 +514,7 @@ export function BourneProtocol() {
   return (
     <>
       <PageTitle pageKey="Bourne_Protocol">Bourne Protocol</PageTitle>
+      <CaseBar page="bourne-protocol" inputs={inputs} onMessage={setNotice} />
       {(options.isError || bourneOptions.isError) && <ErrorNote error={options.error ?? bourneOptions.error} />}
       <Segmented
         label="View"

@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
+import { CaseBar } from "../components/CaseBar";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
 import { Fader, InstrumentPanel, Knob, Selector, Setpoint } from "../components/Instrument";
@@ -12,6 +13,7 @@ import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
+import { mergeKnown, usePageRef, usePageState, type CaseFile } from "../state/pageState";
 import { asOrder, downloadBlob, sliderStep } from "./assessment/model";
 import {
   INITIAL, MODES, MODE_HINT, adiabaticText, agitatorText, buildBody, colorLimits, heatStatus, kpiRows,
@@ -35,8 +37,8 @@ type Last =
 
 export function HeatTransfer() {
   const { notice, setNotice, run } = useNotice();
-  const [mode, setMode] = useState<Mode>("heat");
-  const [inputs, setInputs] = useState<Inputs>(INITIAL);
+  const [mode, setMode] = usePageState<Mode>("mode", "heat");
+  const [inputs, setInputs] = usePageState<Inputs>("inputs", INITIAL);
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
@@ -51,7 +53,7 @@ export function HeatTransfer() {
   const sweepLabel = (key: string) => ht?.sweep_parameters.find((p) => p.field === key)?.label ?? key;
 
   // Vessel bounds for the sweep defaults; refreshed with each vessel.
-  const [ranges, setRanges] = useState<{ N_rpm_range?: number[] | null; V_L_range?: number[] | null }>({});
+  const [ranges, setRanges] = usePageState<{ N_rpm_range?: number[] | null; V_L_range?: number[] | null }>("ranges", {});
   const span = (r?: number[] | null) => (r && r.length === 2 && r[1] > r[0] ? (r as [number, number]) : null);
   const nRange = span(ranges.N_rpm_range);
   const vRange = span(ranges.V_L_range);
@@ -68,10 +70,11 @@ export function HeatTransfer() {
   }
 
   // --- loaders (each mirrors a Taipy on_change handler) -----------------------
-  async function loadReactor(name: string) {
+  async function loadReactor(name: string, keepInputs = false) {
     const d = unwrap(await api.GET("/api/v1/heat-transfer/defaults/{name}", { params: { path: { name } } }));
     const r = { N_rpm_range: d.N_rpm_range, V_L_range: d.V_L_range };
     setRanges(r);
+    if (keepInputs) return;
     setInputs((i) => {
       const next: Inputs = {
         ...i,
@@ -123,6 +126,13 @@ export function HeatTransfer() {
 
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
 
+  async function importCase(file: CaseFile) {
+    const next = mergeKnown(INITIAL, file.inputs);
+    setInputs(next);
+    if (MODES.some((m) => m.code === file.mode)) setMode(file.mode as Mode);
+    if (next.reactor) await loadReactor(next.reactor, true);
+  }
+
   // Re-derive the jacket area once a user-set volume settles.
   const areaPending = useRef(false);
   const vSettled = useDebounced(inputs.v_l, 400);
@@ -133,7 +143,7 @@ export function HeatTransfer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vSettled]);
 
-  const initialised = useRef(false);
+  const initialised = usePageRef("initialised", false);
   useEffect(() => {
     const o = options.data;
     if (!o || !ht || initialised.current) return;
@@ -151,8 +161,8 @@ export function HeatTransfer() {
 
   // --- compute --------------------------------------------------------------
   const built = useMemo(() => buildBody(inputs), [inputs]);
-  const [last, setLast] = useState<Last | null>(null);
-  const [status, setStatus] = useState(MODE_HINT.heat);
+  const [last, setLast] = usePageState<Last | null>("last", null);
+  const [status, setStatus] = usePageState("status", MODE_HINT.heat);
 
   function requestFor(m: Mode): { kind: string; body: Record<string, unknown> } | { error: string } {
     if ("error" in built) return built;
@@ -277,6 +287,14 @@ export function HeatTransfer() {
   return (
     <>
       <PageTitle pageKey="Heat_Transfer">Heat Transfer Tool</PageTitle>
+      <CaseBar
+        page="heat-transfer"
+        label={inputs.reactor}
+        inputs={inputs}
+        extra={{ mode }}
+        onImport={importCase}
+        onMessage={setNotice}
+      />
       <p>{status}</p>
       {(options.isError || htOptions.isError) && <ErrorNote error={options.error ?? htOptions.error} />}
 

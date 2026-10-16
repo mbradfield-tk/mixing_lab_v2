@@ -8,6 +8,7 @@ import { ParticleDatabase } from "./pages/ParticleDatabase";
 import { ReactionDatabase } from "./pages/ReactionDatabase";
 import { RecordedResults } from "./pages/RecordedResults";
 import { UnitConverter } from "./pages/UnitConverter";
+import { PersistentPage } from "./state/pageState";
 
 // Loaded on demand: the Markdown/KaTeX renderer and the fluid tools are large.
 const EquationsReference = lazy(() =>
@@ -32,6 +33,7 @@ const MixingSensitivity = lazy(() =>
 );
 
 const deferred = (page: ReactNode) => <Suspense fallback={<p>Loading…</p>}>{page}</Suspense>;
+const kept = (key: string, page: ReactNode) => <PersistentPage page={key}>{deferred(page)}</PersistentPage>;
 
 export function App() {
   return (
@@ -44,11 +46,11 @@ export function App() {
         <Route path="particles" element={<ParticleDatabase />} />
         <Route path="recorded-results" element={<RecordedResults />} />
         <Route path="crystallization-sensitivity" element={<CrystallizationSensitivity />} />
-        <Route path="vessel-assessment" element={deferred(<VesselAssessment />)} />
-        <Route path="vessel-comparison" element={deferred(<VesselComparison />)} />
-        <Route path="heat-transfer" element={deferred(<HeatTransfer />)} />
-        <Route path="bourne-protocol" element={deferred(<BourneProtocol />)} />
-        <Route path="reaction-sensitivity" element={deferred(<MixingSensitivity />)} />
+        <Route path="vessel-assessment" element={kept("vessel-assessment", <VesselAssessment />)} />
+        <Route path="vessel-comparison" element={kept("vessel-comparison", <VesselComparison />)} />
+        <Route path="heat-transfer" element={kept("heat-transfer", <HeatTransfer />)} />
+        <Route path="bourne-protocol" element={kept("bourne-protocol", <BourneProtocol />)} />
+        <Route path="reaction-sensitivity" element={kept("reaction-sensitivity", <MixingSensitivity />)} />
         <Route path="unit-converter" element={<UnitConverter />} />
         <Route path="equations-reference" element={deferred(<EquationsReference />)} />
         <Route path="*" element={<NotFound />} />

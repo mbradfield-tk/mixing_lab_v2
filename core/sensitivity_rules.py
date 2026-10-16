@@ -387,7 +387,7 @@ def da_caption(da: dict | None) -> str:
             f"**Da_micro = {da['Da_micro']:.3g}** ({da_band(da['Da_micro'])}).")
 
 
-def da_assessment(da: dict) -> tuple[str, str, bool]:
+def da_assessment(da: dict, semi_batch: bool = True) -> tuple[str, str, bool]:
     """(traffic-light kind, text, micro_likely) from reactor-specific Da numbers."""
     dmi, dma = da["Da_micro"], da["Da_macro"]
     micro_likely = dmi >= 0.1
@@ -400,8 +400,9 @@ def da_assessment(da: dict) -> tuple[str, str, bool]:
         kind, head = "ok", "**Mixing-insensitive in this vessel**"
     parts = [f"{head} - Da_micro = {dmi:.3g} ({da_band(dmi)}), Da_macro = {dma:.3g} ({da_band(dma)})."]
     if dmi >= 0.1:
-        parts.append("Micromixing competes with the reaction: feed near the impeller and hold "
-                     "local ε on scale-up.")
+        parts.append("Micromixing competes with the reaction: " + (
+            "feed near the impeller and hold local ε on scale-up." if semi_batch else
+            "hold local ε (tip speed, P/V) on scale-up."))
     if dma >= 0.1:
         parts.append("Blending is slow relative to the reaction and gets slower with scale - "
                      "re-check Da_macro at the next scale.")
@@ -577,12 +578,18 @@ def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                 "Vary feed rate and location (Bourne Tests 2 & 3).", "mesomixing.semi_batch")
         else:
             not_sure = competing == Competing.NOT_SURE
-            feed = " Feed rate and location matter (Bourne Tests 2 & 3)." if is_semi_batch else ""
-            add("Micro/mesomixing (selectivity)", "warning" if not_sure else "critical",
-                "Potentially sensitive" if not_sure else "Likely sensitive",
-                ("Competing reactions may be present" if not_sure else "Competing reactions present")
-                + " - local mixing at the feed can shift selectivity." + feed,
-                "selectivity.competing")
+            lead = "Competing reactions may be present" if not_sure else "Competing reactions present"
+            if is_semi_batch:
+                area, code = "Micro/mesomixing (selectivity)", "selectivity.competing"
+                detail = (f"{lead} - local mixing at the feed can shift selectivity. Feed rate and "
+                          "location matter (Bourne Tests 2 & 3).")
+            else:
+                area, code = "Micromixing (selectivity)", "selectivity.competing_batch"
+                detail = (f"{lead} - in a batch process the local mixing intensity (micromixing "
+                          "and blending of the charged reagents) can shift selectivity. Check the "
+                          "impeller-speed effect (Bourne Test 1).")
+            add(area, "warning" if not_sure else "critical",
+                "Potentially sensitive" if not_sure else "Likely sensitive", detail, code)
     else:
         add("Micro/mesomixing (selectivity)", "ok", "Not a factor",
             "No competing reactions and no feed.", "selectivity.none")
@@ -656,14 +663,23 @@ def _group(f: Finding) -> str:
     return f.code.split(".")[0]
 
 
-def _confirm_by(groups: set[str], da_done: bool) -> str:
-    """How to confirm the flagged mixing mechanisms (each mechanism has its own check)."""
+def _confirm_by(codes: set[str], da_done: bool, b_done=(), prescreen: bool = False) -> str:
+    """How to confirm the flagged mixing mechanisms (each mechanism has its own check).
+    ``prescreen``: no Bourne result yet, so the Bourne Protocol (the pre-screen) is named once."""
+    groups = {c.split(".")[0] for c in codes}
     parts = []
     if groups & {"micromixing", "macromixing"}:
         parts.append("Da_micro / Da_macro at the target scale" if da_done
                      else "vessel-specific Da_micro / Da_macro")
-    if groups & {"selectivity", "mesomixing"}:
+    feed = bool(codes & {"selectivity.competing", "mesomixing.semi_batch"})
+    if feed and prescreen:
+        parts.append("the Bourne Protocol (Test 1 impeller speed, then Tests 2 and 3 feed rate "
+                     "and location)")
+    elif feed:
         parts.append("feed-rate and feed-location tests (Bourne Tests 2 and 3)")
+    if "selectivity.competing_batch" in codes:
+        parts.append("Da_micro at the target scale" if 1 in b_done
+                     else "an impeller-speed test (Bourne Test 1)")
     if "mass_transfer" in groups:
         parts.append("Da_GL / Da_SL on the Vessel Assessment page")
     if "suspension" in groups:
@@ -685,7 +701,7 @@ def verdict_message(b_sensitive, b_mechs, b_done, findings: list[Finding], compe
     n_yellow = sum(1 for f in mix if f.kind in ("warning", "caution"))
     n_unknown = sum(1 for f in mix if f.kind == "unknown")
     da_done = any(f.code.endswith(".damkohler") for f in mix)
-    confirm = _confirm_by({_group(f) for f in red}, da_done)
+    confirm = _confirm_by({f.code for f in red}, da_done, b_done)
     rem = remaining_tests(b_done)
     rem_action = (f"complete {fmt_tests(rem)} of the Bourne Protocol" if rem
                   else "re-run the Bourne Protocol decision tree")
@@ -724,15 +740,16 @@ def verdict_message(b_sensitive, b_mechs, b_done, findings: list[Finding], compe
             return ("ok", "Low mixing sensitivity risk", "no effect at lab scale and no mechanism "
                     "expected to limit.", "low")
 
-        # Bourne not performed - theory only
+        # Bourne not performed - theory only; the Bourne Protocol is named once.
+        confirm_pre = _confirm_by({f.code for f in red}, da_done, b_done, prescreen=True)
+        if "Bourne" not in confirm_pre:
+            confirm_pre += ", and run the Bourne pre-screen (Test 1)"
         if len(red_mechs) >= 2:
             return ("critical", "High mixing sensitivity risk", f"**{join_mechs(red_mechs)}** are "
-                    f"likely to limit at scale. Confirm with {confirm}, and run a Bourne "
-                    "pre-screen.", "high")
+                    f"likely to limit at scale. Confirm with {confirm_pre}.", "high")
         if red_mechs:
             return ("warning", "Moderate mixing sensitivity risk", f"**{join_mechs(red_mechs)}** "
-                    f"is likely to be sensitive. Confirm with {confirm}, and run a Bourne "
-                    "pre-screen.", "moderate")
+                    f"is likely to be sensitive. Confirm with {confirm_pre}.", "moderate")
         if n_unknown:
             return ("warning", "Incomplete assessment", f"{n_unknown} mixing item(s) could not be "
                     "assessed (e.g. no kinetics). Resolve them or run a Bourne pre-screen.",
@@ -776,9 +793,17 @@ def build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
                      b_done=(), da_done=False, solids=False, suspension=None) -> list[Action]:
     steps: list[Action] = []
     rem = remaining_tests(b_done)
+    selectivity = (meso_sensitive or is_semi_batch) and not (b_sensitive is True and b_mechs)
     if b_sensitive is None:
-        steps.append(Action("Bourne pre-screen", "Run Bourne Test 1 to check experimentally "
-                            "whether mixing matters.", "bourne.run"))
+        if selectivity and is_semi_batch:
+            text = ("Run the Bourne Protocol: Test 1 (impeller speed) shows whether mixing matters; "
+                    "Tests 2 and 3 (feed rate and location) then check the feed zone.")
+        elif selectivity:
+            text = ("Run Bourne Test 1 (impeller speed) to check experimentally whether mixing - "
+                    "including selectivity - matters.")
+        else:
+            text = "Run Bourne Test 1 to check experimentally whether mixing matters."
+        steps.append(Action("Bourne pre-screen", text, "bourne.run"))
     if b_sensitive is True and b_mechs:
         for m in b_mechs:
             if m in _MECH_ACTIONS:
@@ -801,14 +826,10 @@ def build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
         else:
             steps.append(Action("Damköhler analysis", "Compute Da_micro / Da_macro for your "
                                 "vessel (Step 7 or Vessel Assessment).", "damkohler.compute"))
-    if (meso_sensitive or is_semi_batch) and not (b_sensitive is True and b_mechs):
-        if b_sensitive is None:
-            steps.append(Action("Micro/mesomixing", "Run the full Bourne Protocol to check "
-                                "feed-zone effects.", "selectivity.bourne"))
-        elif rem and b_sensitive is False:
-            steps.append(Action("Micro/mesomixing", f"Run {fmt_tests(rem)} (feed rate and "
-                                "location) - Test 1 alone does not cover the feed zone.",
-                                "selectivity.bourne"))
+    if selectivity and is_semi_batch and rem and b_sensitive is False:
+        steps.append(Action("Micro/mesomixing", f"Run {fmt_tests(rem)} (feed rate and "
+                            "location) - Test 1 alone does not cover the feed zone.",
+                            "selectivity.bourne"))
     if multiphase:
         steps.append(Action("Mass transfer", "Assess Da_GL / Da_SL on the Vessel Assessment "
                             "page.", "mass_transfer.assess"))
@@ -1170,8 +1191,10 @@ def assess_protocol(inp: ProtocolInputs,
         steps[3] = Message("caution", "Select an option to continue.", "competing.unset")
     elif competing == Competing.YES:
         steps[3] = Message(
-            "critical", "**Competing reactions** - mixing at the feed can shift selectivity; "
-            "likely mixing-sensitive.", "competing.yes")
+            "critical", "**Competing reactions** - " + (
+                "mixing at the feed can shift selectivity" if is_semi_batch else
+                "in a batch process the local mixing intensity can shift selectivity")
+            + "; likely mixing-sensitive.", "competing.yes")
     elif competing == Competing.NOT_SURE:
         steps[3] = Message(
             "warning", "Treat as **potentially sensitive** until a Bourne test confirms.",
@@ -1258,12 +1281,13 @@ def assess_protocol(inp: ProtocolInputs,
     da = damkohler_for(t_rxn) if (damkohler_for and kinetics_known and t_rxn > 0) else None
     if kinetics_known and t_rxn > 0:
         if da:
-            kind, text, micro_likely = da_assessment(da)
+            kind, text, micro_likely = da_assessment(da, is_semi_batch)
             steps[5] = Message(kind, text, "timescale.damkohler")
         elif t_rxn < 0.1:
             steps[5] = Message(
                 "critical", "**Very fast reaction** - micromixing-sensitive in most vessels; "
-                "feed location and tip speed matter. " + damkohler_screening_note(t_rxn),
+                + ("feed location and tip speed matter. " if is_semi_batch else "tip speed matters. ")
+                + damkohler_screening_note(t_rxn),
                 "timescale.very_fast")
             micro_likely = True
         elif t_rxn < 1.0:

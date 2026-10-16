@@ -568,6 +568,30 @@ label.narrow {
   color: var(--text);
 }
 
+/* Case-file export / import and page reset (components/CaseBar.tsx) */
+.case-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+}
+
+.case-bar button {
+  font-size: 0.85rem;
+}
+
+.case-confirm {
+  font-size: 0.85rem;
+}
+
+.case-bar button.danger {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
 .tile-facts {
   display: grid;
   grid-template-columns: auto 1fr;

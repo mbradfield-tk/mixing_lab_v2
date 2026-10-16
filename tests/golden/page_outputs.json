@@ -3612,8 +3612,8 @@
     "Sensitivity Type": "Micromixing"
    },
    {
-    "Finding": "🟡 Potentially sensitive - Competing reactions may be present - local mixing at the feed can shift selectivity.",
-    "Sensitivity Type": "Micro/mesomixing (selectivity)"
+    "Finding": "🟡 Potentially sensitive - Competing reactions may be present - in a batch process the local mixing intensity (micromixing and blending of the charged reagents) can shift selectivity. Check the impeller-speed effect (Bourne Test 1).",
+    "Sensitivity Type": "Micromixing (selectivity)"
    },
    {
     "Finding": "🟢 Unlikely - t_rxn = 100 s - much longer than blend times.",
@@ -3769,15 +3769,11 @@
   "next_steps": [
    {
     "Area": "Bourne pre-screen",
-    "Recommended action": "Run Bourne Test 1 to check experimentally whether mixing matters."
+    "Recommended action": "Run the Bourne Protocol: Test 1 (impeller speed) shows whether mixing matters; Tests 2 and 3 (feed rate and location) then check the feed zone."
    },
    {
     "Area": "Damköhler analysis",
     "Recommended action": "Compute Da_micro / Da_macro for your vessel (Step 7 or Vessel Assessment)."
-   },
-   {
-    "Area": "Micro/mesomixing",
-    "Recommended action": "Run the full Bourne Protocol to check feed-zone effects."
    },
    {
     "Area": "Heat transfer",
@@ -3883,7 +3879,7 @@
   "ms_step2_assess": "🟢 **Single liquid phase** - no interphase transfer.",
   "ms_step3_assess": "🟢 **No competing reactions** in a batch process - selectivity is unlikely to depend on mixing.",
   "ms_step4_assess": "🔴 **Moderately exothermic** reaction - |ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K. **Heat transfer likely limiting** - check cooling capacity with a heat balance.",
-  "ms_step5_assess": "🔴 **Very fast reaction** - micromixing-sensitive in most vessels; feed location and tip speed matter. This is a rough screen - confirm with Da_macro / Da_micro for a vessel (below, or on the Vessel Assessment page).",
+  "ms_step5_assess": "🔴 **Very fast reaction** - micromixing-sensitive in most vessels; tip speed matters. This is a rough screen - confirm with Da_macro / Da_micro for a vessel (below, or on the Vessel Assessment page).",
   "ms_summary_note": "",
   "ms_trxn_caption": "Your reaction time: **t_rxn = 0.02 s**.",
   "next_steps": [
@@ -4664,8 +4660,8 @@
     "Sensitivity Type": "Micromixing"
    },
    {
-    "Finding": "🔴 Likely sensitive - Competing reactions present - local mixing at the feed can shift selectivity.",
-    "Sensitivity Type": "Micro/mesomixing (selectivity)"
+    "Finding": "🔴 Likely sensitive - Competing reactions present - in a batch process the local mixing intensity (micromixing and blending of the charged reagents) can shift selectivity. Check the impeller-speed effect (Bourne Test 1).",
+    "Sensitivity Type": "Micromixing (selectivity)"
    },
    {
     "Finding": "🔴 Likely sensitive - Da_macro = 3.04 (θ₉₅ 1.22 s vs t_rxn 0.4 s) in TMA EasyMax-102. Blend time grows with scale - re-check at the next scale.",
@@ -4688,7 +4684,7 @@
   "ms_step0_assess": "🟡 **Bourne pre-screen skipped** - using theory only. A Bourne test gives a direct answer.",
   "ms_step1_assess": "🟢 **Kinetics available.**",
   "ms_step2_assess": "🟡 **Multi-phase** (Liquid + Gas) - interphase transfer may limit the rate. Check Da_GL / Da_SL on the Vessel Assessment page.",
-  "ms_step3_assess": "🔴 **Competing reactions** - mixing at the feed can shift selectivity; likely mixing-sensitive.",
+  "ms_step3_assess": "🔴 **Competing reactions** - in a batch process the local mixing intensity can shift selectivity; likely mixing-sensitive.",
   "ms_step4_assess": "🔴 **Highly exothermic** reaction - |ΔH| = 120.0 kJ/mol, ΔT_ad ≈ 67 K. **Heat transfer likely limiting** - check cooling capacity with a heat balance.",
   "ms_step5_assess": "🔴 **Mixing-limited in this vessel** - Da_micro = 0.0567 (insensitive), Da_macro = 3.04 (mixing-limited). Blending is slow relative to the reaction and gets slower with scale - re-check Da_macro at the next scale.",
   "ms_summary_note": "",
@@ -4696,15 +4692,11 @@
   "next_steps": [
    {
     "Area": "Bourne pre-screen",
-    "Recommended action": "Run Bourne Test 1 to check experimentally whether mixing matters."
+    "Recommended action": "Run Bourne Test 1 (impeller speed) to check experimentally whether mixing - including selectivity - matters."
    },
    {
     "Area": "Damköhler analysis",
     "Recommended action": "Re-check Da_micro / Da_macro in the target-scale vessel."
-   },
-   {
-    "Area": "Micro/mesomixing",
-    "Recommended action": "Run the full Bourne Protocol to check feed-zone effects."
    },
    {
     "Area": "Mass transfer",
@@ -4715,7 +4707,7 @@
     "Recommended action": "Run a heat balance (Vessel Assessment or Heat Transfer) against the jacket duty."
    }
   ],
-  "verdict": "🔴 **High mixing sensitivity risk; heat transfer also needs review** - **micro/mesomixing and macromixing** are likely to limit at scale. Confirm with Da_micro / Da_macro at the target scale and feed-rate and feed-location tests (Bourne Tests 2 and 3), and run a Bourne pre-screen. **Separately, heat transfer is likely limiting** - a thermal issue, not a mixing sensitivity. Run a heat balance."
+  "verdict": "🔴 **High mixing sensitivity risk; heat transfer also needs review** - **micromixing and macromixing** are likely to limit at scale. Confirm with Da_micro / Da_macro at the target scale and an impeller-speed test (Bourne Test 1). **Separately, heat transfer is likely limiting** - a thermal issue, not a mixing sensitivity. Run a heat balance."
  },
  "ms_kinetics_declined": {
   "cache": {
@@ -5206,22 +5198,18 @@
   "next_steps": [
    {
     "Area": "Bourne pre-screen",
-    "Recommended action": "Run Bourne Test 1 to check experimentally whether mixing matters."
+    "Recommended action": "Run the Bourne Protocol: Test 1 (impeller speed) shows whether mixing matters; Tests 2 and 3 (feed rate and location) then check the feed zone."
    },
    {
     "Area": "Damköhler analysis",
     "Recommended action": "Compute Da_micro / Da_macro for your vessel (Step 7 or Vessel Assessment)."
    },
    {
-    "Area": "Micro/mesomixing",
-    "Recommended action": "Run the full Bourne Protocol to check feed-zone effects."
-   },
-   {
     "Area": "Heat transfer",
     "Recommended action": "Run a heat balance (Vessel Assessment or Heat Transfer) against the jacket duty."
    }
   ],
-  "verdict": "🔴 **High mixing sensitivity risk; heat transfer also needs review** - **micromixing and micro/mesomixing** are likely to limit at scale. Confirm with vessel-specific Da_micro / Da_macro and feed-rate and feed-location tests (Bourne Tests 2 and 3), and run a Bourne pre-screen. **Separately, heat transfer is likely limiting** - a thermal issue, not a mixing sensitivity. Run a heat balance."
+  "verdict": "🔴 **High mixing sensitivity risk; heat transfer also needs review** - **micromixing and micro/mesomixing** are likely to limit at scale. Confirm with vessel-specific Da_micro / Da_macro and the Bourne Protocol (Test 1 impeller speed, then Tests 2 and 3 feed rate and location). **Separately, heat transfer is likely limiting** - a thermal issue, not a mixing sensitivity. Run a heat balance."
  },
  "va_default": {
   "assess": "**Assessment:** Macro: Likely insensitive (Da=0.0176) | Micro: Reaction-limited (Da=0.000412) | G-L: Potentially transfer-limited (Da_GL=0.977)",

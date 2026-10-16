@@ -1,8 +1,9 @@
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
+import { CaseBar } from "../components/CaseBar";
 import { Chart } from "../components/Chart";
 import { NumberField, Segmented, SelectField, Switch } from "../components/Form";
 import { Fader, InstrumentPanel, Knob, Selector, Setpoint } from "../components/Instrument";
@@ -17,6 +18,7 @@ import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
+import { mergeKnown, usePageRef, usePageState, type CaseFile } from "../state/pageState";
 import {
   HYDRO_FEATURED, INITIAL, LOADING_BASES, asOrder, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose,
   downloadBlob, feedRateMlMin, fillingRows, fillingTiles, fromG100, heatBalanceTone, isDamkohler, kineticModel, loadingUnit,
@@ -295,14 +297,14 @@ function FillingDynamics({ filling, stale }: { filling: Filling; stale: boolean 
 
 export function VesselAssessment() {
   const { notice, setNotice, run } = useNotice();
-  const [inputs, setInputs] = useState<Inputs>(INITIAL);
+  const [inputs, setInputs] = usePageState<Inputs>("inputs", INITIAL);
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
-  const [corrSources, setCorrSources] = useState<OptionItem[]>([LITERATURE]);
-  const [corrStatus, setCorrStatus] = useState("");
-  const [rxnInfo, setRxnInfo] = useState<{ model: string; scheme: string } | null>(null);
-  const [fluidLibrary, setFluidLibrary] = useState(true);
-  const [fluidNote, setFluidNote] = useState("");
-  const [ranges, setRanges] = useState<{ N: [number, number]; V: [number, number] } | null>(null);
+  const [corrSources, setCorrSources] = usePageState<OptionItem[]>("corrSources", [LITERATURE]);
+  const [corrStatus, setCorrStatus] = usePageState("corrStatus", "");
+  const [rxnInfo, setRxnInfo] = usePageState<{ model: string; scheme: string } | null>("rxnInfo", null);
+  const [fluidLibrary, setFluidLibrary] = usePageState("fluidLibrary", true);
+  const [fluidNote, setFluidNote] = usePageState("fluidNote", "");
+  const [ranges, setRanges] = usePageState<{ N: [number, number]; V: [number, number] } | null>("ranges", null);
 
   const options = useQuery({
     queryKey: ["options"],
@@ -337,21 +339,24 @@ export function VesselAssessment() {
         : []) ?? [];
 
   // --- loaders (each mirrors a Taipy on_change handler) -----------------------
-  async function loadVessel(name: string) {
+  async function loadVessel(name: string, keepInputs = false) {
     const d = unwrap(await api.GET("/api/v1/assessment/vessel-defaults/{name}", { params: { path: { name } } }));
     const sources = d.corr_sources.length ? d.corr_sources : [LITERATURE];
-    setInputs((i) => ({
-      ...i,
-      reactor: name,
-      dTank: String(d.D_tank_m),
-      dImp: String(d.D_imp_m),
-      N: String(d.N_rpm),
-      V: String(d.V_L),
-      Np: String(d.Np),
-      Nq: String(d.Nq),
-      dosingAmount: String(defaultDose(d.V_L, d.V_L_range[1])),
-      corr: sources.some((s) => s.code === i.corr) ? i.corr : sources[0].code,
-    }));
+    if (keepInputs)
+      setInputs((i) => ({ ...i, corr: sources.some((s) => s.code === i.corr) ? i.corr : sources[0].code }));
+    else
+      setInputs((i) => ({
+        ...i,
+        reactor: name,
+        dTank: String(d.D_tank_m),
+        dImp: String(d.D_imp_m),
+        N: String(d.N_rpm),
+        V: String(d.V_L),
+        Np: String(d.Np),
+        Nq: String(d.Nq),
+        dosingAmount: String(defaultDose(d.V_L, d.V_L_range[1])),
+        corr: sources.some((s) => s.code === i.corr) ? i.corr : sources[0].code,
+      }));
     setRanges({ N: [d.N_rpm_range[0], d.N_rpm_range[1]], V: [d.V_L_range[0], d.V_L_range[1]] });
     setCorrSources(sources);
     setCorrStatus(d.corr_status);
@@ -421,8 +426,23 @@ export function VesselAssessment() {
 
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
 
-  // Initial selections once the option lists arrive.
-  const initialised = useRef(false);
+  async function importCase(file: CaseFile) {
+    const next = mergeKnown(INITIAL, file.inputs);
+    fluidTp.current = `${next.T}|${next.P}`;
+    setInputs(next);
+    if (next.reactor) await loadVessel(next.reactor, true);
+    if (next.reactionSource !== "none" && next.reaction) {
+      const r = unwrap(await api.GET("/api/v1/reactions/{name}", { params: { path: { name: next.reaction } } })) as Row;
+      setRxnInfo({
+        model: kineticModel(String(r.order ?? "1"), Number(next.k), String(r.k_units ?? ""), Number(next.dH)),
+        scheme: String(r.reaction_scheme ?? ""),
+      });
+    }
+    setFluidNote("");
+  }
+
+  // Initial selections once the option lists arrive (kept when returning to the page).
+  const initialised = usePageRef("initialised", false);
   useEffect(() => {
     const o = options.data;
     if (!o || initialised.current) return;
@@ -438,12 +458,10 @@ export function VesselAssessment() {
 
   // T / P changes refresh library-solvent properties (custom fluids are fixed).
   const tp = useDebounced(`${inputs.T}|${inputs.P}`, 400);
-  const firstTp = useRef(true);
+  const fluidTp = useRef(`${inputs.T}|${inputs.P}`);
   useEffect(() => {
-    if (firstTp.current) {
-      firstTp.current = false;
-      return;
-    }
+    if (tp === fluidTp.current) return;
+    fluidTp.current = tp;
     if (fluidLibrary && initialised.current) report(loadFluid(inputs.fluid));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tp]);
@@ -472,14 +490,14 @@ export function VesselAssessment() {
     "request" in built && "filling" in builtFilling
       ? JSON.stringify({ point: built.request, filling: builtFilling.filling, temperature: builtTemperature })
       : null;
-  const [last, setLast] = useState<{
+  const [last, setLast] = usePageState<{
     key: string;
     request: PointRequest;
     reaction: string;
     tables: Tables;
     filling: Filling | null;
     temperature: Temperature | null;
-  } | null>(null);
+  } | null>("last", null);
   const stale = !!last && currentKey !== last.key;
   const corrLabel = (code: string) => corrSources.find((c) => c.code === code)?.label ?? code;
 
@@ -561,7 +579,7 @@ export function VesselAssessment() {
     : "Set inputs and click Compute Assessment.";
 
   // --- envelope and surfaces ------------------------------------------------
-  const [envParams, setEnvParams] = useState<string[] | null>(null);
+  const [envParams, setEnvParams] = usePageState<string[] | null>("envParams", null);
   const envSelected = (envParams ?? (parameters.data ?? []).filter((p) => p.default).map((p) => p.field)).filter(
     (f) => rxnOn || !isDamkohler(f),
   );
@@ -588,7 +606,8 @@ export function VesselAssessment() {
         }),
       ),
   });
-  const [surfaceKey, setSurfaceKey] = useState<string | null>(null);
+  const [surfaceKey, setSurfaceKey] = usePageState<string | null>("surfaceKey", null);
+  const [surfaceData, setSurfaceData] = usePageState<Schemas["ChartResult"] | null>("surfaceData", null);
   const surfacesStale = !!surfaceKey && surfaceKey !== `${last?.key}#${envKey}`;
 
   function onSurfaces() {
@@ -597,7 +616,10 @@ export function VesselAssessment() {
       return;
     }
     void run(surfaces.mutateAsync({ request: last.request, params: envSelected }), "3D response surfaces generated.")
-      .then(() => setSurfaceKey(`${last.key}#${envKey}`))
+      .then((data) => {
+        setSurfaceData(data);
+        setSurfaceKey(`${last.key}#${envKey}`);
+      })
       .catch(() => undefined);
   }
 
@@ -616,16 +638,16 @@ export function VesselAssessment() {
   });
 
   // --- solve for -------------------------------------------------------------
-  const [solveFor, setSolveFor] = useState<"N_rpm" | "V_L">("N_rpm");
-  const [solveParam, setSolveParam] = useState("P_V_W_L");
-  const [solveTarget, setSolveTarget] = useState("0.5");
-  const [solved, setSolved] = useState<{
+  const [solveFor, setSolveFor] = usePageState<"N_rpm" | "V_L">("solveFor", "N_rpm");
+  const [solveParam, setSolveParam] = usePageState("solveParam", "P_V_W_L");
+  const [solveTarget, setSolveTarget] = usePageState("solveTarget", "0.5");
+  const [solved, setSolved] = usePageState<{
     res: SolveResult;
     text: string;
     kind: string;
     applied: boolean;
     fixed: { N_rpm: number; V_L: number };
-  } | null>(null);
+  } | null>("solved", null);
   const solve = useMutation({
     mutationFn: async (vars: { request: PointRequest; parameter: string; target: number; solve_for: "N_rpm" | "V_L" }) =>
       unwrap(
@@ -685,6 +707,13 @@ export function VesselAssessment() {
   return (
     <>
       <PageTitle pageKey="Vessel_Assessment">Vessel Assessment</PageTitle>
+      <CaseBar
+        page="vessel-assessment"
+        label={inputs.reactor}
+        inputs={inputs}
+        onImport={importCase}
+        onMessage={setNotice}
+      />
       <p>{status}</p>
       {options.isError && <ErrorNote error={options.error} />}
 
@@ -1085,10 +1114,10 @@ export function VesselAssessment() {
                 ⚠️ Results changed - click <em>Generate 3D surfaces</em> to refresh.
               </p>
             )}
-            {surfaceKey && surfaces.data && (
+            {surfaceKey && surfaceData && (
               <>
-                {md(surfaces.data.captions?.surfaces ?? "")}
-                <Chart figure={surfaces.data.figures.surfaces} />
+                {md(surfaceData.captions?.surfaces ?? "")}
+                <Chart figure={surfaceData.figures.surfaces} />
               </>
             )}
           </Card>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { api, postForFile, unwrap, uploadFile, type Schemas } from "../api/client";
+import { CaseBar } from "../components/CaseBar";
 import { NumberField, SelectField, Switch } from "../components/Form";
 import { Fader, InstrumentPanel, Knob } from "../components/Instrument";
 import {
@@ -13,6 +14,7 @@ import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
+import { mergeKnown, usePageRef, usePageState, type CaseFile } from "../state/pageState";
 import { LOADING_BASES, downloadBlob, loadingUnit, sliderStep, switchBasis, type LoadingBasis } from "./assessment/model";
 import {
   BLANK_PROJECT, DA_ZONES, INITIAL, SPEED_ZONES, SUMMARY_PENDING, SUMMARY_PRE_START, buildProtocol, bySeverity, daContext,
@@ -84,11 +86,11 @@ function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourn
 
 export function MixingSensitivity() {
   const { notice, setNotice } = useNotice();
-  const [inputs, setInputs] = useState<Inputs>(INITIAL);
+  const [inputs, setInputs] = usePageState<Inputs>("inputs", INITIAL);
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
-  const [project, setProject] = useState<Project>(BLANK_PROJECT);
-  const [started, setStarted] = useState(false);
-  const [daRanges, setDaRanges] = useState<{ N: [number, number]; V: [number, number] } | null>(null);
+  const [project, setProject] = usePageState<Project>("project", BLANK_PROJECT);
+  const [started, setStarted] = usePageState("started", false);
+  const [daRanges, setDaRanges] = usePageState<{ N: [number, number]; V: [number, number] } | null>("daRanges", null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
@@ -115,13 +117,19 @@ export function MixingSensitivity() {
     );
     if (d.rho_cp_kJ_m3K != null) set({ rhoCp: String(d.rho_cp_kJ_m3K) });
   }
-  async function loadVessel(name: string) {
+  async function loadVessel(name: string, keepInputs = false) {
     const [d, v] = await Promise.all([
       api.GET("/api/v1/bourne/defaults/{name}", { params: { path: { name } } }).then(unwrap),
       api.GET("/api/v1/assessment/vessel-defaults/{name}", { params: { path: { name } } }).then(unwrap),
     ]);
     setDaRanges({ N: [v.N_rpm_range[0], v.N_rpm_range[1]], V: [v.V_L_range[0], v.V_L_range[1]] });
-    set({ daReactor: name, daRpm: String(d.centre_rpm), daVl: String(d.V_L) });
+    if (!keepInputs) set({ daReactor: name, daRpm: String(d.centre_rpm), daVl: String(d.V_L) });
+  }
+  async function importCase(file: CaseFile) {
+    const next = mergeKnown(INITIAL, file.inputs);
+    setInputs(next);
+    setProject(mergeKnown(BLANK_PROJECT, file.project));
+    if (next.daReactor) await loadVessel(next.daReactor, true);
   }
   async function loadParticle(name: string) {
     if (!name) return;
@@ -139,7 +147,7 @@ export function MixingSensitivity() {
     report(loadVessel(reactors.includes("TMA EasyMax-102") ? "TMA EasyMax-102" : (reactors[0] ?? "")));
     report(loadParticle(o.particles[0] ?? ""));
   }
-  const initialised = useRef(false);
+  const initialised = usePageRef("initialised", false);
   useEffect(() => {
     if (!options.data || !msOptions.data || initialised.current) return;
     initialised.current = true;
@@ -201,6 +209,14 @@ export function MixingSensitivity() {
   return (
     <>
       <PageTitle pageKey="Mixing_Sensitivity">Reaction Sensitivity Protocol</PageTitle>
+      <CaseBar
+        page="reaction-sensitivity"
+        label={project.projectName || inputs.reaction}
+        inputs={inputs}
+        extra={{ project }}
+        onImport={importCase}
+        onMessage={setNotice}
+      />
       {(options.isError || msOptions.isError) && <ErrorNote error={options.error ?? msOptions.error} />}
       <p>
         Find out <strong>whether a reaction is sensitive to mixing</strong> and, if so, <strong>which mechanism</strong>{" "}
@@ -255,18 +271,6 @@ export function MixingSensitivity() {
             }}
           >
             Update assessment
-          </button>{" "}
-          <button
-            type="button"
-            className="primary"
-            onClick={() => {
-              setStarted(false);
-              setProject(BLANK_PROJECT);
-              defaults();
-              setNotice({ kind: "info", text: "Assessment reset - set your inputs and start again." });
-            }}
-          >
-            Reset assessment
           </button>
         </p>
       )}

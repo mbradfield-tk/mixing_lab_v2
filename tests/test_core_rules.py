@@ -58,6 +58,26 @@ def _inputs(**kw):
     return rules.ProtocolInputs(**base)
 
 
+@pytest.mark.parametrize("semi_batch, competing", [(False, "yes"), (True, "yes"), (False, "no"), (True, "no")])
+def test_bourne_protocol_is_recommended_once(semi_batch, competing):
+    r = rules.assess_protocol(_inputs(competing=competing, semi_batch=semi_batch, k=100.0))
+    bourne_actions = [a for a in r["next_steps"] if "Bourne" in a.action]
+    assert len(bourne_actions) == 1 and bourne_actions[0].code == "bourne.run"
+    assert r["verdict"].text.count("Bourne") == 1
+
+
+@pytest.mark.parametrize("semi_batch", [False, True])
+def test_competing_reactions_mention_the_feed_only_when_fed(semi_batch):
+    r = rules.assess_protocol(_inputs(competing="yes", semi_batch=semi_batch, k=100.0))
+    sel = next(f for f in r["findings"] if f.code.startswith("selectivity"))
+    texts = [sel.detail, r["steps"][3].text, r["steps"][5].text, r["verdict"].text,
+             *(a.action for a in r["next_steps"])]
+    mentions_feed = any("feed" in t.lower() for t in texts)
+    assert mentions_feed == semi_batch
+    if not semi_batch:
+        assert sel.code == "selectivity.competing_batch" and sel.area == "Micromixing (selectivity)"
+        assert "Bourne Test 1" in r["verdict"].text
+
 @pytest.mark.parametrize("status, mech, done, expected", [
     ("confirmed", "Mesomixing", [3, 1], (True, ["Mesomixing"], [1, 3])),
     ("confirmed", "Unresolved", [1], (True, [], [1])),
@@ -164,11 +184,15 @@ def test_no_heat_flag_gives_a_plain_low_verdict():
 
 
 def test_scale_dependent_verdict_names_the_right_confirmation():
-    r = rules.assess_protocol(_inputs(**_QUIET, dH=-10.0, competing="yes"))
+    r = rules.assess_protocol(_inputs(**_QUIET, dH=-10.0, competing="yes", semi_batch=True))
     v = r["verdict"]
     assert v.code == "scale_dependent" and "micro/mesomixing" in v.text
     assert "Bourne Tests 2 and 3" in v.text and "Damköhler" not in v.text
     assert [a.code for a in r["next_steps"]].count("selectivity.bourne") == 1
+
+    batch = rules.assess_protocol(_inputs(**_QUIET, dH=-10.0, competing="yes"))["verdict"]
+    assert batch.code == "scale_dependent" and "**micromixing**" in batch.text
+    assert "feed" not in batch.text.lower()
 
 
 def test_theory_only_counts_mixing_mechanisms_only():
@@ -186,7 +210,8 @@ def test_fast_reaction_finding_matches_step_severity():
 def test_semi_batch_has_one_feed_zone_finding_and_action():
     r = rules.assess_protocol(_inputs(dH=-10.0, competing="yes", semi_batch=True))
     assert not any(f.area.startswith("Semi-batch") for f in r["findings"])
-    assert [a.code for a in r["next_steps"]].count("selectivity.bourne") == 1
+    bourne = [a for a in r["next_steps"] if "Bourne" in a.action]
+    assert len(bourne) == 1 and "feed zone" in bourne[0].action
 
 
 def test_computed_damkohler_asks_for_a_recheck_not_a_new_calculation():

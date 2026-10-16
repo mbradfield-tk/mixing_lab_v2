@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { api, postForFile, unwrap, type Schemas } from "../api/client";
 import type { Row } from "../api/tables";
@@ -10,7 +10,9 @@ import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
 import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
+import { CaseBar } from "../components/CaseBar";
 import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui";
+import { usePageRef, usePageState } from "../state/pageState";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { downloadBlob } from "./assessment/model";
 import { COALESCENCE, DEFAULT_VESSELS, INITIAL, buildRequests, kineticsCaption, type Inputs, type PageRequest } from "./comparison/model";
@@ -87,7 +89,7 @@ const md = (text: string) => <ReactMarkdown>{text}</ReactMarkdown>;
 
 export function VesselComparison() {
   const { notice, setNotice, run } = useNotice();
-  const [inputs, setInputs] = useState<Inputs>(INITIAL);
+  const [inputs, setInputs] = usePageState<Inputs>("inputs", INITIAL);
   const set = (patch: Partial<Inputs>) => setInputs((i) => ({ ...i, ...patch }));
 
   const options = useQuery({ queryKey: ["options"], queryFn: async () => unwrap(await api.GET("/api/v1/options")) });
@@ -107,7 +109,7 @@ export function VesselComparison() {
     enabled: inputs.reactors.length > 0,
     placeholderData: keepPreviousData,
   });
-  const applied = useRef({ reactors: "", basis: "", targets: "" });
+  const applied = usePageRef("applied", { reactors: "", basis: "", targets: "" });
   useEffect(() => {
     const d = setup.data;
     if (!d) return;
@@ -166,7 +168,7 @@ export function VesselComparison() {
 
   const report = (p: Promise<unknown>) => void p.catch((e: Error) => setNotice({ kind: "error", text: e.message }));
 
-  const initialised = useRef(false);
+  const initialised = usePageRef("initialised", false);
   useEffect(() => {
     const o = options.data;
     if (!o || initialised.current) return;
@@ -194,7 +196,7 @@ export function VesselComparison() {
   // --- compute --------------------------------------------------------------
   const built = useMemo(() => buildRequests(inputs), [inputs]);
   const currentKey = "page" in built ? JSON.stringify(built.page) : null;
-  const [last, setLast] = useState<{ key: string; page: PageRequest; tables: Tables } | null>(null);
+  const [last, setLast] = usePageState<{ key: string; page: PageRequest; tables: Tables } | null>("last", null);
   const stale = !!last && currentKey !== last.key;
 
   const compute = useMutation({
@@ -223,7 +225,7 @@ export function VesselComparison() {
   const t = last?.tables;
   const ready = !!t && t.feed_ok;
 
-  const [envParams, setEnvParams] = useState<string[] | null>(null);
+  const [envParams, setEnvParams] = usePageState<string[] | null>("envParams", null);
   const available = t?.parameters ?? [];
   const envSelected = (envParams ?? available.filter((p) => p.default).map((p) => p.field)).filter((f) =>
     available.some((p) => p.field === f),
@@ -261,6 +263,7 @@ export function VesselComparison() {
   return (
     <>
       <PageTitle pageKey="Vessel_Comparison">Vessel Comparison</PageTitle>
+      <CaseBar page="vessel-comparison" inputs={inputs} onMessage={setNotice} />
       <p>
         Compare the mixing performance of several vessels side-by-side. Each vessel's operating envelope is mapped
         from its RPM range and fill-volume band for a shared fluid and reaction system.

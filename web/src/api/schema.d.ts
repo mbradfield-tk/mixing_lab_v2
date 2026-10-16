@@ -3490,6 +3490,7 @@ export interface components {
             steps: string[];
             /** Summary Note */
             summary_note: string;
+            suspension?: components["schemas"]["ScreeningSuspension"] | null;
             /**
              * T Rxn S
              * @description Reaction time used for Da (None when kinetics unknown)
@@ -3567,6 +3568,8 @@ export interface components {
              * @default false
              */
             semi_batch: boolean;
+            /** @description Particle properties; with phase 'solid' and a screening vessel, N/N_js is checked */
+            solids?: components["schemas"]["SolidsSpec"] | null;
         };
         /** ProtocolResult */
         ProtocolResult: {
@@ -3591,6 +3594,7 @@ export interface components {
              * @description Steps 0–5 (Bourne, kinetics, phases, competing, heat, timescales)
              */
             steps: (components["schemas"]["MessageOut"] | null)[];
+            suspension?: components["schemas"]["ScreeningSuspension"] | null;
             verdict: components["schemas"]["MessageOut"];
         };
         /** ReactionProfileRequest */
@@ -3915,6 +3919,58 @@ export interface components {
             t_E_s: number | null;
             /** T Blend S */
             t_blend_s: number | null;
+        };
+        /** ScreeningSuspension */
+        ScreeningSuspension: {
+            /**
+             * N Js Gmb Rpm
+             * @description Grenville-Mak-Brown just-suspended speed
+             */
+            N_js_gmb_rpm: number | null;
+            /**
+             * N Js Rpm
+             * @description Higher of the two (used for the assessment)
+             */
+            N_js_rpm: number | null;
+            /**
+             * N Js Zw Rpm
+             * @description Zwietering just-suspended speed
+             */
+            N_js_zw_rpm: number | null;
+            /** N Rpm */
+            N_rpm: number;
+            /** Governs */
+            governs: string;
+            /**
+             * Kind
+             * @default unknown
+             * @enum {string}
+             */
+            kind: "critical" | "warning" | "caution" | "ok" | "unknown";
+            /**
+             * Ratio
+             * @description N / N_js
+             */
+            ratio: number | null;
+            /** Reactor */
+            reactor: string;
+            /**
+             * Settling
+             * @description Settling-velocity class
+             * @default
+             */
+            settling: string;
+            /**
+             * Status
+             * @description Suspension conclusion (N/N_js and settling)
+             * @default
+             */
+            status: string;
+            /**
+             * V T M S
+             * @description Particle settling velocity
+             */
+            v_t_m_s?: number | null;
         };
         /** ScreeningVessel */
         ScreeningVessel: {

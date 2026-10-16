@@ -69,6 +69,37 @@ def test_bourne_prescreen(status, mech, done, expected):
     assert rules.bourne_prescreen(status, mech, done) == expected
 
 
+def _sus(ratio, v_t=None):
+    return {"reactor": "R", "N_rpm": 100.0 * ratio, "N_js_zw_rpm": 80.0, "N_js_gmb_rpm": 100.0,
+            "N_js_rpm": 100.0, "governs": "GMB", "ratio": ratio, "v_t": v_t}
+
+
+@pytest.mark.parametrize("phases, sus, kind, code", [
+    (["liquid"], _sus(0.5), None, None),
+    (["liquid", "solid"], None, "warning", "suspension.unchecked"),
+    (["liquid", "solid"], _sus(0.5), "critical", "suspension.below_njs"),
+    (["liquid", "solid"], _sus(1.1), "warning", "suspension.marginal"),
+    (["liquid", "solid"], _sus(1.5), "ok", "suspension.ok"),
+    (["liquid", "solid"], _sus(0.5, 4e-4), "ok", "suspension.slow_settling"),
+    (["liquid", "solid"], _sus(1.5, 4e-4), "ok", "suspension.ok"),
+    (["liquid", "solid"], _sus(0.5, 1e-3), "warning", "suspension.slow_settling"),
+    (["liquid", "solid"], _sus(0.5, 0.01), "critical", "suspension.below_njs"),
+])
+def test_solids_suspension_finding(phases, sus, kind, code):
+    r = rules.assess_protocol(_inputs(phases=phases), suspension=sus)
+    found = [f for f in r["findings"] if f.code.startswith("suspension")]
+    assert [(f.kind, f.code) for f in found] == ([(kind, code)] if kind else [])
+    if code == "suspension.slow_settling" and kind == "ok":
+        assert found[0].status.startswith("Unlikely limiting") and "lift off" in found[0].detail
+        assert any(a.code == "suspension.confirm_visually" for a in r["next_steps"])
+    if code == "suspension.ok":
+        assert "N > 1.3" in found[0].status
+    if kind == "critical":
+        assert r["steps"][2].kind == "critical"
+        assert any(a.code == "suspension.raise_speed" for a in r["next_steps"])
+        assert "suspension" in r["verdict"].text.lower()
+
+
 def test_complete_answers_give_a_verdict_and_adiabatic_rise():
     r = rules.assess_protocol(_inputs())
     assert r["ready"] and r["verdict"].text and rules.protocol_md(r)["summary_note"] == ""

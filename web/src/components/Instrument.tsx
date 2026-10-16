@@ -1,5 +1,5 @@
 import {
-  Children, Fragment, isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent,
+  Children, Fragment, cloneElement, isValidElement, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent,
   type ReactElement, type ReactNode,
 } from "react";
 
@@ -20,10 +20,14 @@ export function snap(x: number, min: number, max: number, step: number): string 
   return String(clamp(v, min, max));
 }
 
-/** Flatten fragments so each control can be placed individually. */
-function flatten(children: ReactNode): ReactElement[] {
+/** Flatten fragments so each control can be placed individually (keys prefixed so nested ones stay unique). */
+function flatten(children: ReactNode, prefix = ""): ReactElement[] {
   return Children.toArray(children).flatMap((c) =>
-    isValidElement<{ children?: ReactNode }>(c) && c.type === Fragment ? flatten(c.props.children) : isValidElement(c) ? [c] : [],
+    isValidElement<{ children?: ReactNode }>(c) && c.type === Fragment
+      ? flatten(c.props.children, `${prefix}${String(c.key)}/`)
+      : isValidElement(c)
+        ? [cloneElement(c, { key: `${prefix}${String(c.key)}` })]
+        : [],
   );
 }
 

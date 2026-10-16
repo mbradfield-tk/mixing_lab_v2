@@ -13,10 +13,10 @@ import { PropertyTable } from "../components/PropertyTable";
 import { ResultTable } from "../components/ResultTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { useDebounced } from "../hooks";
-import { downloadBlob, sliderStep } from "./assessment/model";
+import { LOADING_BASES, downloadBlob, loadingUnit, sliderStep, switchBasis, type LoadingBasis } from "./assessment/model";
 import {
   BLANK_PROJECT, DA_ZONES, INITIAL, SPEED_ZONES, SUMMARY_PENDING, SUMMARY_PRE_START, buildProtocol, bySeverity, daContext,
-  findingRows, importPatch, reactionList, reactionPatch, severityCounts, sf, splitHeadline, timescaleTiles,
+  findingRows, importPatch, reactionList, reactionPatch, severityCounts, sf, splitHeadline, suspensionTiles, timescaleTiles,
   type BourneImport, type Inputs, type Project,
 } from "./sensitivity/model";
 
@@ -28,15 +28,18 @@ function ResultBox({ children, tone }: { children: ReactNode; tone?: Tone }) {
   return <div className={`result-box${tone ? ` tone-${tone}` : ""}`}>{children}</div>;
 }
 
-const bourneTone = (sensitiveKpis: string): Tone => (/^none\b/i.test(sensitiveKpis.trim()) ? "ok" : "critical");
+function bourneTone(b: Schemas["BourneTestRow"]): Tone {
+  const icon = toneOf(b.finding);
+  if (icon !== "info") return icon;
+  if (/inconclusive/i.test(b.finding)) return "warning";
+  return /^none\b/i.test(b.sensitive_kpis.trim()) ? "ok" : "critical";
+}
 
 /** Step 8: verdict banner, severity tiles, finding cards (most severe first) and next steps. */
 function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourne: Schemas["BourneTestRow"][] }) {
   const [headline, rest] = splitHeadline(res.verdict);
   const counts = severityCounts(res.insights);
   const sorted = bySeverity(res.insights);
-  const flagged = sorted.filter((f) => f.kind !== "ok");
-  const clear = sorted.filter((f) => f.kind === "ok");
   const card = (f: Schemas["ProtocolPage"]["insights"][number]) => (
     <InsightCard key={f.area} tone={f.kind} title={f.area} status={f.status}>
       <Markdown>{f.detail}</Markdown>
@@ -59,19 +62,13 @@ function SummaryDashboard({ res, bourne }: { res: Schemas["ProtocolPage"]; bourn
       <h3>Recommended next steps</h3>
       <ActionList items={res.actions} />
       <h3>Findings</h3>
-      {flagged.length > 0 ? <InsightGrid>{flagged.map(card)}</InsightGrid> : <p className="muted">Nothing flagged.</p>}
-      {clear.length > 0 && (
-        <details>
-          <summary>Not a concern ({clear.length})</summary>
-          <InsightGrid>{clear.map(card)}</InsightGrid>
-        </details>
-      )}
+      <InsightGrid>{sorted.map(card)}</InsightGrid>
       {bourne.length > 0 && (
         <details>
           <summary>Bourne Protocol results ({bourne.length})</summary>
           <InsightGrid>
             {bourne.map((b) => (
-              <InsightCard key={b.test} tone={bourneTone(b.sensitive_kpis)} title={b.test}>
+              <InsightCard key={b.test} tone={bourneTone(b)} title={b.test}>
                 <p>{b.finding}</p>
                 <p className="muted">Sensitive KPI(s): {b.sensitive_kpis}</p>
               </InsightCard>
@@ -126,6 +123,12 @@ export function MixingSensitivity() {
     setDaRanges({ N: [v.N_rpm_range[0], v.N_rpm_range[1]], V: [v.V_L_range[0], v.V_L_range[1]] });
     set({ daReactor: name, daRpm: String(d.centre_rpm), daVl: String(d.V_L) });
   }
+  async function loadParticle(name: string) {
+    if (!name) return;
+    const p = unwrap(await api.GET("/api/v1/particles/{name}", { params: { path: { name } } })) as Record<string, unknown>;
+    const pos = (v: unknown, fallback: string) => (Number(v) > 0 ? String(Number(v)) : fallback);
+    setInputs((i) => ({ ...i, particle: name, rhoP: pos(p.rho_p_kg_m3, i.rhoP), d50: pos(p.d50_um, i.d50) }));
+  }
 
   function defaults() {
     const o = options.data!;
@@ -134,6 +137,7 @@ export function MixingSensitivity() {
     setInputs({ ...INITIAL, dhRef: dhRefNames[0] });
     report(loadReaction(measured[0] ?? ""));
     report(loadVessel(reactors.includes("TMA EasyMax-102") ? "TMA EasyMax-102" : (reactors[0] ?? "")));
+    report(loadParticle(o.particles[0] ?? ""));
   }
   const initialised = useRef(false);
   useEffect(() => {
@@ -397,7 +401,60 @@ export function MixingSensitivity() {
           placeholder="None"
           onChange={(v) => set({ phases: v.map((l) => codeOf("Phase", l) as Inputs["phases"][number]) })}
         />
-        {res && step(2) && <ResultBox tone={stepTone(2)}>{step(2)}</ResultBox>}
+        {inputs.phases.includes("solid") && (
+          <>
+            <p>
+              Solids must be <strong>suspended</strong>: below the just-suspended speed N_js, settled solids cut the wetted
+              surface and the rate depends on agitation. N_js is the higher of the Zwietering and GMB predictions; slow-settling
+              solids (v_t &lt; 3 mm/s) suspend more easily than predicted, and below 0.5 mm/s poor suspension is ruled out
+              {inputs.daOn ? ", at the Step 7 vessel and speed." : " - turn on the Step 7 vessel to compute N/N_js."}
+            </p>
+            <div className="prop-narrow">
+              <PropertyTable
+                groups={[
+                  {
+                    title: "Particles",
+                    rows: [
+                      {
+                        label: "Particle",
+                        value: inputs.particle,
+                        options: options.data?.particles ?? [],
+                        onChange: (v) => report(loadParticle(v)),
+                      },
+                      { label: "Density ρ_p", unit: "kg/m³", value: inputs.rhoP, onChange: (rhoP) => set({ rhoP }) },
+                      { label: "Size d50", unit: "µm", value: inputs.d50, onChange: (d50) => set({ d50 }) },
+                      {
+                        label: "Loading basis",
+                        value: inputs.loadingBasis,
+                        options: LOADING_BASES,
+                        onChange: (v) =>
+                          set({
+                            loadingBasis: v as LoadingBasis,
+                            xWt: switchBasis(inputs.xWt, inputs.loadingBasis, v as LoadingBasis),
+                          }),
+                      },
+                      { label: "Solids loading", unit: loadingUnit(inputs.loadingBasis), value: inputs.xWt, onChange: (xWt) => set({ xWt }) },
+                      {
+                        label: "= Solids loading",
+                        unit: loadingUnit(inputs.loadingBasis === "wt" ? "g100" : "wt"),
+                        readOnly: true,
+                        value: switchBasis(inputs.xWt, inputs.loadingBasis, inputs.loadingBasis === "wt" ? "g100" : "wt"),
+                      },
+                      { label: "Zwietering S", unit: "–", value: inputs.szw, onChange: (szw) => set({ szw }) },
+                      { label: "GMB z", unit: "–", value: inputs.gmbZ, onChange: (gmbZ) => set({ gmbZ }) },
+                    ],
+                  },
+                ]}
+              />
+            </div>
+          </>
+        )}
+        {res && step(2) && (
+          <ResultBox tone={stepTone(2)}>
+            {res.suspension && <StatGrid size="sm" stats={suspensionTiles(res.suspension)} />}
+            {step(2)}
+          </ResultBox>
+        )}
       </Card>
 
       <Card title="Step 4 - Feed Mode (Mesomixing)">

@@ -37,6 +37,7 @@ export interface Inputs {
   d50: string;
   phi: string;
   xWt: string;
+  loadingBasis: LoadingBasis;
   szw: string;
   gmbZ: string;
   cd: string;
@@ -85,6 +86,7 @@ export const INITIAL: Inputs = {
   d50: "50",
   phi: "1",
   xWt: "5",
+  loadingBasis: "g100",
   szw: "5.5",
   gmbZ: "3",
   cd: "0.33",
@@ -103,6 +105,37 @@ export const INITIAL: Inputs = {
 };
 
 const n = (s: string): number => (s.trim() === "" ? Number.NaN : Number(s));
+
+/** Solids loading basis: wt-% of the whole slurry, or g solid per 100 g liquid (Zwietering X). */
+export type LoadingBasis = "wt" | "g100";
+export const LOADING_BASES: { code: LoadingBasis; label: string }[] = [
+  { code: "wt", label: "wt-% of total slurry" },
+  { code: "g100", label: "g / 100 g liquid" },
+];
+export const loadingUnit = (b: LoadingBasis) => (b === "wt" ? "wt-%" : "g / 100 g liquid");
+
+/** g solid per 100 g liquid from a loading on ``basis`` (NaN when unusable; wt-% must be < 100). */
+export function toG100(value: number, basis: LoadingBasis): number {
+  if (!Number.isFinite(value) || value < 0) return Number.NaN;
+  if (basis === "g100") return value;
+  return value < 100 ? (100 * value) / (100 - value) : Number.NaN;
+}
+
+/** Loading on ``basis`` from g solid per 100 g liquid. */
+export const fromG100 = (x: number, basis: LoadingBasis): number => (basis === "g100" ? x : (100 * x) / (100 + x));
+
+/** Solids volume percentage of the slurry from g/100 g liquid and the two densities. */
+export function solidsVolPct(xG100: number, rhoL: number, rhoP: number): number {
+  if (!(xG100 >= 0) || !(rhoL > 0) || !(rhoP > 0)) return Number.NaN;
+  const r = ((xG100 / 100) * rhoL) / rhoP;
+  return (r / (1 + r)) * 100;
+}
+
+/** The loading text converted to the other basis (blank when not a number). */
+export function switchBasis(text: string, from: LoadingBasis, to: LoadingBasis): string {
+  const x = toG100(n(text), from);
+  return from === to || !Number.isFinite(x) ? text : String(Number(fromG100(x, to).toPrecision(4)));
+}
 
 /** Characteristic reaction time (utils.calculations.damkohler.characteristic_reaction_time). */
 export function autoTrxn(order: string, k: number, c0: number, tSpecified: number): number {
@@ -135,6 +168,8 @@ export function buildRequest(i: Inputs): { request: PointRequest } | { error: st
   const bad = required.find(([, v]) => !Number.isFinite(n(v)));
   if (bad) return { error: `Enter a number for ${bad[0]}.` };
   if (!i.reactor) return { error: "Select a vessel." };
+  const loading = toG100(n(i.xWt), i.loadingBasis);
+  if (i.solids && !Number.isFinite(loading)) return { error: "Solids loading must be ≥ 0 (and below 100 wt-%)." };
 
   const sparged = i.gas && i.gasTransfer === "sparging";
   const rate = feedRateMlMin(i.dosingAmount, i.dosingTime);
@@ -161,7 +196,7 @@ export function buildRequest(i: Inputs): { request: PointRequest } | { error: st
             rho_p_kg_m3: n(i.rhoP),
             d50_um: n(i.d50),
             sphericity: n(i.phi),
-            loading_g_per_100g: n(i.xWt),
+            loading_g_per_100g: loading,
             zwietering_S: n(i.szw),
             gmb_z: n(i.gmbZ),
             clearance_ratio: n(i.cd),
@@ -412,11 +447,19 @@ export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: numb
   ];
 }
 
-/** Severity of a ``particle_suspension_criterion`` label. */
+/** Severity of a suspension conclusion (``suspension_state`` / ``particle_suspension_criterion``). */
 export function suspensionTone(state: string): Tone {
   if (/^poorly/i.test(state)) return "critical";
-  if (/^(partially|just)/i.test(state)) return "warning";
-  if (/^fully/i.test(state)) return "ok";
+  if (/^(partially|just|likely)/i.test(state)) return "warning";
+  if (/^(fully|unlikely)/i.test(state)) return "ok";
+  return "info";
+}
+
+/** Severity of a ``settling_class`` label. */
+export function settlingTone(label: string): Tone {
+  if (/^(very slow|slow)/i.test(label)) return "ok";
+  if (/^moderate/i.test(label)) return "warning";
+  if (/^fast/i.test(label)) return "critical";
   return "info";
 }
 

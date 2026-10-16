@@ -17,7 +17,7 @@ from core import sensitivity_rules as rules
 from core import services
 from core.envelope import envelope_data, operating_window
 from utils.calculations import compute_reactor_hydro
-from core.operating_point import evaluate_point, njs_split
+from core.operating_point import evaluate_point, njs_split, solids_static
 from core.options import Competing, CorrSource
 from core.serialize import jsonable
 from reports import snapshots
@@ -70,7 +70,17 @@ def assessment_result(req: s.PointRequest) -> s.AssessmentTables:
         **{k: jsonable(tables[k]) for k in ("hydro", "damkohler", "mass_transfer", "solids", "heat")},
         assessment=tables["assessment"],
         applicability=rules.correlation_applicability(hydro, inp.geometry, row, req.V_L,
-                                                      gas_on=gas_on, solids_on=solids_on))
+                                                      gas_on=gas_on, solids_on=solids_on,
+                                                      solids=_solids_info(inp)))
+
+
+def _solids_info(inp) -> dict | None:
+    """Particle inputs for the suspension applicability checks."""
+    sol = inp.solids
+    if sol is None:
+        return None
+    return {"d50_um": sol.d50_um, "x_wt": sol.x_wt, "S_zw": sol.S_zw, "gmb_z": sol.gmb_z,
+            "phi_s": solids_static(sol, inp.fluid, inp.geometry)["phi_s"]}
 
 
 def assessment_snapshot(req: s.AssessmentReportRequest) -> dict:
@@ -115,7 +125,8 @@ def protocol_page(req: s.ProtocolRequest) -> s.ProtocolPage:
                   for f in res["findings"]],
         actions=[s.ActionOut(area=a.area, action=a.action, code=a.code) for a in res["next_steps"]],
         t_rxn_s=jsonable(res["t_rxn"]) if res["kinetics_known"] else None,
-        damkohler=services.screening_damkohler_out(res["da"]))
+        damkohler=services.screening_damkohler_out(res["da"]),
+        suspension=services.screening_suspension_out(res["suspension"]))
 
 
 def protocol_snapshot(req: s.ProtocolReportRequest) -> dict:

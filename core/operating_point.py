@@ -247,3 +247,22 @@ def screening_damkohler(reactor: str, n_rpm: float, v_l: float, solvent: str, T_
         "Da_macro": t_blend / t_rxn if t_rxn > 0 else 0.0,
         "Da_micro": t_e / t_rxn if t_rxn > 0 else 0.0,
     }
+
+
+def screening_suspension(reactor: str, n_rpm: float, solvent: str, T_C: float,
+                         solids: Solids) -> dict | None:
+    """N/N_js for a vessel at N with the reaction solvent (water when unknown); N_js is the
+    higher of Zwietering and GMB. None when the vessel geometry is incomplete."""
+    row = reactor_row(reactor)
+    if row.empty or sf(row.get("D_tank_m")) <= 0 or sf(row.get("D_imp_m")) <= 0 or n_rpm <= 0:
+        return None
+    props = solvent_props(solvent, T_C) or solvent_props("Water", T_C)
+    fluid = Fluid("", props["rho_kg_m3"] if props else 1000.0,
+                  props["mu_Pa_s"] if props else 1e-3, 1e-9)
+    geometry = VesselGeometry.from_row(row, H_max_fallback=sf(row.get("D_tank_m")))
+    s = solids_static(solids, fluid, geometry)
+    zw, gmb = s["njs_zw_rps"] * 60.0, s["njs_gmb_rps"] * 60.0
+    njs = max(zw, gmb)
+    return {"reactor": reactor, "N_rpm": n_rpm, "N_js_zw_rpm": zw, "N_js_gmb_rpm": gmb,
+            "N_js_rpm": njs, "governs": "GMB" if gmb > zw else "Zwietering",
+            "ratio": n_rpm / njs if njs > 0 else 0.0, "v_t": s["v_t"], "d50_um": solids.d50_um}

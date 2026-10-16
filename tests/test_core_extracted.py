@@ -86,7 +86,31 @@ def test_structured_screens_carry_codes_not_labels():
     geo = VesselGeometry(D_tank=0.3, D_imp=0.1, H_max=0.4, Np=1.27, Nq=0.79)
     res = rules.applicability_checks({"Re": 5e4}, geo, pd.Series({"baffles": "4"}), 10.0,
                                      gas_on=True, solids_on=False)
-    assert "gas loading included" in res["checks"] and not any("**" in c for c in res["checks"])
+    assert any(c.startswith("gas loading included") for c in res["checks"])
+    assert not any("**" in c for c in res["checks"])
+
+
+def test_solids_applicability_flags_fine_particles_and_geometry():
+    geo = VesselGeometry(D_tank=0.05, D_imp=0.038, H_max=0.09, Np=1.27, Nq=0.79)
+    hydro = {"Re": 2e4, "Kolmogorov η (µm)": 30.0, "v_t (m/s)": 4.8e-4, "Re_p": 0.02}
+    res = rules.applicability_checks(hydro, geo, pd.Series({"baffles": "0"}), 0.1, gas_on=False,
+                                     solids_on=True, solids={"d50_um": 18, "x_wt": 5, "phi_s": 0.019,
+                                                             "S_zw": 5.5, "gmb_z": 3.0})
+    text = " | ".join(res["warnings"])
+    assert "below the 125–850 µm" in text and "Kolmogorov scale" in text
+    assert "D/T = 0.76" in text and "generic suspension constants" in text
+    assert "settling velocity v_t = 0.48 mm/s" in res["checks"]
+
+
+@pytest.mark.parametrize("n, njs, v_t, start", [
+    (300, 900, 4e-4, "Unlikely limiting - very slow settling"),
+    (300, 900, 1e-3, "Likely suspended - slow settling"),
+    (300, 900, 0.01, "Poorly suspended - N < 0.7·N_js"),
+    (950, 900, 1e-3, "Just suspended - N > N_js"),
+    (1200, 900, 4e-4, "Fully suspended - N > 1.3·N_js")])
+def test_suspension_state_uses_settling_velocity(n, njs, v_t, start):
+    from utils.calculations import suspension_state
+    assert suspension_state(n / 60, njs / 60, v_t).startswith(start)
 
 
 # --- heat transfer ---------------------------------------------------------------

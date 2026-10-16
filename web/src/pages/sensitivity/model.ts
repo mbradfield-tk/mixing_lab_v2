@@ -1,4 +1,5 @@
 import type { Schemas } from "../../api/client";
+import { toG100, type LoadingBasis } from "../assessment/model";
 
 export type ProtocolBody = Schemas["ProtocolRequest"];
 export type BourneImport = Schemas["BourneImport"];
@@ -42,6 +43,13 @@ export interface Inputs {
   daReactor: string;
   daRpm: string;
   daVl: string;
+  particle: string;
+  rhoP: string;
+  d50: string;
+  xWt: string;
+  loadingBasis: LoadingBasis;
+  szw: string;
+  gmbZ: string;
 }
 
 export const BLANK_PROJECT: Project = { projectName: "", step: "", unitOperation: "", processVersion: "" };
@@ -76,6 +84,13 @@ export const INITIAL: Inputs = {
   daReactor: "",
   daRpm: "300",
   daVl: "1",
+  particle: "",
+  rhoP: "1500",
+  d50: "50",
+  xWt: "5",
+  loadingBasis: "g100",
+  szw: "5.5",
+  gmbZ: "3",
 };
 
 export const SUMMARY_PRE_START = "*Run the assessment to see the verdict and next steps.*";
@@ -148,6 +163,12 @@ export function buildProtocol(i: Inputs, dhReferences: Record<string, number>): 
   if (c0Heat < 0 || rhoCp < 0) return { error: "ρ·Cp and the limiting-reagent C₀ must not be negative." };
   const rpm = sf(i.daRpm);
   const vl = sf(i.daVl);
+  const solids = i.phases.includes("solid");
+  const rhoP = sf(i.rhoP);
+  const d50 = sf(i.d50);
+  const loading = toG100(sf(i.xWt, Number.NaN), i.loadingBasis);
+  if (solids && (rhoP <= 0 || d50 <= 0 || !Number.isFinite(loading) || sf(i.szw) <= 0 || sf(i.gmbZ) <= 0))
+    return { error: "Particle density, d50, Zwietering S and GMB z must be positive; loading ≥ 0 (below 100 wt-%)." };
   return {
     body: {
       reaction: { order: i.order as ProtocolBody["reaction"]["order"], k, C0_mol_L: c0, t_rxn_s: tRxn, dH_kJ_mol: sf(i.dH) },
@@ -170,6 +191,12 @@ export function buildProtocol(i: Inputs, dhReferences: Record<string, number>): 
         i.daOn && i.daReactor && rpm > 0 && vl > 0
           ? { reactor: i.daReactor, N_rpm: rpm, V_L: vl, solvent: i.solvent, T_C: sf(i.T, 25) }
           : null,
+      solids: solids
+        ? {
+            rho_p_kg_m3: rhoP, d50_um: d50, sphericity: 1, loading_g_per_100g: loading, zwietering_S: sf(i.szw),
+            gmb_z: sf(i.gmbZ), clearance_ratio: 0.33,
+          }
+        : null,
     },
   };
 }
@@ -246,4 +273,28 @@ export function daContext(da: Schemas["ScreeningDamkohler"]): string {
   if (da.Re !== null && da.Re !== undefined) parts.push(`Re ${Math.round(da.Re).toLocaleString("en-US")}`);
   if (da.P_V_W_L !== null && da.P_V_W_L !== undefined) parts.push(`P/V ${g3(da.P_V_W_L)} W/L`);
   return parts.join(" · ");
+}
+
+/** ``rules.suspension_band`` colour of N/N_js. */
+export const suspensionTone = (ratio: number): Tone => (ratio < 1 ? "critical" : ratio < 1.3 ? "warning" : "ok");
+
+/** N/N_js, settling velocity and the two N_js correlations (the higher one governs). */
+export function suspensionTiles(sus: Schemas["ScreeningSuspension"]): { label: string; value: string; unit?: string; tone?: Tone; hint?: string; wide?: boolean }[] {
+  const rpm = (x: number | null | undefined) => (x === null || x === undefined ? "—" : String(Math.round(x)));
+  const ratio = sus.ratio ?? 0;
+  const vt = sus.v_t_m_s;
+  return [
+    ...(sus.status ? [{ label: "Suspension", value: sus.status, tone: sus.kind, wide: true }] : []),
+    { label: "N / N_js", value: ratio.toFixed(2), tone: suspensionTone(ratio), hint: `at ${Math.round(sus.N_rpm)} RPM` },
+    {
+      label: "Settling velocity v_t",
+      value: vt === null || vt === undefined ? "—" : g3(vt * 1000),
+      unit: "mm/s",
+      tone: vt != null && vt < 0.003 ? "ok" : vt != null && vt < 0.02 ? "warning" : "critical",
+      hint: sus.settling,
+    },
+    { label: "N_js (design)", value: rpm(sus.N_js_rpm), unit: "RPM", hint: `${sus.governs} governs` },
+    { label: "N_js Zwietering", value: rpm(sus.N_js_zw_rpm), unit: "RPM" },
+    { label: "N_js GMB", value: rpm(sus.N_js_gmb_rpm), unit: "RPM" },
+  ];
 }

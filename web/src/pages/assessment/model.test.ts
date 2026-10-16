@@ -1,9 +1,34 @@
 import { describe, expect, it } from "vitest";
 import {
   INITIAL, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, feedRateMlMin, fillingRows, fillingTiles,
-  heatBalanceTone, kineticModel, sliderStep, solveMessage, solveTiles, suspensionTone, temperatureTiles, toCsv,
-  transferTone, type FillingResult, type PointRequest, type SolveResult, type TemperatureResult,
+  fromG100, heatBalanceTone, kineticModel, settlingTone, sliderStep, solidsVolPct, solveMessage, solveTiles, suspensionTone,
+  switchBasis, temperatureTiles, toCsv, toG100, transferTone, type FillingResult, type PointRequest, type SolveResult,
+  type TemperatureResult,
 } from "./model";
+
+describe("solids loading basis", () => {
+  it("converts wt-% of slurry and g/100 g liquid both ways", () => {
+    expect(toG100(20, "wt")).toBeCloseTo(25);
+    expect(fromG100(25, "wt")).toBeCloseTo(20);
+    expect(toG100(5, "g100")).toBe(5);
+    expect(toG100(100, "wt")).toBeNaN();
+    expect(switchBasis("20", "wt", "g100")).toBe("25");
+    expect(switchBasis("abc", "wt", "g100")).toBe("abc");
+  });
+  it("gives the solids volume fraction and sends g/100 g to the API", () => {
+    expect(solidsVolPct(5, 920, 2430)).toBeCloseTo(1.858, 2);
+    const r = buildRequest({ ...INITIAL, reactor: "R", solids: true, loadingBasis: "wt", xWt: "20" });
+    expect("request" in r && r.request.solids?.loading_g_per_100g).toBeCloseTo(25);
+    expect(buildRequest({ ...INITIAL, reactor: "R", solids: true, loadingBasis: "wt", xWt: "100" })).toHaveProperty("error");
+  });
+  it("tones settling and settling-aware suspension states", () => {
+    expect(settlingTone("Very slow settling (< 0.5 mm/s)")).toBe("ok");
+    expect(settlingTone("Fast settling (> 20 mm/s)")).toBe("critical");
+    expect(suspensionTone("Unlikely limiting - very slow settling (v_t < 0.5 mm/s), although N < N_js")).toBe("ok");
+    expect(suspensionTone("Fully suspended - N > 1.3·N_js")).toBe("ok");
+    expect(suspensionTone("Likely suspended - slow settling")).toBe("warning");
+  });
+});
 
 describe("fed-batch dosing and filling", () => {
   it("derives the feed rate and slider increments", () => {

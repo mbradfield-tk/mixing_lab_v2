@@ -40,6 +40,7 @@ from utils.calculations.heat_transfer import (
     WALL_CONDUCTIVITY, jacket_side_htc,
 )
 from utils import bourne_kpi
+from utils.calculations import settling_class
 from core.catalog import available_modes, available_modes_multi
 
 
@@ -462,11 +463,19 @@ def run_protocol(req: s.ProtocolRequest) -> dict:
     """Raw ``assess_protocol`` result (structured messages) for a request."""
     v = req.screening_vessel
     damkohler_for = None
+    suspension = None
     if v is not None:
         _reactor(v.reactor)
         damkohler_for = lambda t: op.screening_damkohler(  # noqa: E731
             v.reactor, v.N_rpm, v.V_L, v.solvent, v.T_C, t)
-    return rules.assess_protocol(protocol_inputs(req), damkohler_for)
+        sol = req.solids
+        if sol is not None and s.Phase.SOLID in req.phases:
+            suspension = op.screening_suspension(
+                v.reactor, v.N_rpm, v.solvent, v.T_C,
+                op.Solids(rho_p=sol.rho_p_kg_m3, d50_um=sol.d50_um, phi=sol.sphericity,
+                          x_wt=sol.loading_g_per_100g, S_zw=sol.zwietering_S,
+                          gmb_z=sol.gmb_z, cd=sol.clearance_ratio))
+    return rules.assess_protocol(protocol_inputs(req), damkohler_for, suspension)
 
 
 def screening_damkohler_out(da: dict | None) -> s.ScreeningDamkohler | None:
@@ -477,6 +486,16 @@ def screening_damkohler_out(da: dict | None) -> s.ScreeningDamkohler | None:
         t_blend_s=jsonable(da["t_blend"]), t_E_s=jsonable(da["t_E"]), Re=jsonable(da["Re"]),
         P_V_W_L=jsonable(da["P_V_W_L"]), Da_macro=jsonable(da["Da_macro"]),
         Da_micro=jsonable(da["Da_micro"]))
+
+
+def screening_suspension_out(sus: dict | None) -> s.ScreeningSuspension | None:
+    if not sus:
+        return None
+    kind, status = rules.suspension_band(sus["ratio"], sus.get("v_t"))
+    base = {k: v for k, v in sus.items() if k not in ("v_t", "d50_um")}
+    return s.ScreeningSuspension.model_validate(jsonable(
+        base | {"v_t_m_s": sus.get("v_t"), "settling": settling_class(sus.get("v_t") or 0.0)[1],
+                "status": status, "kind": kind}))
 
 
 def assess(req: s.ProtocolRequest) -> s.ProtocolResult:
@@ -496,6 +515,7 @@ def assess(req: s.ProtocolRequest) -> s.ProtocolResult:
                        dH_eff_kJ_mol=jsonable(res["dH_eff"]), dT_ad_K=jsonable(res["dt_ad"]),
                        estimated=res["dh_estimated"], summary=res["heat_summary"]),
         damkohler=screening_damkohler_out(res["da"]),
+        suspension=screening_suspension_out(res["suspension"]),
         bourne_sensitive=res["b_sensitive"], bourne_mechanisms=list(res["b_mechs"]),
     )
 

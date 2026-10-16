@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Row } from "../api/tables";
 import { Markdown } from "./Markdown";
 import { ResultTable } from "./ResultTable";
+import { symNode } from "./Sym";
 import { Pill, type Tone } from "./Tone";
 
 export { Pill, stripIcon, toneOf, type Tone } from "./Tone";
@@ -52,8 +53,8 @@ export function InsightCard({
   return (
     <article className={`insight tone-${tone}`}>
       <header>
-        <span className="insight-title">{title}</span>
-        {status && <Pill tone={tone}>{status}</Pill>}
+        <span className="insight-title">{symNode(title)}</span>
+        {status && <Pill tone={tone}>{symNode(status)}</Pill>}
       </header>
       {children && <div className="insight-body">{children}</div>}
     </article>
@@ -75,12 +76,12 @@ export function StatGrid({ stats, size = "md" }: { stats: Stat[]; size?: "md" | 
     <div className={`stat-grid stat-${size}`}>
       {stats.map((s, i) => (
         <div key={i} className={`stat tone-${s.tone ?? "info"}${s.wide ? " stat-wide" : ""}`}>
-          <div className="stat-label">{s.label}</div>
+          <div className="stat-label">{symNode(s.label)}</div>
           <div className="stat-value">
-            {s.value}
+            {symNode(s.value)}
             {s.unit && s.unit !== "–" && <span className="stat-unit"> {s.unit}</span>}
           </div>
-          {s.hint && <div className="stat-hint">{s.hint}</div>}
+          {s.hint && <div className="stat-hint">{symNode(s.hint)}</div>}
         </div>
       ))}
     </div>

@@ -12,15 +12,17 @@ import {
 import { MultiSelect } from "../components/MultiSelect";
 import { NoticeBar, useNotice } from "../components/Notice";
 import { PropertyTable } from "../components/PropertyTable";
+import { sym } from "../components/Sym";
 import { Card, ErrorNote, MenuIcon, PageLink, PageTitle } from "../components/ui";
 import { VesselViewer, type VesselMedia } from "../components/VesselViewer";
 import { formatG } from "../format";
 import { useDebounced } from "../hooks";
 import {
-  HYDRO_FEATURED, INITIAL, asOrder, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, downloadBlob,
-  feedRateMlMin, fillingRows, fillingTiles, heatBalanceTone, isDamkohler, kineticModel, sliderStep, solveMessage,
-  solveTiles, suspensionTone, temperatureTiles, transferTone, type FillingRequest, type FillingResult, type Inputs,
-  type PointRequest, type SolveResult, type TemperatureRequest, type TemperatureResult,
+  HYDRO_FEATURED, INITIAL, LOADING_BASES, asOrder, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose,
+  downloadBlob, feedRateMlMin, fillingRows, fillingTiles, fromG100, heatBalanceTone, isDamkohler, kineticModel, loadingUnit,
+  settlingTone, sliderStep, solidsVolPct, solveMessage, solveTiles, suspensionTone, switchBasis, temperatureTiles, toG100,
+  transferTone, type FillingRequest, type FillingResult, type Inputs, type LoadingBasis, type PointRequest, type SolveResult,
+  type TemperatureRequest, type TemperatureResult,
 } from "./assessment/model";
 
 const FILLING_GROUPS: [string, string][] = [
@@ -58,6 +60,12 @@ const num = (v: unknown, fallback: number) => {
 /** "Macromixing (bulk blending)" -> "Macromixing". */
 const stripParen = (s: string) => s.replace(/\s*\([^()]*\)\s*$/, "");
 
+/** "Not limiting - very slow settling ..." -> ["Not limiting", "very slow settling ..."]. */
+const splitStatus = (s: string): [string, string] => {
+  const [head, ...rest] = stripParen(stripIcon(s)).split(" - ");
+  return [head, rest.join(" - ")];
+};
+
 const valueOf = (rows: Row[], parameter: string) => rows.find((r) => r.Parameter === parameter)?.Value ?? "—";
 
 /** Parameter/Value/Units rows as tiles, colouring the row named ``statusRow`` with ``tone``. */
@@ -86,23 +94,35 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
           return (
             <InsightCard key={i} tone={toneOf(regime)} title={stripParen(String(r.Type))} status={stripIcon(regime)}>
               <div className="kpi-change">
-                {String(r["Damköhler"])} = {String(r.Value)}
+                {sym(String(r["Damköhler"]))} = {String(r.Value)}
               </div>
             </InsightCard>
           );
         })}
         {solids && (
-          <InsightCard tone={suspensionTone(suspension)} title="Solids suspension" status={stripParen(suspension)}>
-            <div className="kpi-change">N/N_js = {String(valueOf(t.solids, "N / N_js"))}</div>
-            {njsRow && (
-              <div className="muted">
-                N_js = {String(njsRow.Value)} RPM ({String(njsRow.Parameter).replace(/^N_js \(design, (.*)\)$/, "$1")})
-              </div>
-            )}
+          <InsightCard tone={suspensionTone(suspension)} title="Solids suspension" status={splitStatus(suspension)[0]}>
+            <div className="kpi-change">
+              {sym("N/N_js")} = {String(valueOf(t.solids, "N / N_js"))}
+            </div>
+            {splitStatus(suspension)[1] && <p className="tile-reason">{sym(splitStatus(suspension)[1])}</p>}
+            <dl className="tile-facts">
+              {njsRow && (
+                <>
+                  <dt>{sym("N_js")}</dt>
+                  <dd>
+                    {formatG(Number(njsRow.Value), 3)} RPM ({String(njsRow.Parameter).replace(/^N_js \(design, (.*)\)$/, "$1")})
+                  </dd>
+                </>
+              )}
+              <dt>{sym("v_t")}</dt>
+              <dd>
+                {String(valueOf(t.solids, "Settling velocity v_t"))} mm/s ({stripParen(String(valueOf(t.solids, "Settling class"))).toLowerCase()})
+              </dd>
+            </dl>
           </InsightCard>
         )}
         {t.heat.length > 0 && (
-          <InsightCard tone={heatBalanceTone(balance)} title="Heat balance" status={stripParen(stripIcon(balance))}>
+          <InsightCard tone={heatBalanceTone(balance)} title="Heat balance" status={splitStatus(balance)[0]}>
             {t.point.Q_gen_over_Q_cool_pct != null && (
               <div className="kpi-change">{formatG(t.point.Q_gen_over_Q_cool_pct, 3)}% of cooling</div>
             )}
@@ -142,7 +162,7 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
                 <InsightCard key={i} tone={transferTone(screening)} title={String(r["Transfer path"])} status={screening}>
                   <div className="kpi-change">{String(r["Capacity / demand"])}×</div>
                   <div className="muted">
-                    capacity / demand · kLa {String(r["kLa (1/s)"])} 1/s vs 1/t_rxn {String(r["Demand 1/t_rxn (1/s)"])} 1/s
+                    {sym(`kLa ${String(r["kLa (1/s)"])} 1/s vs 1/t_rxn ${String(r["Demand 1/t_rxn (1/s)"])} 1/s`)}
                   </div>
                 </InsightCard>
               );
@@ -156,17 +176,22 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
         <>
           <h3>Solids suspension and dissolution</h3>
           <p className="muted">
-            N_js is the higher of the Zwietering and GMB predictions; the suspension state uses that value.
+            N_js is the higher of the Zwietering and GMB predictions. N ≥ N_js decides first; below N_js the settling
+            velocity is weighed: slow-settling solids (v_t &lt; 3 mm/s) suspend more easily than the correlations predict, and
+            below 0.5 mm/s poor suspension is unlikely to limit (a settled bed still needs a minimum speed to lift off).
           </p>
           <StatGrid
             size="sm"
-            stats={statsFromRows(t.solids).map((s) =>
-              s.label === "Suspension state"
-                ? { ...s, value: stripParen(String(s.value)), tone: suspensionTone(suspension), wide: true }
-                : s.label === "N / N_js" || String(s.label).startsWith("N_js (design")
-                  ? { ...s, tone: suspensionTone(suspension) }
-                  : s,
-            )}
+            stats={statsFromRows(t.solids).map((s) => {
+              if (s.label === "Suspension state" || s.label === "N/N_js criterion") {
+                const [head, detail] = splitStatus(String(s.value));
+                return { ...s, value: head, hint: detail || undefined, tone: suspensionTone(String(s.value)), wide: true };
+              }
+              if (s.label === "Settling class") return { ...s, tone: settlingTone(String(s.value)), wide: true };
+              if (s.label === "N / N_js" || String(s.label).startsWith("N_js (design"))
+                return { ...s, tone: suspensionTone(String(valueOf(t.solids, "N/N_js criterion"))) };
+              return s;
+            })}
           />
           <TableDetails rows={t.solids} csvName="vessel_assessment_solids.csv" stale={stale} />
         </>
@@ -676,32 +701,27 @@ export function VesselAssessment() {
               }}
             />
             <InstrumentPanel title="Operating point">
-              {ranges ? (
-                <>
-                  <Knob
-                    label="Stir speed"
-                    value={inputs.N}
-                    onChange={(N) => set({ N })}
-                    min={ranges.N[0]}
-                    max={ranges.N[1]}
-                    step={sliderStep(ranges.N[1] - ranges.N[0])}
-                    unit="RPM"
-                  />
-                  <Fader
-                    label="Fill volume"
-                    value={inputs.V}
-                    onChange={(V) => set({ V })}
-                    min={ranges.V[0]}
-                    max={ranges.V[1]}
-                    step={sliderStep(ranges.V[1] - ranges.V[0])}
-                    unit="L"
-                  />
-                </>
-              ) : (
-                <>
-                  <NumberField label="Agitation speed N (RPM)" value={inputs.N} onChange={(N) => set({ N })} />
-                  <NumberField label="Fill volume (L)" value={inputs.V} onChange={(V) => set({ V })} />
-                </>
+              {ranges && (
+                <Knob
+                  label="Stir speed"
+                  value={inputs.N}
+                  onChange={(N) => set({ N })}
+                  min={ranges.N[0]}
+                  max={ranges.N[1]}
+                  step={sliderStep(ranges.N[1] - ranges.N[0])}
+                  unit="RPM"
+                />
+              )}
+              {ranges && (
+                <Fader
+                  label="Fill volume"
+                  value={inputs.V}
+                  onChange={(V) => set({ V })}
+                  min={ranges.V[0]}
+                  max={ranges.V[1]}
+                  step={sliderStep(ranges.V[1] - ranges.V[0])}
+                  unit="L"
+                />
               )}
               <Setpoint label="Temperature" value={inputs.T} onChange={(T) => set({ T })} unit="°C" />
               <Setpoint label="Pressure" value={inputs.P} onChange={(P) => set({ P })} unit="atm" step={0.1} min={0} />
@@ -792,7 +812,32 @@ export function VesselAssessment() {
                         { label: "Density ρ_p", unit: "kg/m³", value: inputs.rhoP, onChange: (rhoP) => set({ rhoP }) },
                         { label: "Size d50", unit: "µm", value: inputs.d50, onChange: (d50) => set({ d50 }) },
                         { label: "Shape factor φ", unit: "–", value: inputs.phi, onChange: (phi) => set({ phi }) },
-                        { label: "Solids loading", unit: "wt-%", value: inputs.xWt, onChange: (xWt) => set({ xWt }) },
+                        {
+                          label: "Loading basis",
+                          value: inputs.loadingBasis,
+                          options: LOADING_BASES,
+                          onChange: (v) =>
+                            set({
+                              loadingBasis: v as LoadingBasis,
+                              xWt: switchBasis(inputs.xWt, inputs.loadingBasis, v as LoadingBasis),
+                            }),
+                        },
+                        {
+                          label: "Solids loading",
+                          unit: loadingUnit(inputs.loadingBasis),
+                          value: inputs.xWt,
+                          onChange: (xWt) => set({ xWt }),
+                        },
+                        ...(() => {
+                          const x = toG100(Number(inputs.xWt), inputs.loadingBasis);
+                          const other: LoadingBasis = inputs.loadingBasis === "wt" ? "g100" : "wt";
+                          const vol = solidsVolPct(x, Number(inputs.rho), Number(inputs.rhoP));
+                          const show = (v: number) => (Number.isFinite(v) ? formatG(v, 4) : "—");
+                          return [
+                            { label: "= Solids loading", unit: loadingUnit(other), readOnly: true, value: show(fromG100(x, other)) },
+                            { label: "= Solids volume fraction", unit: "vol-%", readOnly: true, value: show(vol) },
+                          ];
+                        })(),
                       ],
                     },
                     {

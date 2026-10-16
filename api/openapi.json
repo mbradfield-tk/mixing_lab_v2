@@ -5314,6 +5314,16 @@
             "title": "Summary Note",
             "type": "string"
           },
+          "suspension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreeningSuspension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "t_rxn_s": {
             "anyOf": [
               {
@@ -5491,6 +5501,17 @@
             "default": false,
             "title": "Semi Batch",
             "type": "boolean"
+          },
+          "solids": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SolidsSpec"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Particle properties; with phase 'solid' and a screening vessel, N/N_js is checked"
           }
         },
         "required": [
@@ -5569,6 +5590,16 @@
             },
             "title": "Steps",
             "type": "array"
+          },
+          "suspension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreeningSuspension"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "verdict": {
             "$ref": "#/components/schemas/MessageOut"
@@ -6450,6 +6481,118 @@
           "Da_micro"
         ],
         "title": "ScreeningDamkohler",
+        "type": "object"
+      },
+      "ScreeningSuspension": {
+        "additionalProperties": false,
+        "properties": {
+          "N_js_gmb_rpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Grenville-Mak-Brown just-suspended speed",
+            "title": "N Js Gmb Rpm"
+          },
+          "N_js_rpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Higher of the two (used for the assessment)",
+            "title": "N Js Rpm"
+          },
+          "N_js_zw_rpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Zwietering just-suspended speed",
+            "title": "N Js Zw Rpm"
+          },
+          "N_rpm": {
+            "title": "N Rpm",
+            "type": "number"
+          },
+          "governs": {
+            "title": "Governs",
+            "type": "string"
+          },
+          "kind": {
+            "default": "unknown",
+            "enum": [
+              "critical",
+              "warning",
+              "caution",
+              "ok",
+              "unknown"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "N / N_js",
+            "title": "Ratio"
+          },
+          "reactor": {
+            "title": "Reactor",
+            "type": "string"
+          },
+          "settling": {
+            "default": "",
+            "description": "Settling-velocity class",
+            "title": "Settling",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "description": "Suspension conclusion (N/N_js and settling)",
+            "title": "Status",
+            "type": "string"
+          },
+          "v_t_m_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Particle settling velocity",
+            "title": "V T M S"
+          }
+        },
+        "required": [
+          "reactor",
+          "N_rpm",
+          "N_js_zw_rpm",
+          "N_js_gmb_rpm",
+          "N_js_rpm",
+          "governs",
+          "ratio"
+        ],
+        "title": "ScreeningSuspension",
         "type": "object"
       },
       "ScreeningVessel": {

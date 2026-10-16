@@ -4,7 +4,9 @@ from __future__ import annotations
 import pandas as pd
 
 from core import sensitivity_rules as rules
-from utils.calculations import heat_balance_assessment, particle_suspension_criterion
+from utils.calculations import (
+    heat_balance_assessment, particle_suspension_criterion, settling_class, suspension_state,
+)
 
 TABLE_COLUMNS = ["Parameter", "Value", "Units"]
 MT_COLUMNS = ["Transfer path", "kLa (1/s)", "Demand 1/t_rxn (1/s)", "Capacity / demand",
@@ -39,15 +41,19 @@ def assessment_tables(hydro: dict, n_rpm: float, t_rxn: float, *, solids_on: boo
         n_js_rpm = hydro.get("N_js (RPM)", 0.0)
         n_zw, n_gmb = njs_split or (0.0, 0.0)
         governs = "GMB" if n_gmb > n_zw else "Zwietering"
-        assess = particle_suspension_criterion(n_rpm / 60.0, n_js_rpm / 60.0)
+        v_t = hydro.get("v_t (m/s)", 0.0)
         solids = pd.DataFrame([
             {"Parameter": "N_js (Zwietering)", "Value": f"{n_zw:.1f}", "Units": "RPM"},
             {"Parameter": "N_js (GMB)", "Value": f"{n_gmb:.1f}", "Units": "RPM"},
             {"Parameter": f"N_js (design, {governs})", "Value": f"{n_js_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "Operating speed N", "Value": f"{n_rpm:.1f}", "Units": "RPM"},
             {"Parameter": "N / N_js", "Value": f"{(n_rpm / n_js_rpm) if n_js_rpm > 0 else 0:.2f}", "Units": "–"},
-            {"Parameter": "Suspension state", "Value": assess, "Units": "–"},
-            {"Parameter": "Settling velocity v_t", "Value": f"{hydro.get('v_t (m/s)', 0.0):.3g}", "Units": "m/s"},
+            {"Parameter": "N/N_js criterion",
+             "Value": particle_suspension_criterion(n_rpm / 60.0, n_js_rpm / 60.0), "Units": "–"},
+            {"Parameter": "Settling velocity v_t", "Value": f"{v_t * 1000:.3g}", "Units": "mm/s"},
+            {"Parameter": "Settling class", "Value": settling_class(v_t)[1], "Units": "–"},
+            {"Parameter": "Suspension state",
+             "Value": suspension_state(n_rpm / 60.0, n_js_rpm / 60.0, v_t), "Units": "–"},
             {"Parameter": "Solid-liquid k_SL", "Value": f"{hydro.get('k_SL (m/s)', 0.0):.3g}", "Units": "m/s"},
             {"Parameter": "Solid-liquid kLa_SL", "Value": f"{kla_sl:.3g}", "Units": "1/s"},
         ])

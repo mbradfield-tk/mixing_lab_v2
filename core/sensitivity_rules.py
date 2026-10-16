@@ -16,7 +16,9 @@ import numpy as np
 from core.messages import Action, Finding, Message
 from core.options import BourneStatus, Competing, DhAction, Kinetics, Mechanism, Phase
 from utils.bourne_kpi import SENS_THRESHOLD, kpi_prefix, threshold_phrase
-from utils.calculations import characteristic_reaction_time
+from utils.calculations import (
+    SETTLING_SLOW, SETTLING_VERY_SLOW, characteristic_reaction_time, settling_class,
+)
 
 TEST_PURPOSE = {1: "impeller speed", 2: "feed rate/time", 3: "feed location"}
 
@@ -215,21 +217,34 @@ def mass_transfer_screen(paths: list[tuple[str, float]], t_rxn: float) -> list[d
 
 
 def correlation_applicability(hydro: dict, geometry, row, v_l: float,
-                              gas_on: bool, solids_on: bool) -> str:
+                              gas_on: bool, solids_on: bool, solids: dict | None = None) -> str:
     """Markdown summary of :func:`applicability_checks`."""
-    res = applicability_checks(hydro, geometry, row, v_l, gas_on, solids_on)
+    res = applicability_checks(hydro, geometry, row, v_l, gas_on, solids_on, solids)
     lines = ["**Correlation applicability:** " + "; ".join(res["checks"]) + "."]
     if res["warnings"]:
-        lines.append("**Review required:** " + "; ".join(res["warnings"]) + ".")
+        lines.append("**Review required:**\n\n" + "\n".join(f"- {w}" for w in res["warnings"]))
     return "\n\n".join(lines)
 
 
+# Ranges of the data behind each correlation (outside them a value is an extrapolation).
+ZWIETERING_DP_UM = (125.0, 850.0)       # Zwietering (1958) particle sizes
+SUSPENSION_LOADING_WT = (0.5, 20.0)     # wt-% of slurry in the Zwietering data
+SUSPENSION_D_T = (0.25, 0.5)            # typical D/T of the N_js data sets
+SUSPENSION_XV_MAX = 15.0                # vol-%; above it settling is hindered
+VANT_RIET_PV = (500.0, 10_000.0)        # W/m³, van 't Riet (1979)
+VANT_RIET_V_M3 = 2.6                    # m³ (coalescing data)
+SCHILLER_NAUMANN_REP = 800.0            # upper Re_p of the drag correction
+BLEND_H_T = (0.5, 1.5)                  # Grenville blend time is fitted near H/T = 1
+
+
 def applicability_checks(hydro: dict, geometry, row, v_l: float,
-                         gas_on: bool, solids_on: bool) -> dict[str, list[str]]:
+                         gas_on: bool, solids_on: bool,
+                         solids: dict | None = None) -> dict[str, list[str]]:
     """{checks, warnings}: applicability of the stirred-tank correlations.
 
     ``geometry`` is a :class:`core.records.VesselGeometry`; ``row`` is the reactor
-    database row (baffles, impeller clearance and count are read from it).
+    database row (baffles, impeller clearance and count are read from it). ``solids``
+    (d50_um, x_wt [g/100 g liquid], phi_s, S_zw, gmb_z) adds the suspension checks.
     """
     def _num(value, default=0.0) -> float:
         try:
@@ -243,9 +258,11 @@ def applicability_checks(hydro: dict, geometry, row, v_l: float,
     if reynolds <= 0:
         warnings.append("Reynolds regime unavailable")
     elif reynolds < 10:
-        warnings.append(f"laminar regime (Re = {reynolds:.3g}); turbulent correlations are not applicable")
+        warnings.append(f"laminar regime (Re = {reynolds:.3g}); the turbulent correlations (blend time, "
+                        "t_E, ε_max, Kolmogorov scale, kLa, N_js) are not applicable")
     elif reynolds < 1e4:
-        warnings.append(f"transitional regime (Re = {reynolds:.3g}); correlation uncertainty is elevated")
+        warnings.append(f"transitional regime (Re = {reynolds:.3g}); the turbulent correlations (blend "
+                        "time, t_E, ε_max, Kolmogorov scale, kLa, N_js) are extrapolated")
     else:
         checks.append(f"turbulent regime (Re = {reynolds:,.0f})")
 
@@ -256,7 +273,16 @@ def applicability_checks(hydro: dict, geometry, row, v_l: float,
     else:
         warnings.append(f"impeller/tank diameter ratio = {d_ratio:.3f} is outside the typical 0.2–0.7 range")
 
-    submergence = geometry.liquid_height(v_l) / imp_d if imp_d > 0 else 0.0
+    h_liq = geometry.liquid_height(v_l)
+    h_t = h_liq / tank_d if tank_d > 0 else 0.0
+    if BLEND_H_T[0] <= h_t <= BLEND_H_T[1]:
+        checks.append(f"liquid height/tank diameter = {h_t:.2f}")
+    else:
+        warnings.append(f"liquid height/tank diameter = {h_t:.2f}; the Grenville blend time is fitted "
+                        f"for H/T ≈ 1 ({BLEND_H_T[0]:g}–{BLEND_H_T[1]:g}), so θ₉₅ and Da_macro are "
+                        "extrapolated")
+
+    submergence = h_liq / imp_d if imp_d > 0 else 0.0
     if submergence >= 1.0:
         checks.append(f"liquid height/impeller diameter = {submergence:.2f}")
     else:
@@ -281,10 +307,67 @@ def applicability_checks(hydro: dict, geometry, row, v_l: float,
         checks.append("single impeller")
 
     warnings.append("Newtonian-fluid assumption applies; non-Newtonian rheology requires a dedicated correlation")
-    checks.append("gas loading included" if gas_on else "no gas loading")
-    checks.append("solids loading enabled; verify particle-concentration range" if solids_on
-                  else "no solids loading")
+    pv_m3 = _num(hydro.get("P/V (W/m³)"))
+    if gas_on and _num(hydro.get("kLa (1/s)")) > 0:
+        lo, hi = VANT_RIET_PV
+        if lo <= pv_m3 <= hi:
+            checks.append(f"sparged kLa within the van 't Riet P/V range ({pv_m3:,.0f} W/m³)")
+        else:
+            warnings.append(f"P/V = {pv_m3:,.0f} W/m³ is outside the {lo:,.0f}–{hi:,.0f} W/m³ range of the "
+                            "van 't Riet kLa correlation")
+        if v_l / 1000.0 > VANT_RIET_V_M3:
+            warnings.append(f"liquid volume {v_l / 1000:.3g} m³ exceeds the {VANT_RIET_V_M3:g} m³ of the van "
+                            "'t Riet data")
+    elif gas_on:
+        checks.append("gas loading included; surface kLa (Lamont & Scott) is an order-of-magnitude estimate")
+    else:
+        checks.append("no gas loading")
+    if solids_on:
+        _solids_checks(hydro, d_ratio, solids or {}, checks, warnings)
+    else:
+        checks.append("no solids loading")
     return {"checks": checks, "warnings": warnings}
+
+
+def _solids_checks(hydro: dict, d_ratio: float, solids: dict, checks: list[str],
+                   warnings: list[str]) -> None:
+    """Suspension (Zwietering, GMB), settling and particle mass-transfer ranges."""
+    d50 = float(solids.get("d50_um") or 0.0)
+    lo, hi = ZWIETERING_DP_UM
+    if d50 and d50 < lo:
+        warnings.append(f"d50 = {d50:.3g} µm is below the {lo:.0f}–{hi:.0f} µm of the N_js data; "
+                        "Zwietering and GMB over-predict N_js for fine particles")
+    elif d50 > hi:
+        warnings.append(f"d50 = {d50:.3g} µm is above the {lo:.0f}–{hi:.0f} µm of the N_js data")
+    elif d50:
+        checks.append(f"d50 = {d50:.3g} µm within the N_js data range")
+    eta = float(hydro.get("Kolmogorov η (µm)") or 0.0)
+    if d50 and eta and d50 <= eta:
+        warnings.append(f"d50 ({d50:.3g} µm) ≤ Kolmogorov scale ({eta:.3g} µm): particles follow the "
+                        "turbulence, so N_js is not the limiting check")
+    x = float(solids.get("x_wt") or 0.0)
+    wt = 100.0 * x / (100.0 + x) if x > 0 else 0.0
+    lo, hi = SUSPENSION_LOADING_WT
+    if wt and not lo <= wt <= hi:
+        warnings.append(f"solids loading {wt:.3g} wt-% is outside the {lo:g}–{hi:g} wt-% of the N_js data")
+    xv = float(solids.get("phi_s") or 0.0) * 100.0
+    if xv > SUSPENSION_XV_MAX:
+        warnings.append(f"solids volume fraction {xv:.3g} vol-% > {SUSPENSION_XV_MAX:g}%: hindered "
+                        "settling; the dilute-slurry correlations over-simplify")
+    lo, hi = SUSPENSION_D_T
+    if not lo <= d_ratio <= hi:
+        warnings.append(f"D/T = {d_ratio:.2f} is outside the ~{lo:g}–{hi:g} of the N_js data; Zwietering S "
+                        "and GMB z are geometry-specific")
+    if solids.get("S_zw") == 5.5 or solids.get("gmb_z") == 3.0:
+        warnings.append("generic suspension constants (Zwietering S = 5.5 / GMB z = 3.0); use values for "
+                        "this impeller type, D/T and clearance")
+    re_p = float(hydro.get("Re_p") or 0.0)
+    if re_p > SCHILLER_NAUMANN_REP:
+        warnings.append(f"particle Re_p = {re_p:.3g} > {SCHILLER_NAUMANN_REP:.0f}: outside the "
+                        "Schiller–Naumann drag range (settling velocity, k_SL)")
+    v_t = float(hydro.get("v_t (m/s)") or 0.0)
+    if v_t:
+        checks.append(f"settling velocity v_t = {v_t * 1000:.3g} mm/s")
 
 
 def da_band(da: float) -> str:
@@ -338,10 +421,86 @@ def _da_finding(da_value: float) -> tuple[str, str]:
     return "ok", "Unlikely"
 
 
+# N/N_js margin for reliable full suspension (below it, solids are only just lifted).
+SUSPENSION_MARGIN = 1.3
+_KIND_RANK = {"ok": 1, "caution": 2, "warning": 3, "critical": 4}
+
+
+def suspension_band(ratio: float, v_t: float | None = None) -> tuple[str, str]:
+    """(kind, status) of an N/N_js ratio; below N_js, slow settling (``v_t`` in m/s) makes poor
+    suspension unlikely but not ruled out (a settled bed still needs a minimum speed)."""
+    if ratio >= SUSPENSION_MARGIN:
+        return "ok", "Fully suspended (N > 1.3·N_js)"
+    if ratio >= 1.0:
+        return "warning", "Just suspended (N > N_js)"
+    if v_t is not None and 0 < v_t < SETTLING_VERY_SLOW:
+        return "ok", "Unlikely limiting (very slow settling)"
+    if v_t is not None and 0 < v_t < SETTLING_SLOW:
+        return "warning", "Likely suspended (slow settling)"
+    if ratio < 0.7:
+        return "critical", "Poorly suspended"
+    return "critical", "Not fully suspended"
+
+
+def _band(sus: dict) -> tuple[str, str]:
+    return suspension_band(sus["ratio"], sus.get("v_t"))
+
+
+def suspension_text(sus: dict) -> str:
+    text = (f"N/N_js = {sus['ratio']:.2f} (N {sus['N_rpm']:.0f} RPM vs N_js "
+            f"{sus['N_js_rpm']:.0f} RPM, {sus['governs']}; Zwietering {sus['N_js_zw_rpm']:.0f}, "
+            f"GMB {sus['N_js_gmb_rpm']:.0f}) in {sus['reactor']}")
+    if sus.get("v_t"):
+        text += f"; v_t = {sus['v_t'] * 1000:.2g} mm/s ({settling_class(sus['v_t'])[1].lower()})"
+    return text
+
+
+def _fine_note(sus: dict) -> str:
+    d50 = sus.get("d50_um") or 0.0
+    if d50 and d50 < ZWIETERING_DP_UM[0]:
+        return (f" d50 = {d50:.3g} µm is below the {ZWIETERING_DP_UM[0]:.0f} µm lower limit of the N_js "
+                "data, so N_js is over-predicted.")
+    return ""
+
+
+def _suspension_finding(sus: dict | None) -> tuple[str, str, str, str]:
+    """(kind, status, detail, code) of the solids-suspension finding."""
+    if not sus:
+        return ("warning", "Check N/N_js",
+                "Solids present - below the just-suspended speed N_js, settled solids cut the "
+                "wetted surface and the rate depends on agitation. Pick a vessel (Step 7) and the "
+                "particle properties to compute N/N_js.", "suspension.unchecked")
+    kind, status = _band(sus)
+    text = suspension_text(sus)
+    v_t = sus.get("v_t") or 0.0
+    if sus["ratio"] >= SUSPENSION_MARGIN:
+        detail = f"{text} - N is above 1.3·N_js. Re-check N_js in the target vessel."
+        code = "suspension.ok"
+    elif sus["ratio"] >= 1.0:
+        detail = (f"{text} - N is above N_js but with little margin; aim for N ≥ "
+                  f"{SUSPENSION_MARGIN:g}·N_js. Re-check N_js in the target vessel.")
+        code = "suspension.marginal"
+    elif 0 < v_t < SETTLING_VERY_SLOW:
+        detail = (f"{text} - N is below N_js, but settling is so slow that poor suspension is "
+                  "unlikely to limit the rate. A settled bed still needs a minimum speed to lift "
+                  "off, so confirm the solids are moving at start-up.")
+        code = "suspension.slow_settling"
+    elif 0 < v_t < SETTLING_SLOW:
+        detail = (f"{text} - N is below N_js, but slow-settling solids suspend more easily than "
+                  "the N_js correlations predict; confirm visually.")
+        code = "suspension.slow_settling"
+    else:
+        detail = (f"{text} - settled solids make the rate agitation-dependent. Raise the speed "
+                  "above N_js.")
+        code = "suspension.below_njs"
+    return kind, status, detail + _fine_note(sus), code
+
+
 def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
                    meso_sensitive, competing, is_semi_batch, multiphase, phases,
                    has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known,
-                   using_approx=False, dh_estimated=False, da=None) -> list[Finding]:
+                   using_approx=False, dh_estimated=False, da=None,
+                   suspension=None) -> list[Finding]:
     findings: list[Finding] = []
 
     def add(area, kind, status, detail, code):
@@ -463,6 +622,9 @@ def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
         add("Mass transfer", "ok", "Not applicable",
             f"Single phase ({phase_lbl}) - no interphase transport.", "mass_transfer.single_phase")
 
+    if Phase.SOLID in phases:
+        add("Solids suspension", *_suspension_finding(suspension))
+
     # Heat transfer
     detail = f"|ΔH| = {abs(dH_eff):.1f} kJ/mol"
     if dt_ad is not None:
@@ -486,7 +648,8 @@ def build_findings(b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
     return findings
 
 
-MIXING_GROUPS = ("micromixing", "selectivity", "mesomixing", "macromixing", "mass_transfer")
+MIXING_GROUPS = ("micromixing", "selectivity", "mesomixing", "macromixing", "mass_transfer",
+                 "suspension")
 
 
 def _group(f: Finding) -> str:
@@ -503,6 +666,8 @@ def _confirm_by(groups: set[str], da_done: bool) -> str:
         parts.append("feed-rate and feed-location tests (Bourne Tests 2 and 3)")
     if "mass_transfer" in groups:
         parts.append("Da_GL / Da_SL on the Vessel Assessment page")
+    if "suspension" in groups:
+        parts.append("N/N_js at the target scale")
     if len(parts) > 1:
         return ", ".join(parts[:-1]) + " and " + parts[-1]
     return parts[0] if parts else "a vessel-specific assessment"
@@ -608,7 +773,7 @@ _MECH_ACTIONS = {
 def build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
                      meso_sensitive, multiphase, has_enthalpy, heat_limiting, is_semi_batch,
                      kinetics_known, kinetics_declined, dh_estimated=False, *,
-                     b_done=(), da_done=False) -> list[Action]:
+                     b_done=(), da_done=False, solids=False, suspension=None) -> list[Action]:
     steps: list[Action] = []
     rem = remaining_tests(b_done)
     if b_sensitive is None:
@@ -647,6 +812,20 @@ def build_next_steps(b_sensitive, b_mechs, using_approx, micro_likely, t_rxn,
     if multiphase:
         steps.append(Action("Mass transfer", "Assess Da_GL / Da_SL on the Vessel Assessment "
                             "page.", "mass_transfer.assess"))
+    if solids and not suspension:
+        steps.append(Action("Solids suspension", "Compute N/N_js for your vessel (Step 7 vessel "
+                            f"or Vessel Assessment) and keep N ≥ {SUSPENSION_MARGIN:g}·N_js.",
+                            "suspension.compute"))
+    elif solids and _band(suspension)[1].startswith(("Likely suspended", "Unlikely limiting")):
+        steps.append(Action("Solids suspension", "Confirm suspension visually (no solids resting on "
+                            "the base for more than 1-2 s, including at start-up); slow-settling "
+                            "solids need less than the predicted N_js but still a minimum speed "
+                            "to lift off.", "suspension.confirm_visually"))
+    elif solids and _band(suspension)[0] != "ok":
+        steps.append(Action("Solids suspension", "Raise the agitation to ≥ "
+                            f"{SUSPENSION_MARGIN * suspension['N_js_rpm']:.0f} RPM "
+                            f"({SUSPENSION_MARGIN:g}·N_js), or reduce the particle size / "
+                            "loading.", "suspension.raise_speed"))
     if has_enthalpy and heat_limiting:
         steps.append(Action("Heat transfer", "Run a heat balance (Vessel Assessment or Heat "
                             "Transfer) against the jacket duty.", "heat.balance"))
@@ -887,11 +1066,12 @@ def kinetics_md(kin: dict) -> str:
 
 
 def assess_protocol(inp: ProtocolInputs,
-                    damkohler_for: Callable[[float], dict | None] | None = None) -> dict:
+                    damkohler_for: Callable[[float], dict | None] | None = None,
+                    suspension: dict | None = None) -> dict:
     """Run every step of the Reaction Sensitivity Protocol.
 
     ``damkohler_for(t_rxn)`` optionally returns reactor-specific Da numbers (see
-    ``da_caption``) for Step 5. Returns structured results: ``steps`` (one
+    ``da_caption``) for Step 5; ``suspension`` the vessel N/N_js (used with solids). Returns structured results: ``steps`` (one
     :class:`Message` or None per step 0-5), ``findings``, ``verdict``,
     ``next_steps``, ``ready`` and the underlying values. Render with :func:`protocol_md`.
     """
@@ -968,6 +1148,19 @@ def assess_protocol(inp: ProtocolInputs,
         steps[2] = Message(
             "caution", f"**Only {phase_names[0].lower()} selected** - check the liquid phase "
             "is not missing.", "phases.single_other")
+    solids = Phase.SOLID in phases
+    if not solids:
+        suspension = None
+    else:
+        if suspension:
+            sus_kind, sus_status = _band(suspension)
+            note = f" **Solids: {sus_status.lower()}** - {suspension_text(suspension)}."
+        else:
+            sus_kind = "warning"
+            note = (" **Solids must also be suspended** (N ≥ N_js) - pick a vessel in Step 7 "
+                    "to check N/N_js.")
+        worst = max((steps[2].kind, sus_kind), key=lambda k: _KIND_RANK.get(k, 0))
+        steps[2] = Message(worst, steps[2].text + note, steps[2].code)
 
     # ---- Step 3: competing reactions -----------------------------------
     competing = inp.competing
@@ -1100,12 +1293,13 @@ def assess_protocol(inp: ProtocolInputs,
         b_sensitive, b_mechs, b_done, test_rows, t_rxn, micro_likely,
         meso_sensitive, competing, is_semi_batch, multiphase, phases,
         has_enthalpy, heat_limiting, dH_eff, dt_ad, kinetics_known, using_approx,
-        dh_estimated, da)
+        dh_estimated, da, suspension)
     verdict = verdict_message(b_sensitive, b_mechs, b_done, findings, competing)
     next_steps = build_next_steps(
         b_sensitive, b_mechs, using_approx, micro_likely, t_rxn, meso_sensitive,
         multiphase, has_enthalpy, heat_limiting, is_semi_batch, kinetics_known,
-        kinetics_declined, dh_estimated, b_done=b_done, da_done=da is not None)
+        kinetics_declined, dh_estimated, b_done=b_done, da_done=da is not None,
+        solids=solids, suspension=suspension)
 
     return {
         "steps": steps, "findings": findings, "verdict": verdict, "next_steps": next_steps,
@@ -1115,6 +1309,7 @@ def assess_protocol(inp: ProtocolInputs,
         "show_dh_action": show_dh_action, "dH_eff": dH_eff, "dt_ad": dt_ad,
         "heat_summary": heat_summary, "dh_estimated": dh_estimated, "phases": phases,
         "competing_set": competing_set, "is_semi_batch": is_semi_batch, "da": da,
+        "suspension": suspension,
         "bourne_rows": test_rows, "b_sensitive": b_sensitive, "b_mechs": b_mechs,
     }
 

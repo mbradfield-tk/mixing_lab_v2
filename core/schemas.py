@@ -436,6 +436,9 @@ class ProtocolRequest(Contract):
     rho_cp_kJ_m3K: float = Field(1800.0, ge=0, description="Volumetric heat capacity ρ·Cp")
     screening_vessel: ScreeningVessel | None = Field(
         None, description="Vessel for the reactor-specific Da_macro / Da_micro screen")
+    solids: SolidsSpec | None = Field(
+        None, description="Particle properties; with phase 'solid' and a screening vessel, "
+        "N/N_js is checked")
 
 
 class MessageOut(Contract):
@@ -488,6 +491,19 @@ class ScreeningDamkohler(Contract):
     Da_micro: Num
 
 
+class ScreeningSuspension(Contract):
+    reactor: str
+    N_rpm: float
+    N_js_zw_rpm: Num = Field(description="Zwietering just-suspended speed")
+    N_js_gmb_rpm: Num = Field(description="Grenville-Mak-Brown just-suspended speed")
+    N_js_rpm: Num = Field(description="Higher of the two (used for the assessment)")
+    governs: str
+    ratio: Num = Field(description="N / N_js")
+    v_t_m_s: Num = Field(None, description="Particle settling velocity")
+    settling: str = Field("", description="Settling-velocity class")
+    status: str = Field("", description="Suspension conclusion (N/N_js and settling)")
+    kind: Kind = "unknown"
+
 class ProtocolResult(Contract):
     ready: bool = Field(description="False until kinetics, phases, competing and heat are answered; "
                         "verdict is provisional")
@@ -499,6 +515,7 @@ class ProtocolResult(Contract):
     kinetics: KineticsOut
     heat: HeatOut
     damkohler: ScreeningDamkohler | None
+    suspension: ScreeningSuspension | None = None
     bourne_sensitive: bool | None
     bourne_mechanisms: list[str]
 
@@ -549,6 +566,7 @@ class ProtocolPage(Contract):
     actions: list[ActionOut]
     t_rxn_s: Num | None = Field(description="Reaction time used for Da (None when kinetics unknown)")
     damkohler: ScreeningDamkohler | None
+    suspension: ScreeningSuspension | None = None
 
 
 class BourneImport(Contract):

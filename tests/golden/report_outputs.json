@@ -784,14 +784,24 @@
      "Units": "–"
     },
     {
-     "Parameter": "Suspension state",
+     "Parameter": "N/N_js criterion",
      "Value": "Partially suspended (N/Njs=0.79)",
      "Units": "–"
     },
     {
      "Parameter": "Settling velocity v_t",
-     "Value": "0.000887",
-     "Units": "m/s"
+     "Value": "0.887",
+     "Units": "mm/s"
+    },
+    {
+     "Parameter": "Settling class",
+     "Value": "Slow settling (0.5–3 mm/s)",
+     "Units": "–"
+    },
+    {
+     "Parameter": "Suspension state",
+     "Value": "Likely suspended - slow settling (v_t < 3 mm/s), although N < N_js; the N_js correlations are conservative here",
+     "Units": "–"
     },
     {
      "Parameter": "Solid-liquid k_SL",

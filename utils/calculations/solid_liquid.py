@@ -28,6 +28,8 @@ REFERENCES (per function)
         Specific-area definition for monodisperse spheres.  [definition]
     particle_suspension_criterion
         Qualitative N/N_js bands are heuristic.  [SOURCE MISSING - heuristic]
+    settling_class / suspension_state
+        Settling-velocity classes: Gates, Morton & Fondy (1976), Chem. Eng. 83(11), 144.
 """
 
 import numpy as np
@@ -131,3 +133,45 @@ def particle_suspension_criterion(N: float, N_js: float) -> str:
         return f"Just suspended (N/Njs={ratio:.2f})"
     else:
         return f"Fully suspended (N/Njs={ratio:.2f})"
+
+
+# Settling-velocity classes (m/s) after Gates, Morton & Fondy (1976), Chem. Eng. 83(11), 144:
+# slow-settling solids are 0.1-0.6 ft/min (0.0005-0.003 m/s), moderate 4-8 ft/min, fast 16-60 ft/min.
+SETTLING_VERY_SLOW = 0.0005
+SETTLING_SLOW = 0.003
+SETTLING_MODERATE = 0.02
+
+
+def settling_class(v_t: float) -> tuple[str, str]:
+    """(kind, label) of a terminal settling velocity."""
+    if v_t <= 0:
+        return "unknown", "Unknown"
+    if v_t < SETTLING_VERY_SLOW:
+        return "ok", "Very slow settling (< 0.5 mm/s)"
+    if v_t < SETTLING_SLOW:
+        return "ok", "Slow settling (0.5–3 mm/s)"
+    if v_t < SETTLING_MODERATE:
+        return "warning", "Moderate settling (3–20 mm/s)"
+    return "critical", "Fast settling (> 20 mm/s)"
+
+
+def suspension_state(N: float, N_js: float, v_t: float) -> str:
+    """"<status> - <reason>": N ≥ N_js decides first; below N_js, slow settling makes poor
+    suspension unlikely (the N_js correlations are fitted to faster-settling particles), but a
+    settled bed still needs a minimum speed to lift off, so it is not ruled out."""
+    ratio = N / N_js if N_js > 0 else 0.0
+    if ratio >= 1.3:
+        return "Fully suspended - N > 1.3·N_js"
+    if ratio >= 1.0:
+        return "Just suspended - N > N_js with little margin; aim for N ≥ 1.3·N_js"
+    if 0 < v_t < SETTLING_VERY_SLOW:
+        return ("Unlikely limiting - very slow settling (v_t < 0.5 mm/s), although N < N_js; "
+                "confirm the solids lift off the base at start-up")
+    if 0 < v_t < SETTLING_SLOW:
+        return ("Likely suspended - slow settling (v_t < 3 mm/s), although N < N_js; the N_js "
+                "correlations are conservative here")
+    if N_js <= 0:
+        return "N/A"
+    if ratio < 0.7:
+        return "Poorly suspended - N < 0.7·N_js"
+    return "Partially suspended - N < N_js"

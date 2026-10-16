@@ -3966,28 +3966,32 @@
   },
   "findings": [
    {
-    "Finding": "⚪ Not performed - Run Bourne Test 1 for a direct experimental answer.",
-    "Sensitivity Type": "Bourne pre-screen"
+    "Sensitivity Type": "Bourne pre-screen",
+    "Finding": "⚪ Not performed - Run Bourne Test 1 for a direct experimental answer."
    },
    {
-    "Finding": "🟢 Unlikely - t_rxn = 100 s - slow vs micromixing.",
-    "Sensitivity Type": "Micromixing"
+    "Sensitivity Type": "Micromixing",
+    "Finding": "🟢 Unlikely - t_rxn = 100 s - slow vs micromixing."
    },
    {
-    "Finding": "🟢 Not a factor - No competing reactions and no feed.",
-    "Sensitivity Type": "Micro/mesomixing (selectivity)"
+    "Sensitivity Type": "Micro/mesomixing (selectivity)",
+    "Finding": "🟢 Not a factor - No competing reactions and no feed."
    },
    {
-    "Finding": "🟢 Unlikely - t_rxn = 100 s - much longer than blend times.",
-    "Sensitivity Type": "Macromixing (blend time)"
+    "Sensitivity Type": "Macromixing (blend time)",
+    "Finding": "🟢 Unlikely - t_rxn = 100 s - much longer than blend times."
    },
    {
-    "Finding": "🟡 System-dependent - Interphase transport may limit the rate. Check gas–liquid kLa and solid–liquid transport.",
-    "Sensitivity Type": "Mass transfer (Liquid + Solid)"
+    "Sensitivity Type": "Mass transfer (Liquid + Solid)",
+    "Finding": "🟡 System-dependent - Interphase transport may limit the rate. Check gas–liquid kLa and solid–liquid transport."
    },
    {
-    "Finding": "🔴 Likely heat-transfer-limited - |ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K - check cooling capacity with a heat balance.",
-    "Sensitivity Type": "Heat transfer"
+    "Sensitivity Type": "Solids suspension",
+    "Finding": "🟡 Check N/N_js - Solids present - below the just-suspended speed N_js, settled solids cut the wetted surface and the rate depends on agitation. Pick a vessel (Step 7) and the particle properties to compute N/N_js."
+   },
+   {
+    "Sensitivity Type": "Heat transfer",
+    "Finding": "🔴 Likely heat-transfer-limited - |ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K - check cooling capacity with a heat balance."
    }
   ],
   "ms_da_caption": "",
@@ -3997,7 +4001,7 @@
   "ms_show_dh_action": false,
   "ms_step0_assess": "🟡 **Bourne pre-screen skipped** - using theory only. A Bourne test gives a direct answer.",
   "ms_step1_assess": "🟢 **Kinetics available.**",
-  "ms_step2_assess": "🟡 **Multi-phase** (Liquid + Solid) - interphase transfer may limit the rate. Check Da_GL / Da_SL on the Vessel Assessment page.",
+  "ms_step2_assess": "🟡 **Multi-phase** (Liquid + Solid) - interphase transfer may limit the rate. Check Da_GL / Da_SL on the Vessel Assessment page. **Solids must also be suspended** (N ≥ N_js) - pick a vessel in Step 7 to check N/N_js.",
   "ms_step3_assess": "🟢 **No competing reactions** in a batch process - selectivity is unlikely to depend on mixing.",
   "ms_step4_assess": "🔴 **Moderately exothermic** reaction - |ΔH| = 50.0 kJ/mol, ΔT_ad ≈ 28 K. **Heat transfer likely limiting** - check cooling capacity with a heat balance.",
   "ms_step5_assess": "🟢 **Slow reaction** - mixing is unlikely to limit. This is a rough screen - confirm with Da_macro / Da_micro for a vessel (below, or on the Vessel Assessment page).",
@@ -4011,6 +4015,10 @@
    {
     "Area": "Mass transfer",
     "Recommended action": "Assess Da_GL / Da_SL on the Vessel Assessment page."
+   },
+   {
+    "Area": "Solids suspension",
+    "Recommended action": "Compute N/N_js for your vessel (Step 7 vessel or Vessel Assessment) and keep N ≥ 1.3·N_js."
    },
    {
     "Area": "Heat transfer",
@@ -5013,32 +5021,36 @@
   },
   "findings": [
    {
-    "Finding": "⚪ Not performed - Run Bourne Test 1 for a direct experimental answer.",
-    "Sensitivity Type": "Bourne pre-screen"
+    "Sensitivity Type": "Bourne pre-screen",
+    "Finding": "⚪ Not performed - Run Bourne Test 1 for a direct experimental answer."
    },
    {
-    "Finding": "🟡 Approximate (proxy reaction) - t_rxn comes from a proxy reaction, so the timescale findings are provisional. Measure the real kinetics.",
-    "Sensitivity Type": "Kinetics basis"
+    "Sensitivity Type": "Kinetics basis",
+    "Finding": "🟡 Approximate (proxy reaction) - t_rxn comes from a proxy reaction, so the timescale findings are provisional. Measure the real kinetics."
    },
    {
-    "Finding": "🟡 Unlikely (proxy kinetics) - t_rxn = 100 s - slow vs micromixing (proxy kinetics; verify).",
-    "Sensitivity Type": "Micromixing"
+    "Sensitivity Type": "Micromixing",
+    "Finding": "🟡 Unlikely (proxy kinetics) - t_rxn = 100 s - slow vs micromixing (proxy kinetics; verify)."
    },
    {
-    "Finding": "🟢 Not a factor - No competing reactions and no feed.",
-    "Sensitivity Type": "Micro/mesomixing (selectivity)"
+    "Sensitivity Type": "Micro/mesomixing (selectivity)",
+    "Finding": "🟢 Not a factor - No competing reactions and no feed."
    },
    {
-    "Finding": "🟡 Unlikely (proxy kinetics) - t_rxn = 100 s - much longer than blend times (proxy kinetics; verify).",
-    "Sensitivity Type": "Macromixing (blend time)"
+    "Sensitivity Type": "Macromixing (blend time)",
+    "Finding": "🟡 Unlikely (proxy kinetics) - t_rxn = 100 s - much longer than blend times (proxy kinetics; verify)."
    },
    {
-    "Finding": "🟢 Not applicable - Single phase (Solid) - no interphase transport.",
-    "Sensitivity Type": "Mass transfer"
+    "Sensitivity Type": "Mass transfer",
+    "Finding": "🟢 Not applicable - Single phase (Solid) - no interphase transport."
    },
    {
-    "Finding": "🟡 Manageable (estimated ΔH) - |ΔH| = 30.0 kJ/mol, ΔT_ad ≈ 17 K - modest load, but ΔH is estimated. Confirm by calorimetry.",
-    "Sensitivity Type": "Heat transfer"
+    "Sensitivity Type": "Solids suspension",
+    "Finding": "🟡 Check N/N_js - Solids present - below the just-suspended speed N_js, settled solids cut the wetted surface and the rate depends on agitation. Pick a vessel (Step 7) and the particle properties to compute N/N_js."
+   },
+   {
+    "Sensitivity Type": "Heat transfer",
+    "Finding": "🟡 Manageable (estimated ΔH) - |ΔH| = 30.0 kJ/mol, ΔT_ad ≈ 17 K - modest load, but ΔH is estimated. Confirm by calorimetry."
    }
   ],
   "ms_da_caption": "",
@@ -5048,7 +5060,7 @@
   "ms_show_dh_action": false,
   "ms_step0_assess": "🟡 **Bourne pre-screen skipped** - using theory only. A Bourne test gives a direct answer.",
   "ms_step1_assess": "🟡 **Proxy kinetics** - timescale conclusions are provisional. Confirm with measured data.",
-  "ms_step2_assess": "🟡 **Only solid selected** - check the liquid phase is not missing.",
+  "ms_step2_assess": "🟡 **Only solid selected** - check the liquid phase is not missing. **Solids must also be suspended** (N ≥ N_js) - pick a vessel in Step 7 to check N/N_js.",
   "ms_step3_assess": "🟢 **No competing reactions** in a batch process - selectivity is unlikely to depend on mixing.",
   "ms_step4_assess": "🟡 **Mildly endothermic** reaction - |ΔH| = 30.0 kJ/mol, ΔT_ad ≈ 17 K (adiabatic temperature drop). ΔH is **estimated** - confirm by calorimetry.",
   "ms_step5_assess": "🟢 **Slow reaction** - mixing is unlikely to limit. This is a rough screen - confirm with Da_macro / Da_micro for a vessel (below, or on the Vessel Assessment page).",
@@ -5062,6 +5074,10 @@
    {
     "Area": "Kinetics",
     "Recommended action": "Measure the real kinetics to replace the proxy values."
+   },
+   {
+    "Area": "Solids suspension",
+    "Recommended action": "Compute N/N_js for your vessel (Step 7 vessel or Vessel Assessment) and keep N ≥ 1.3·N_js."
    },
    {
     "Area": "Heat of reaction",

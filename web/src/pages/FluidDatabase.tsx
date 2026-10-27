@@ -11,6 +11,7 @@ import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { PropertyTable, type PropertyRow } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { formatE, formatF, formatG } from "../format";
+import { downloadBlob, toCsv } from "./assessment/model";
 
 const TABS = [
   ["library", "Solvent Library"],
@@ -89,6 +90,7 @@ function LibraryTab() {
 const PROPERTY_ROWS: [string, string, string, (v: unknown) => string][] = [
   ["Density ρ", "rho_kg_m3", "kg/m³", (v) => formatF(v, 2)],
   ["Viscosity μ", "mu_Pa_s", "Pa·s", (v) => formatF(v, 6)],
+  ["Kinematic viscosity ν", "nu_m2_s", "m²/s", (v) => formatE(v, 3)],
   ["Surface tension σ", "surface_tension_N_m", "N/m", (v) => formatF(v, 4)],
   ["Diffusivity D", "D_mol_m2_s", "m²/s", (v) => formatE(v, 3)],
   ["Specific heat Cp", "Cp_J_per_kgK", "J/kg·K", (v) => formatF(v, 1)],
@@ -101,7 +103,14 @@ const PROPERTY_ROWS: [string, string, string, (v: unknown) => string][] = [
   ["CAS", "cas", "–", (v) => String(v ?? "—")],
 ];
 
-function PropertiesTab() {
+/** Display rows (Property / Value / Units) of the solvent-state table; ν = μ/ρ is derived client-side. */
+export function solventPropertyRows(s: Row): Record<string, string>[] {
+  const nu = kinematicViscosity(s);
+  const full: Row = { ...s, nu_m2_s: Number.isFinite(nu) ? nu * 1e-6 : null };
+  return PROPERTY_ROWS.map(([label, key, unit, fmt]) => ({ Property: label, Value: fmt(full[key]), Units: unit }));
+}
+
+function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
   const library = useLibrary();
   const names = (library.data ?? []).map((r) => String(r.Solvent));
   const [solvent, setSolvent] = useState("Water");
@@ -133,6 +142,13 @@ function PropertiesTab() {
   const range = s?.liquid_range_C as [number, number] | undefined;
   const lo = formatF(range?.[0], 0);
   const hi = formatF(s?.bp_at_P_C, 0);
+  const rows = s ? solventPropertyRows(s) : [];
+  const fileStem = `${solvent.replace(/[^\w-]+/g, "_")}_${T}C_${P}atm`;
+
+  function copyTable() {
+    const tsv = ["Property\tValue\tUnits", ...rows.map((r) => `${r.Property}\t${r.Value}\t${r.Units}`)].join("\n");
+    void run(navigator.clipboard.writeText(tsv), "Table copied to clipboard.").catch(() => undefined);
+  }
 
   return (
     <Card title="Solvent Properties at Temperature">
@@ -173,15 +189,29 @@ function PropertiesTab() {
             </tr>
           </thead>
           <tbody>
-            {PROPERTY_ROWS.map(([label, key, unit, fmt]) => (
-              <tr key={key}>
-                <td>{label}</td>
-                <td className="num">{fmt(s[key])}</td>
-                <td>{unit}</td>
+            {rows.map((r) => (
+              <tr key={r.Property}>
+                <td>{r.Property}</td>
+                <td className="num">{r.Value}</td>
+                <td>{r.Units}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {s && (
+        <div className="form-row">
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => downloadBlob(new Blob([toCsv(rows)], { type: "text/csv" }), `solvent_properties_${fileStem}.csv`)}
+          >
+            Download CSV
+          </button>
+          <button type="button" className="link-btn" onClick={copyTable}>
+            Copy table
+          </button>
+        </div>
       )}
       {chart.isError && <ErrorNote error={chart.error} />}
       <Chart figure={chart.data?.figures.properties} height={780} />
@@ -575,7 +605,7 @@ export function FluidDatabase() {
       </div>
 
       {tab === "library" && <LibraryTab />}
-      {tab === "properties" && <PropertiesTab />}
+      {tab === "properties" && <PropertiesTab run={run} />}
       {tab === "custom" && <CustomTab run={run} />}
       {tab === "blend" && <BlendTab />}
       {tab === "io" && (

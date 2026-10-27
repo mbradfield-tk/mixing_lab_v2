@@ -6,7 +6,8 @@ const drawers = new Map<number, InstanceType<typeof SmilesDrawer.SmiDrawer>>();
 function drawerFor(size: number) {
   let d = drawers.get(size);
   if (!d) {
-    d = new SmilesDrawer.SmiDrawer({ width: size, height: size, bondThickness: 1.2, padding: 12 });
+    // compactDrawing stacks terminal groups (CHCl3 -> "C/H/Cl3"), which misreads; draw every bond.
+    d = new SmilesDrawer.SmiDrawer({ width: size, height: size, bondThickness: 1.2, padding: 12, compactDrawing: false });
     drawers.set(size, d);
   }
   return d;

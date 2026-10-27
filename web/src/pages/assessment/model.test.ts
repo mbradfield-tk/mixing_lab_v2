@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   INITIAL, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, feedRateMlMin, fillingRows, fillingTiles,
   fromG100, heatBalanceTone, kineticModel, settlingTone, sliderStep, solidsVolPct, solveMessage, solveTiles, suspensionTone,
-  switchBasis, temperatureTiles, toCsv, toG100, transferTone, type FillingResult, type PointRequest, type SolveResult,
+  switchBasis, temperatureTiles, toCsv, toG100, toTsv, transferTone, type FillingResult, type PointRequest, type SolveResult,
   type TemperatureResult,
 } from "./model";
 
@@ -204,6 +204,11 @@ describe("text ports", () => {
 
   it("toCsv quotes like pandas", () => {
     expect(toCsv([{ Parameter: "Power", Value: "1,234", Units: "W" }])).toBe('Parameter,Value,Units\nPower,"1,234",W\n');
+  });
+
+  it("toTsv emits a header and tab-separated rows", () => {
+    expect(toTsv([{ Parameter: "Power", Value: "1,234", Units: "W" }])).toBe("Parameter\tValue\tUnits\nPower\t1,234\tW");
+    expect(toTsv([])).toBe("");
   });
 });
 

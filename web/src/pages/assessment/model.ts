@@ -404,6 +404,33 @@ export function csvBlob(rows: Record<string, unknown>[]): Blob {
   return new Blob(["\uFEFF", toCsv(rows)], { type: "text/csv;charset=utf-8" });
 }
 
+/** Tab-separated table (header + rows) — pastes as a table into Excel / Word. */
+export function toTsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return "";
+  const cols = Object.keys(rows[0]);
+  const cell = (v: unknown) => (v === null || v === undefined ? "" : String(v).replace(/[\t\n\r]+/g, " "));
+  return [cols.join("\t"), ...rows.map((r) => cols.map((c) => cell(r[c])).join("\t"))].join("\n");
+}
+
+/** Copy text to the clipboard; falls back to execCommand when the app is served over plain HTTP
+ * (navigator.clipboard exists only in secure contexts). */
+export async function copyText(text: string): Promise<void> {
+  if (window.isSecureContext && navigator.clipboard) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand("copy");
+  ta.remove();
+  if (!ok) throw new Error("Copy failed — your browser blocked clipboard access.");
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

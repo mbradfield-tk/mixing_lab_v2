@@ -12,7 +12,7 @@ import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { PropertyTable, type PropertyRow } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { formatE, formatF, formatG } from "../format";
-import { csvBlob, downloadBlob } from "./assessment/model";
+import { csvBlob, copyText, downloadBlob, toTsv } from "./assessment/model";
 
 const TABS = [
   ["library", "Solvent Library"],
@@ -40,6 +40,26 @@ const FIELDS: Field[] = [
 
 const columnsOf = (rows: Row[]): Column[] =>
   Object.keys(rows[0] ?? {}).map((k) => ({ column: k, label: k }));
+
+type Run = ReturnType<typeof useNotice>["run"];
+
+/** "Download CSV" / "Copy table" for a list of display records. */
+function ExportButtons({ rows, csvName, run }: { rows: Record<string, string>[]; csvName: string; run: Run }) {
+  return (
+    <div className="form-row">
+      <button type="button" className="link-btn" onClick={() => downloadBlob(csvBlob(rows), csvName)}>
+        Download CSV
+      </button>
+      <button
+        type="button"
+        className="link-btn"
+        onClick={() => void run(copyText(toTsv(rows)), "Table copied to clipboard.").catch(() => undefined)}
+      >
+        Copy table
+      </button>
+    </div>
+  );
+}
 
 function useLibrary() {
   return useQuery({
@@ -112,7 +132,7 @@ export function solventPropertyRows(s: Row): Record<string, string>[] {
   return PROPERTY_ROWS.map(([label, key, unit, fmt]) => ({ Property: label, Value: fmt(full[key]), Units: unit }));
 }
 
-function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
+function PropertiesTab({ run }: { run: Run }) {
   const library = useLibrary();
   const names = (library.data ?? []).map((r) => String(r.Solvent));
   const [solvent, setSolvent] = useState("Water");
@@ -146,11 +166,6 @@ function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
   const hi = formatF(s?.bp_at_P_C, 0);
   const rows = s ? solventPropertyRows(s) : [];
   const fileStem = `${solvent.replace(/[^\w-]+/g, "_")}_${T}C_${P}atm`;
-
-  function copyTable() {
-    const tsv = ["Property\tValue\tUnits", ...rows.map((r) => `${r.Property}\t${r.Value}\t${r.Units}`)].join("\n");
-    void run(navigator.clipboard.writeText(tsv), "Table copied to clipboard.").catch(() => undefined);
-  }
 
   return (
     <Card title="Solvent Properties at Temperature">
@@ -204,20 +219,7 @@ function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
           </tbody>
         </table>
       )}
-      {s && (
-        <div className="form-row">
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => downloadBlob(csvBlob(rows), `solvent_properties_${fileStem}.csv`)}
-          >
-            Download CSV
-          </button>
-          <button type="button" className="link-btn" onClick={copyTable}>
-            Copy table
-          </button>
-        </div>
-      )}
+      {s && <ExportButtons rows={rows} csvName={`solvent_properties_${fileStem}.csv`} run={run} />}
       {chart.isError && <ErrorNote error={chart.error} />}
       <Chart figure={chart.data?.figures.properties} height={780} />
     </Card>
@@ -256,7 +258,7 @@ function StructurePreview() {
   );
 }
 
-function CustomTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
+function CustomTab({ run }: { run: Run }) {
   return (
     <>
       <Card title="Custom Fluids">
@@ -329,20 +331,34 @@ export function kinematicViscosity(r: Row): number {
   return mu > 0 && rho > 0 ? (mu / rho) * 1e6 : Number.NaN;
 }
 
-function propertyCells(r: Row) {
+function propertyCells(r: Row): Record<string, string> {
   const nu = kinematicViscosity(r);
+  return {
+    "ρ (kg/m³)": formatF(r.rho_kg_m3, 1),
+    "μ (Pa·s)": formatF(r.mu_Pa_s, 6),
+    "ν (m²/s)": Number.isFinite(nu) ? formatE(nu * 1e-6, 3) : "—",
+    "σ (N/m)": formatF(r.surface_tension_N_m, 4),
+    "D (m²/s)": formatE(r.D_mol_m2_s, 3),
+    "Cp (J/kg·K)": formatF(r.Cp_J_per_kgK, 1),
+    "k (W/m·K)": formatF(r.k_W_per_mK, 4),
+  };
+}
+
+/** Blend results table (components then the blend row) as display records for the table and exports. */
+export function blendRows(res: BlendResult): Record<string, string>[] {
+  const pct = (v: unknown) => formatF(Number(v) * 100, 1);
   return [
-    formatF(r.rho_kg_m3, 1),
-    formatF(r.mu_Pa_s, 6),
-    Number.isFinite(nu) ? formatG(nu, 4) : "—",
-    formatF(r.surface_tension_N_m, 4),
-    formatE(r.D_mol_m2_s, 3),
-    formatF(r.Cp_J_per_kgK, 1),
-    formatF(r.k_W_per_mK, 4),
+    ...res.components.map((cp) => ({
+      Component: String(cp.name),
+      "Vol %": pct(cp.vol_frac),
+      "Mass %": pct(cp.mass_frac),
+      ...propertyCells(cp),
+    })),
+    { Component: "Blend", "Vol %": "100.0", "Mass %": "100.0", ...propertyCells(res.blend) },
   ];
 }
 
-function BlendTab() {
+function BlendTab({ run }: { run: Run }) {
   const library = useLibrary();
   const custom = useTable("fluids/custom");
   const available = [
@@ -388,6 +404,8 @@ function BlendTab() {
 
   const res = compute.data?.result;
   const status = res ? blendStatus(res) : null;
+  const table = res ? blendRows(res) : [];
+  const cols = Object.keys(table[0] ?? {});
   const choices = available.filter((n) => !components.some((c) => c.name === n));
 
   return (
@@ -509,39 +527,25 @@ function BlendTab() {
             <table className="results">
               <thead>
                 <tr>
-                  {["Component", "Vol %", "Mass %", "ρ (kg/m³)", "μ (Pa·s)", "ν (mm²/s = cSt)", "σ (N/m)", "D (m²/s)", "Cp (J/kg·K)", "k (W/m·K)"].map(
-                    (h) => (
-                      <th key={h}>{h}</th>
-                    ),
-                  )}
+                  {cols.map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {res.components.map((cp) => (
-                  <tr key={String(cp.name)}>
-                    <td>{String(cp.name)}</td>
-                    <td className="num">{formatF(Number(cp.vol_frac) * 100, 1)}</td>
-                    <td className="num">{formatF(Number(cp.mass_frac) * 100, 1)}</td>
-                    {propertyCells(cp).map((v, i) => (
-                      <td key={i} className="num">
-                        {v}
+                {table.map((r, i) => (
+                  <tr key={r.Component} className={i === table.length - 1 ? "total" : undefined}>
+                    {cols.map((c, j) => (
+                      <td key={c} className={j ? "num" : undefined}>
+                        {r[c]}
                       </td>
                     ))}
                   </tr>
                 ))}
-                <tr className="total">
-                  <td>Blend</td>
-                  <td className="num">100.0</td>
-                  <td className="num">100.0</td>
-                  {propertyCells(res.blend).map((v, i) => (
-                    <td key={i} className="num">
-                      {v}
-                    </td>
-                  ))}
-                </tr>
               </tbody>
             </table>
           </div>
+          <ExportButtons rows={table} csvName="blend_properties.csv" run={run} />
 
           <h3>Miscibility screening</h3>
           <p className="muted">
@@ -646,7 +650,7 @@ export function FluidDatabase() {
       {tab === "library" && <LibraryTab />}
       {tab === "properties" && <PropertiesTab run={run} />}
       {tab === "custom" && <CustomTab run={run} />}
-      {tab === "blend" && <BlendTab />}
+      {tab === "blend" && <BlendTab run={run} />}
       {tab === "io" && (
         <ImportExport table="fluids/custom" noun="custom fluid" run={run} title="Import / Export (custom fluids)" />
       )}

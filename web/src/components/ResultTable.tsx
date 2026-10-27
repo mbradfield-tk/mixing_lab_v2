@@ -1,5 +1,5 @@
 import type { Row } from "../api/tables";
-import { downloadBlob, toCsv } from "../pages/assessment/model";
+import { csvBlob, downloadBlob } from "../pages/assessment/model";
 import { Pill, STATUS_ICON, stripIcon, toneOf } from "./Tone";
 
 function Cell({ value }: { value: unknown }) {
@@ -39,7 +39,7 @@ export function ResultTable({ rows, csvName, stale = false }: { rows: Row[]; csv
         <button
           type="button"
           className="link-btn"
-          onClick={() => downloadBlob(new Blob([toCsv(rows)], { type: "text/csv" }), csvName)}
+          onClick={() => downloadBlob(csvBlob(rows), csvName)}
         >
           Download CSV
         </button>

@@ -399,6 +399,11 @@ export function toCsv(rows: Record<string, unknown>[]): string {
   return [cols.map(csvCell).join(","), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(","))].join("\n") + "\n";
 }
 
+/** CSV blob with a UTF-8 BOM so Excel decodes symbols such as ², μ and ° correctly. */
+export function csvBlob(rows: Record<string, unknown>[]): Blob {
+  return new Blob(["\uFEFF", toCsv(rows)], { type: "text/csv;charset=utf-8" });
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

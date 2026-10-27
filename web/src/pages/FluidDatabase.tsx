@@ -11,7 +11,7 @@ import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { PropertyTable, type PropertyRow } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
 import { formatE, formatF, formatG } from "../format";
-import { downloadBlob, toCsv } from "./assessment/model";
+import { csvBlob, downloadBlob } from "./assessment/model";
 
 const TABS = [
   ["library", "Solvent Library"],
@@ -204,7 +204,7 @@ function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
           <button
             type="button"
             className="link-btn"
-            onClick={() => downloadBlob(new Blob([toCsv(rows)], { type: "text/csv" }), `solvent_properties_${fileStem}.csv`)}
+            onClick={() => downloadBlob(csvBlob(rows), `solvent_properties_${fileStem}.csv`)}
           >
             Download CSV
           </button>

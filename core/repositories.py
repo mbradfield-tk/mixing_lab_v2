@@ -227,7 +227,7 @@ REACTION_COLUMNS = ["reaction_name", "type", "order", "k_value", "k_units", "C0_
                     "t_rxn_s", "T_C", "solvent", "delta_H_kJ_mol", "class", "notes",
                     "reaction_scheme"]
 FLUID_COLUMNS = ["fluid_name", "rho_kg_m3", "mu_Pa_s", "D_mol_m2_s", "surface_tension_N_m",
-                 "notes", "Cp_J_per_kgK", "k_W_per_mK", "hsp_d", "hsp_p", "hsp_h"]
+                 "notes", "Cp_J_per_kgK", "k_W_per_mK", "hsp_d", "hsp_p", "hsp_h", "smiles"]
 
 reactors = ReactorRepository("reactors", DATA_DIR / "reactors.csv", ["reactor_name"],
                              "reactor_name", "vessel", ReactorRecord)

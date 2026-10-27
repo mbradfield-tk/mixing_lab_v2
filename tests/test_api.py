@@ -288,7 +288,8 @@ def test_reads_need_no_login(client):
     assert res.status_code == 200 and res.json()["status"].endswith("V_L_max > 100.")
     assert client.get(f"{V1}/vessels/{REACTOR}").json()["reactor_name"] == REACTOR
     assert client.get(f"{V1}/vessels/Nope").status_code == 404
-    assert client.get(f"{V1}/fluids/custom/columns").status_code == 200
+    cols = client.get(f"{V1}/fluids/custom/columns")
+    assert cols.status_code == 200 and "smiles" in [c["column"] for c in cols.json()]
     assert client.get(f"{V1}/vessels/export").headers["content-type"].startswith("text/csv")
 
 
@@ -356,6 +357,8 @@ def test_assessment_page_endpoints_match_the_taipy_page(client, temp_tables):
     fp = client.get(f"{V1}/fluids/properties", params={"name": "toluene", "T_C": 40}).json()
     assert fp["name"] == "Toluene" and fp["found"] and fp["rho_kg_m3"] < 862
     assert not client.get(f"{V1}/fluids/properties", params={"name": "no such"}).json()["found"]
+    st = client.post(f"{V1}/fluids/solvent-state", json={"name": "Toluene", "P_atm": 1, "T_C": 25}).json()
+    assert st["smiles"] == "Cc1ccccc1" and st["cas"] == "108-88-3"
 
     body = {"reactor": REACTOR, "N_rpm": d["N_rpm"], "V_L": d["V_L"],
             "reaction": {"order": "2", "k": 0.5, "C0_mol_L": 1.0, "dH_kJ_mol": -80},

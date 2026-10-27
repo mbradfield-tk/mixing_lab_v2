@@ -57,6 +57,14 @@ def test_lookup_pairs_are_two_distinct_solvents(table_name):
     assert not bad, f"{table_name} has non-pair entries: {bad}"
 
 
+def test_every_solvent_has_a_smiles():
+    """The Solvent Properties view draws each library solvent from its SMILES."""
+    missing = [n for n, s in SOLVENT_DB.items() if not s.smiles.strip()]
+    assert not missing, f"SOLVENT_DB entries without SMILES: {missing}"
+    assert SOLVENT_DB["Water"].smiles == "O"
+    assert SOLVENT_DB["6 M NaOH (aq)"].smiles == "[Na+].[OH-]"
+
+
 def test_tables_are_mutually_exclusive():
     """A pair in two tables would resolve by branch order, hiding one verdict."""
     overlaps = []

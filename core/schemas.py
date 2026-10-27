@@ -1238,6 +1238,7 @@ class FluidRecord(Record):
     hsp_d: float = Field(0.0, ge=0)
     hsp_p: float = Field(0.0, ge=0)
     hsp_h: float = Field(0.0, ge=0)
+    smiles: str = Field("", description="SMILES for the structure drawing (optional)")
 
 
 class ReactorRecord(Record):

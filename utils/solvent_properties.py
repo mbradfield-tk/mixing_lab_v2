@@ -91,6 +91,7 @@ class SolventData:
     # Optional
     aliases: tuple[str, ...] = ()      # Common synonyms / abbreviations
     notes: str = ""
+    smiles: str = ""                   # Structure for drawing (solute only for aqueous solutions)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +117,7 @@ _add(SolventData(
     antoine_A=8.07131, antoine_B=1730.63, antoine_C=233.426,
     hsp_d=15.5, hsp_p=16.0, hsp_h=42.3,
     aliases=("H2O", "DI Water", "Deionized Water", "Purified Water"),
+    smiles="O",
 ))
 
 # ─── Methanol ────────────────────────────────────────────────────────────
@@ -132,6 +134,7 @@ _add(SolventData(
     antoine_A=8.08097, antoine_B=1582.27, antoine_C=239.726,
     hsp_d=15.1, hsp_p=12.3, hsp_h=22.3,
     aliases=("MeOH", "Methyl Alcohol", "CH3OH"),
+    smiles="CO",
 ))
 
 # ─── Ethanol ─────────────────────────────────────────────────────────────
@@ -148,6 +151,7 @@ _add(SolventData(
     antoine_A=8.20417, antoine_B=1642.89, antoine_C=230.300,
     hsp_d=15.8, hsp_p=8.8, hsp_h=19.4,
     aliases=("EtOH", "Ethyl Alcohol", "C2H5OH"),
+    smiles="CCO",
 ))
 
 # ─── Isopropanol (IPA) ──────────────────────────────────────────────────
@@ -164,6 +168,7 @@ _add(SolventData(
     antoine_A=8.11778, antoine_B=1580.92, antoine_C=219.610,
     hsp_d=15.8, hsp_p=6.1, hsp_h=16.4,
     aliases=("IPA", "iPrOH", "2-Propanol", "Isopropyl Alcohol"),
+    smiles="CC(C)O",
 ))
 
 # ─── Acetone ─────────────────────────────────────────────────────────────
@@ -180,6 +185,7 @@ _add(SolventData(
     antoine_A=7.11714, antoine_B=1210.595, antoine_C=229.664,
     hsp_d=15.5, hsp_p=10.4, hsp_h=7.0,
     aliases=("Me2CO", "Propan-2-one", "Dimethyl Ketone"),
+    smiles="CC(C)=O",
 ))
 
 # ─── MEK (Methyl Ethyl Ketone / 2-Butanone) ─────────────────────────────
@@ -196,6 +202,7 @@ _add(SolventData(
     antoine_A=7.06356, antoine_B=1261.339, antoine_C=221.969,
     hsp_d=16.0, hsp_p=9.0, hsp_h=5.1,
     aliases=("MEK", "Methyl Ethyl Ketone", "Butanone"),
+    smiles="CCC(C)=O",
 ))
 
 # ─── Acetonitrile ────────────────────────────────────────────────────────
@@ -212,6 +219,7 @@ _add(SolventData(
     antoine_A=7.09363, antoine_B=1314.400, antoine_C=230.000,
     hsp_d=15.3, hsp_p=18.0, hsp_h=6.1,
     aliases=("MeCN", "ACN", "CH3CN"),
+    smiles="CC#N",
 ))
 
 # ─── DCM (Dichloromethane) ───────────────────────────────────────────────
@@ -228,6 +236,7 @@ _add(SolventData(
     antoine_A=7.08030, antoine_B=1138.91, antoine_C=231.450,
     hsp_d=18.2, hsp_p=6.3, hsp_h=6.1,
     aliases=("DCM", "Dichloromethane", "Methylene Chloride", "CH2Cl2"),
+    smiles="ClCCl",
 ))
 
 # ─── Chloroform ──────────────────────────────────────────────────────────
@@ -244,6 +253,7 @@ _add(SolventData(
     antoine_A=6.95465, antoine_B=1170.966, antoine_C=226.232,
     hsp_d=17.8, hsp_p=3.1, hsp_h=5.7,
     aliases=("CHCl3", "Trichloromethane"),
+    smiles="ClC(Cl)Cl",
 ))
 
 # ─── Ethyl Acetate ───────────────────────────────────────────────────────
@@ -260,6 +270,7 @@ _add(SolventData(
     antoine_A=7.10179, antoine_B=1244.951, antoine_C=217.881,
     hsp_d=15.8, hsp_p=5.3, hsp_h=7.2,
     aliases=("EtOAc", "EA"),
+    smiles="CCOC(C)=O",
 ))
 
 # ─── THF (Tetrahydrofuran) ──────────────────────────────────────────────
@@ -276,6 +287,7 @@ _add(SolventData(
     antoine_A=6.99515, antoine_B=1202.290, antoine_C=226.254,
     hsp_d=16.8, hsp_p=5.7, hsp_h=8.0,
     aliases=("Tetrahydrofuran",),
+    smiles="C1CCOC1",
 ))
 
 # ─── Toluene ─────────────────────────────────────────────────────────────
@@ -292,6 +304,7 @@ _add(SolventData(
     antoine_A=6.95334, antoine_B=1343.943, antoine_C=219.377,
     hsp_d=18.0, hsp_p=1.4, hsp_h=2.0,
     aliases=("PhMe", "Tol", "Methylbenzene"),
+    smiles="Cc1ccccc1",
 ))
 
 # ─── DMF (Dimethylformamide) ────────────────────────────────────────────
@@ -308,6 +321,7 @@ _add(SolventData(
     antoine_A=6.97780, antoine_B=1451.380, antoine_C=202.000,
     hsp_d=17.4, hsp_p=13.7, hsp_h=11.3,
     aliases=("Dimethylformamide", "N,N-Dimethylformamide"),
+    smiles="CN(C)C=O",
 ))
 
 # ─── DMSO (Dimethyl sulfoxide) ──────────────────────────────────────────
@@ -324,6 +338,7 @@ _add(SolventData(
     antoine_A=7.91178, antoine_B=1956.140, antoine_C=199.820,
     hsp_d=18.4, hsp_p=16.4, hsp_h=10.2,
     aliases=("Dimethyl Sulfoxide", "Dimethylsulfoxide"),
+    smiles="CS(C)=O",
 ))
 
 # ─── Heptane ─────────────────────────────────────────────────────────────
@@ -340,6 +355,7 @@ _add(SolventData(
     antoine_A=6.89385, antoine_B=1264.370, antoine_C=216.640,
     hsp_d=15.3, hsp_p=0.0, hsp_h=0.0,
     aliases=("n-Heptane", "C7H16"),
+    smiles="CCCCCCC",
 ))
 
 # ─── Hexane ──────────────────────────────────────────────────────────────
@@ -356,6 +372,7 @@ _add(SolventData(
     antoine_A=6.87776, antoine_B=1171.530, antoine_C=224.366,
     hsp_d=14.9, hsp_p=0.0, hsp_h=0.0,
     aliases=("n-Hexane", "C6H14"),
+    smiles="CCCCCC",
 ))
 
 # ─── MTBE (Methyl tert-butyl ether) ─────────────────────────────────────
@@ -372,6 +389,7 @@ _add(SolventData(
     antoine_A=6.64473, antoine_B=1065.940, antoine_C=228.000,
     hsp_d=15.2, hsp_p=4.3, hsp_h=5.0,
     aliases=("Methyl tert-Butyl Ether", "tert-Butyl Methyl Ether", "TBME"),
+    smiles="COC(C)(C)C",
 ))
 
 # ─── Acetic Acid ────────────────────────────────────────────────────────
@@ -388,6 +406,7 @@ _add(SolventData(
     antoine_A=7.38782, antoine_B=1533.313, antoine_C=222.309,
     hsp_d=14.5, hsp_p=8.0, hsp_h=13.5,
     aliases=("AcOH", "HOAc", "Glacial Acetic Acid", "CH3COOH"),
+    smiles="CC(O)=O",
 ))
 
 # ─── NMP (N-Methyl-2-pyrrolidone) ───────────────────────────────────────
@@ -404,6 +423,7 @@ _add(SolventData(
     antoine_A=7.41282, antoine_B=1826.400, antoine_C=201.000,
     hsp_d=18.0, hsp_p=12.3, hsp_h=7.2,
     aliases=("N-Methyl-2-pyrrolidone", "N-Methylpyrrolidone"),
+    smiles="CN1CCCC1=O",
 ))
 
 # ─── 2-MeTHF (2-Methyltetrahydrofuran) ─────────────────────────────────
@@ -420,6 +440,7 @@ _add(SolventData(
     antoine_A=6.97080, antoine_B=1233.870, antoine_C=221.380,
     hsp_d=16.9, hsp_p=5.0, hsp_h=4.3,
     aliases=("2-Methyltetrahydrofuran", "MeTHF", "2-MeOTHF"),
+    smiles="CC1CCCO1",
 ))
 
 # ─── 1,4-Dioxane ────────────────────────────────────────────────────────
@@ -436,6 +457,7 @@ _add(SolventData(
     antoine_A=7.43155, antoine_B=1554.679, antoine_C=240.337,
     hsp_d=19.0, hsp_p=1.8, hsp_h=7.4,
     aliases=("Dioxane", "p-Dioxane"),
+    smiles="C1COCCO1",
 ))
 
 # ─── Diethyl Ether ──────────────────────────────────────────────────────
@@ -452,6 +474,7 @@ _add(SolventData(
     antoine_A=6.92032, antoine_B=1064.070, antoine_C=228.799,
     hsp_d=14.5, hsp_p=2.9, hsp_h=5.1,
     aliases=("Et2O", "Ether", "DEE", "Ethoxyethane"),
+    smiles="CCOCC",
 ))
 
 # ─── Trifluoroacetic Acid ───────────────────────────────────────────────
@@ -470,6 +493,7 @@ _add(SolventData(
     hsp_d=15.6, hsp_p=9.7, hsp_h=11.4,
     aliases=("TFA", "CF3COOH", "Perfluoroacetic Acid", "Trifluoroethanoic Acid"),
     notes="Strong acid (pKa ~0.0). Miscible with water, ethanol, ether, acetone, benzene, hexane.",
+    smiles="OC(=O)C(F)(F)F",
 ))
 
 # ─── Trifluoroacetic Anhydride ──────────────────────────────────────────
@@ -487,6 +511,7 @@ _add(SolventData(
     hsp_d=14.0, hsp_p=7.0, hsp_h=5.0,
     aliases=("TFAA", "(CF3CO)2O", "Trifluoroacetic acid anhydride"),
     notes="Reacts violently with water. Soluble in benzene, DCM, ether, DMF, THF, MeCN.",
+    smiles="FC(F)(F)C(=O)OC(=O)C(F)(F)F",
 ))
 
 # ─── 6 M NaOH (aq) ──────────────────────────────────────────────────────
@@ -507,6 +532,7 @@ _add(SolventData(
              "Caustic Soda 6M"),
     notes="6 mol/L NaOH in water (~19.3 wt%). "
           "Properties from CRC / ICT solution tables.",
+    smiles="[Na+].[OH-]",
 ))
 
 # ─── 36% HCl (aq) ───────────────────────────────────────────────────────
@@ -528,6 +554,7 @@ _add(SolventData(
     notes="36 wt% HCl in water (~11.6 M). Fuming acid — "
           "bp reflects onset of significant HCl loss. "
           "Properties from CRC / Zaytsev & Aseyev.",
+    smiles="Cl",
 ))
 
 # ─── 47% K₂CO₃ (aq) ─────────────────────────────────────────────────────
@@ -548,6 +575,7 @@ _add(SolventData(
              "47% Potassium Carbonate"),
     notes="47 wt% K₂CO₃ in water. Dense, viscous alkaline solution. "
           "Properties from CRC / Zaytsev & Aseyev.",
+    smiles="[K+].[K+].[O-]C([O-])=O",
 ))
 
 # ─── Anisol ─────────────────────────────────────────────────────
@@ -565,6 +593,7 @@ _add(SolventData(
     aliases=("Anisole", "Methoxybenzene"),
     notes="Anisole, also known as methoxybenzene. "
           "Properties from Dynochem.",
+    smiles="COc1ccccc1",
 ))
 
 
@@ -978,6 +1007,7 @@ def get_properties(solvent_name: str, T_C: float, P_atm: float = 1.0) -> dict:
         "mp_C": s.mp_C,
         "mw": s.mw,
         "cas": s.cas,
+        "smiles": s.smiles,
         "vapor_pressure_atm": Pvap,
         "hsp_d": s.hsp_d,
         "hsp_p": s.hsp_p,
@@ -1003,6 +1033,7 @@ def solvent_info_table() -> list[dict]:
             "b.p. (°C)": s.bp_C,
             "ρ₂₅ (kg/m³)": f"{s.rho_25:.1f}",
             "μ₂₅ (mPa·s)": f"{s.mu_25 * 1000:.3f}",
+            "ν₂₅ (m²/s)": f"{s.mu_25 / s.rho_25:.3e}",
             "σ₂₅ (mN/m)": f"{s.sig_25 * 1000:.1f}",
             "D₂₅ (m²/s)": f"{s.D_ref_25:.2e}",
             "Cp₂₅ (J/kg·K)": f"{s.Cp_25:.0f}",

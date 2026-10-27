@@ -278,6 +278,7 @@ COLUMN_LABELS: dict[str, str] = {
     "hsp_d": "Hansen δD [MPa^0.5]",
     "hsp_p": "Hansen δP [MPa^0.5]",
     "hsp_h": "Hansen δH [MPa^0.5]",
+    "smiles": "SMILES",
     # --- Reactions ---
     "reaction_name": "Reaction Name",
     "class": "Reaction Class",

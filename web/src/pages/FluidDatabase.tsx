@@ -7,6 +7,7 @@ import { AdminPanel } from "../components/Admin";
 import { Chart } from "../components/Chart";
 import { AddForm, DatabaseTable, ImportExport, type Field } from "../components/Database";
 import { DataTable } from "../components/DataTable";
+import { Molecule, solventStructureCaption } from "../components/Molecule";
 import { NoticeBar, useNotice, type Notice } from "../components/Notice";
 import { PropertyTable, type PropertyRow } from "../components/PropertyTable";
 import { Card, ErrorNote, PageTitle } from "../components/ui";
@@ -34,6 +35,7 @@ const FIELDS: Field[] = [
   { key: "hsp_d", label: "HSP δd dispersion (MPa½, 0 = unknown)", type: "number", initial: 0 },
   { key: "hsp_p", label: "HSP δp polar (MPa½)", type: "number", initial: 0 },
   { key: "hsp_h", label: "HSP δh H-bonding (MPa½)", type: "number", initial: 0 },
+  { key: "smiles", label: "SMILES (optional, draws the structure)", initial: "" },
 ];
 
 const columnsOf = (rows: Row[]): Column[] =>
@@ -156,19 +158,22 @@ function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
         Compute physical properties for a built-in solvent at any liquid-phase temperature and
         pressure. The Antoine equation adjusts the boiling point for non-atmospheric pressure.
       </p>
-      <div className="prop-narrow">
-        <PropertyTable
-          groups={[
-            {
-              title: "Conditions",
-              rows: [
-                { label: "Solvent", value: solvent, options: names, onChange: setSolvent },
-                { label: "Pressure", unit: "atm", value: P, onChange: setP },
-                { label: "Temperature", unit: "°C", value: T, onChange: setT },
-              ],
-            },
-          ]}
-        />
+      <div className="prop-with-structure">
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              {
+                title: "Conditions",
+                rows: [
+                  { label: "Solvent", value: solvent, options: names, onChange: setSolvent },
+                  { label: "Pressure", unit: "atm", value: P, onChange: setP },
+                  { label: "Temperature", unit: "°C", value: T, onChange: setT },
+                ],
+              },
+            ]}
+          />
+        </div>
+        {s && <Molecule smiles={s.smiles as string} caption={solventStructureCaption(solvent)} />}
       </div>
       {!ready && <p className="error-note">Enter a temperature and a pressure above 0 atm.</p>}
       {state.isError && <ErrorNote error={state.error} />}
@@ -219,6 +224,38 @@ function PropertiesTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
   );
 }
 
+function StructurePreview() {
+  const custom = useTable("fluids/custom");
+  const withSmiles = (custom.list.data?.records ?? []).filter((r) => String(r.smiles ?? "").trim());
+  const [pick, setPick] = useState("");
+  const row = withSmiles.find((r) => r.fluid_name === pick) ?? withSmiles[0];
+  if (!row) return null;
+  return (
+    <Card title="Structure Preview">
+      <div className="prop-with-structure">
+        <div className="prop-narrow">
+          <PropertyTable
+            groups={[
+              {
+                title: "Custom fluid",
+                rows: [
+                  {
+                    label: "Fluid",
+                    value: String(row.fluid_name),
+                    options: withSmiles.map((r) => String(r.fluid_name)),
+                    onChange: setPick,
+                  },
+                ],
+              },
+            ]}
+          />
+        </div>
+        <Molecule smiles={String(row.smiles)} />
+      </div>
+    </Card>
+  );
+}
+
 function CustomTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
   return (
     <>
@@ -231,9 +268,11 @@ function CustomTab({ run }: { run: ReturnType<typeof useNotice>["run"] }) {
         </p>
         <DatabaseTable table="fluids/custom" nameKey="fluid_name" run={run} searchLabel="Search custom fluids" />
       </Card>
+      <StructurePreview />
       <Card title="Add Custom Fluid">
         <p className="muted">
-          Hansen solubility parameters are optional (used for miscibility screening; 0 = unknown).
+          Hansen solubility parameters are optional (used for miscibility screening; 0 = unknown). A
+          SMILES string is optional and only used to draw the structure.
         </p>
         <AddForm
           table="fluids/custom"

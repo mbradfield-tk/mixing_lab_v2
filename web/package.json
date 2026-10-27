@@ -24,7 +24,8 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "smiles-drawer": "^2.4.1"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",

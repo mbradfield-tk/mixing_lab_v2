@@ -1044,10 +1044,19 @@ label.narrow {
   gap: 4px;
 }
 
-.molecule svg {
+.molecule svg,
+.molecule-formula {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
+}
+
+.molecule-formula {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: #222;
 }
 
 .molecule figcaption {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import SmilesDrawer from "smiles-drawer";
-import { solventStructureCaption } from "./Molecule";
+import { singleAtomFormula, solventStructureCaption } from "./Molecule";
 
 function parses(smiles: string): boolean {
   let ok = false;
@@ -19,5 +19,11 @@ describe("Molecule", () => {
   it("captions only the aqueous-solution entries", () => {
     expect(solventStructureCaption("6 M NaOH (aq)")).toMatch(/aqueous/);
     expect(solventStructureCaption("Toluene")).toBeUndefined();
+  });
+
+  it("shows single-atom molecules as their conventional formula", () => {
+    expect(singleAtomFormula("O")).toBe("H₂O");
+    expect(singleAtomFormula("Cl")).toBe("HCl");
+    expect(singleAtomFormula("CCO")).toBeUndefined();
   });
 });

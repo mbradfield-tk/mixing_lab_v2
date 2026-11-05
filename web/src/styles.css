@@ -34,13 +34,13 @@ h3 {
   min-height: 100vh;
 }
 
-/* Sidebar */
+/* Sidebar: icon rail, page name in small type below each icon */
 .sidebar {
-  width: 260px;
-  flex: 0 0 260px;
+  width: 112px;
+  flex: 0 0 112px;
   background: #fff;
   border-right: 1px solid var(--border);
-  padding: 12px 8px;
+  padding: 8px 0;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -49,18 +49,21 @@ h3 {
 
 .sidebar .brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
+  gap: 4px;
+  padding: 8px 6px 12px;
+  margin: 0 12px;
+  border-bottom: 1px solid var(--border);
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 0.78rem;
   color: var(--text);
   text-decoration: none;
 }
 
 .sidebar .brand img {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 
 .sidebar ul {
@@ -70,36 +73,44 @@ h3 {
 }
 
 .sidebar li a {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
-  border-radius: 6px;
-  color: var(--text);
+  gap: 4px;
+  padding: 10px 6px;
+  border-left: 3px solid transparent;
+  color: var(--muted);
   text-decoration: none;
-  font-size: 0.93rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .sidebar li a img {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
 .sidebar li a:hover {
   background: rgba(225, 37, 27, 0.06);
+  color: var(--text);
 }
 
 .sidebar li a.active {
   background: rgba(225, 37, 27, 0.12);
+  border-left-color: var(--primary);
   color: var(--primary);
   font-weight: 600;
 }
 
 .sidebar .external {
-  margin-left: auto;
+  position: absolute;
+  top: 6px;
+  right: 8px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
 }
 
 /* Content */
@@ -2295,4 +2306,178 @@ button.link-btn {
   .eq-toc {
     display: none;
   }
+}
+
+/* Theme toggle (components/Layout.tsx) */
+.theme-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: calc(100% - 24px);
+  margin: 10px 12px 4px;
+  padding: 10px 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.theme-toggle .theme-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+/* Dark theme: <html data-theme="dark"> (src/theme.ts). Variables first, then hard-coded light surfaces. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #ff5a4f;
+  --secondary: #98a2b3;
+  --text: #e4e7ec;
+  --muted: #98a2b3;
+  --border: #353b43;
+  --bg: #121417;
+  --card: #1b1f24;
+  --surface: #22272d;
+  --surface-2: #2a3037;
+}
+
+:root[data-theme="dark"] .tone-critical { --tone: #f97066; --tone-bg: #3a1d1b; }
+:root[data-theme="dark"] .tone-warning,
+:root[data-theme="dark"] .tone-caution { --tone: #fdb022; --tone-bg: #36290f; }
+:root[data-theme="dark"] .tone-ok { --tone: #47cd89; --tone-bg: #13301f; }
+:root[data-theme="dark"] .tone-unknown { --tone: #aab2bd; --tone-bg: #262b31; }
+:root[data-theme="dark"] .tone-info { --tone: #d0d5dd; --tone-bg: #22272d; }
+
+/* :where() keeps these at low specificity so coloured variants (primary, done, danger, active) still win. */
+:root[data-theme="dark"] :where(input:not([type="range"]):not([type="checkbox"]), select, button, a.button) {
+  background: var(--card);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] :where(.lcd input, .lcd-select select, button.icon-btn, button.link-btn) {
+  background: transparent;
+}
+
+:root[data-theme="dark"] :where(.lcd input, .lcd-select select) {
+  color: #ff5a4f;
+}
+
+:root[data-theme="dark"] input.computed {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .notice,
+:root[data-theme="dark"] .plot,
+:root[data-theme="dark"] .prop-table th[scope="row"],
+:root[data-theme="dark"] .ms-menu,
+:root[data-theme="dark"] .instrument,
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .lcd-select option {
+  background: var(--card);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] :where(input, select, .multi-select > button, .segmented button, .prop-table select) {
+  border-color: #4a525c;
+}
+
+:root[data-theme="dark"] :where(input, select):focus {
+  border-color: var(--primary);
+}
+
+:root[data-theme="dark"] button.primary,
+:root[data-theme="dark"] form > button[type="submit"],
+:root[data-theme="dark"] .tabs button.active {
+  background: #e1251b;
+  border-color: #e1251b;
+  color: #fff;
+}
+
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] .scheme-box,
+:root[data-theme="dark"] .prop-table .prop-group th,
+:root[data-theme="dark"] .change-desc code,
+:root[data-theme="dark"] .eq-used-in li,
+:root[data-theme="dark"] .threshold-bar,
+:root[data-theme="dark"] .placeholder {
+  background: var(--surface-2);
+}
+
+/* 3D models and photos are mostly dark metal/glass: keep a light backdrop. */
+:root[data-theme="dark"] .vessel-media {
+  background: #d0d5dd;
+}
+
+:root[data-theme="dark"] .prop-table td {
+  border-bottom-color: var(--border);
+}
+
+:root[data-theme="dark"] .prop-table tr:hover td,
+:root[data-theme="dark"] .spec-list div:nth-child(even),
+:root[data-theme="dark"] .phase-panel,
+:root[data-theme="dark"] .sub-section,
+:root[data-theme="dark"] .eq-entry .tex-display {
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .status-success { background: #13301f; }
+:root[data-theme="dark"] .status-error { background: #3a1d1b; }
+:root[data-theme="dark"] .status-info { background: #102a43; }
+
+:root[data-theme="dark"] .error-note {
+  color: #f97066;
+  background: #3a1d1b;
+  border-color: #7a271a;
+}
+
+:root[data-theme="dark"] .stale-note { color: #fdb022; }
+
+:root[data-theme="dark"] .rate-law {
+  background: #1d2a44;
+  color: #c7d7fe;
+}
+
+:root[data-theme="dark"] .vortex-caption { background: #102a43; }
+
+:root[data-theme="dark"] .instrument-panel {
+  border-color: #3d444d;
+  background: linear-gradient(180deg, #2a3037 0%, #1f242a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .knob-track { stroke: #3d444d; }
+:root[data-theme="dark"] .knob-cap { fill: #3a4048; stroke: #5c6670; }
+:root[data-theme="dark"] .knob-grip { fill: #2f353c; stroke: #4a525c; }
+
+:root[data-theme="dark"] .fader input[type="range"] {
+  background: linear-gradient(90deg, var(--primary) 0 var(--level), #3d444d var(--level) 100%);
+}
+
+:root[data-theme="dark"] .lcd { background: #0b0d0f; }
+
+:root[data-theme="dark"] .lcd-step {
+  border-color: #5c6670;
+  background: linear-gradient(180deg, #3a4048 0%, #2a3037 100%);
+}
+
+:root[data-theme="dark"] .lcd-step:active { background: #2a3037; }
+
+:root[data-theme="dark"] label.switch input:not(:checked) { background: #4a525c; }
+
+:root[data-theme="dark"] .sidebar li a:hover { background: rgba(255, 90, 79, 0.1); }
+:root[data-theme="dark"] .sidebar li a.active { background: rgba(255, 90, 79, 0.18); }
+/* Menu PNGs have white backgrounds: round them into tiles rather than hard squares. */
+:root[data-theme="dark"] .sidebar img { border-radius: 7px; }
+:root[data-theme="dark"] .theme-toggle { background: transparent; color: var(--muted); }
+
+/* Drawings (vessel schematic, molecule) stay on a light panel so their fixed line colours remain legible. */
+:root[data-theme="dark"] .vessel-schematic,
+:root[data-theme="dark"] .molecule-formula {
+  color-scheme: light;
 }

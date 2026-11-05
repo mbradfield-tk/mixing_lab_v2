@@ -6,6 +6,8 @@ export const TAIPY_URL: string =
 export interface NavItem {
   key: string;
   label: string;
+  /** Shorter sidebar name; defaults to ``label`` (used in page links). */
+  menu?: string;
   path?: string;
 }
 
@@ -15,9 +17,9 @@ export const NAV: NavItem[] = [
   { key: "Fluid_Database", label: "Fluids", path: "/fluids" },
   { key: "Reaction_Database", label: "Reactions", path: "/reactions" },
   { key: "Particle_Database", label: "Particles", path: "/particles" },
-  { key: "Bourne_Protocol", label: "Bourne Protocol", path: "/bourne-protocol" },
-  { key: "Mixing_Sensitivity", label: "Reaction Sensitivity Protocol", path: "/reaction-sensitivity" },
-  { key: "Crystallization_Sensitivity", label: "Crystallization Sensitivity Protocol", path: "/crystallization-sensitivity" },
+  { key: "Bourne_Protocol", label: "Bourne Protocol", menu: "Bourne", path: "/bourne-protocol" },
+  { key: "Mixing_Sensitivity", label: "Reaction Sensitivity Protocol", menu: "Reaction Sensitivity", path: "/reaction-sensitivity" },
+  { key: "Crystallization_Sensitivity", label: "Crystallization Sensitivity Protocol", menu: "Crystallization Sensitivity", path: "/crystallization-sensitivity" },
   { key: "Vessel_Assessment", label: "Vessel Assessment", path: "/vessel-assessment" },
   { key: "Vessel_Comparison", label: "Vessel Comparison", path: "/vessel-comparison" },
   { key: "Heat_Transfer", label: "Heat Transfer Tool", path: "/heat-transfer" },

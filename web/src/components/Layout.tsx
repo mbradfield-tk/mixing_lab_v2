@@ -1,5 +1,21 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { NAV, logoUrl, menuIcon, taipyHref } from "../nav";
+import { setTheme, useTheme } from "../theme";
+
+function ThemeToggle() {
+  const dark = useTheme() === "dark";
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-pressed={dark}
+      onClick={() => setTheme(dark ? "light" : "dark")}
+    >
+      <span className="theme-icon" aria-hidden>{dark ? "☀️" : "🌙"}</span>
+      <span>{dark ? "Light mode" : "Dark mode"}</span>
+    </button>
+  );
+}
 
 export function Layout() {
   return (
@@ -13,20 +29,21 @@ export function Layout() {
           {NAV.map((item) => (
             <li key={item.key}>
               {item.path ? (
-                <NavLink to={item.path} end>
+                <NavLink to={item.path} end title={item.label}>
                   <img src={item.key === "Home" ? logoUrl() : menuIcon(item.key)} alt="" />
-                  {item.label}
+                  <span>{item.menu ?? item.label}</span>
                 </NavLink>
               ) : (
-                <a href={taipyHref(item.key)} title="Opens in the Taipy app (not migrated yet)">
+                <a href={taipyHref(item.key)} title={`${item.label} — opens in the Taipy app (not migrated yet)`}>
                   <img src={menuIcon(item.key)} alt="" />
-                  {item.label}
+                  <span>{item.menu ?? item.label}</span>
                   <span className="external" aria-hidden>↗</span>
                 </a>
               )}
             </li>
           ))}
         </ul>
+        <ThemeToggle />
       </nav>
       <main className="content">
         <img className="page-logo" src="/vimages/general/takeda.svg" alt="Takeda" />

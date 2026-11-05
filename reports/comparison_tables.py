@@ -79,7 +79,7 @@ def scaling_tables(match: dict | None, basis: str) -> dict:
 
     full_df = pd.DataFrame(full)
     show_cols = [c for c in ["Reactor", "Role", "RPM", "Volume (L)", "Re", "P/V (W/L)",
-                             "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
+                             "EDR ε̄ (W/kg)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
                              "Kolmogorov η (µm)", "kLa (1/s)", "Torque (N·m)",
                              "EDCF (W/kg/s)", "Froude number"] if c in full_df.columns]
     disp = full_df[show_cols].copy()

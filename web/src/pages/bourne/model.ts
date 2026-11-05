@@ -59,7 +59,7 @@ export const INITIAL: Inputs = {
 
 export const CENTRE_MODES: { code: CentreMode; label: string }[] = [
   { code: "default", label: "Default (0.2 W/kg)" },
-  { code: "custom_pm", label: "Custom P/m" },
+  { code: "custom_pm", label: "Custom EDR ε̄" },
   { code: "custom_rpm", label: "Custom RPM" },
 ];
 
@@ -87,7 +87,7 @@ export function buildPlan(i: Inputs): { body: PlanBody } | { error: string } {
   const T = parse(i.T);
   if (!Number.isFinite(T)) return { error: "Enter a temperature." };
   if (i.centreMode === "custom_pm" && !(parse(i.pmCentre) > 0))
-    return { error: "Centre P/m must be greater than 0 W/kg." };
+    return { error: "Centre EDR ε̄ must be greater than 0 W/kg." };
   if (i.centreMode === "custom_rpm" && !(parse(i.rpmCentre) > 0))
     return { error: "Centre RPM must be greater than 0." };
   return {

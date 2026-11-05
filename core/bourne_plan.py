@@ -20,7 +20,7 @@ from utils.calculations import (
 )
 
 DEFAULT_CENTER_PM = 0.2  # W/kg (Sarafinas 2018)
-T1_CONDITIONS = (("Low (0.1× P/m)", 0.1), ("Centre (1× P/m)", 1.0), ("High (10× P/m)", 10.0))
+T1_CONDITIONS = (("Low (0.1× ε̄)", 0.1), ("Centre (1× ε̄)", 1.0), ("High (10× ε̄)", 10.0))
 T2_CONDITIONS = (
     ("Slow (1/3× rate)", 3.0, "Long feed → approaches well-mixed limit"),
     ("Centre", 1.0, "Reference feed rate"),
@@ -90,14 +90,14 @@ def center_point(sys: BourneSystem, mode: CenterMode, pm_custom: float,
 def center_info_md(c: dict) -> str:
     rng = f"({c['n_min']:.0f}–{c['n_max']:.0f} RPM)"
     if c["source"] == CenterMode.CUSTOM_RPM:
-        info = (f"Custom centre: **N = {c['n_rpm']:.1f} RPM** → **P/m = {c['pm']:.4g} W/kg** "
+        info = (f"Custom centre: **N = {c['n_rpm']:.1f} RPM** → **EDR ε̄ = {c['pm']:.4g} W/kg** "
                 f"({c['P_V_W_L']:.4g} W/L).")
         if c["in_range"] is False:
             info += f" ⚠ Outside reactor range {rng}."
         return info
     if c["source"] == CenterMode.CUSTOM_PM:
-        return f"Custom centre: **P/m = {c['pm']:.4g} W/kg** at **N = {c['n_rpm']:.0f} RPM**."
-    info = f"Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = {c['n_rpm']:.0f} RPM**."
+        return f"Custom centre: **EDR ε̄ = {c['pm']:.4g} W/kg** at **N = {c['n_rpm']:.0f} RPM**."
+    info = f"Default centre (Sarafinas 2018): **EDR ε̄ = 0.2 W/kg** at **N = {c['n_rpm']:.0f} RPM**."
     if c["in_range"] is False:
         info += f" ⚠ Requires {c['n_rpm']:.0f} RPM — outside reactor range {rng}."
     elif c["in_range"]:
@@ -128,7 +128,7 @@ def test1_conditions(sys: BourneSystem, pm_center: float) -> list[dict]:
         eps_kg = eps / sys.rho if sys.rho > 0 else 0.0
         rows.append({
             "Condition": label, "note": note, "Volume (L)": sys.V_L,
-            "N (RPM)": n_rpm, "P/V (W/L)": eps / 1000.0, "P/m (W/kg)": eps_kg,
+            "N (RPM)": n_rpm, "P/V (W/L)": eps / 1000.0, "EDR ε̄ (W/kg)": eps_kg,
             "Blend time (s)": blend_time_turbulent(sys.Np, n_rps, sys.D_imp, sys.D_tank, sys.H_liquid),
             "Avg shear rate (1/s)": average_shear_rate(P, sys.mu, sys.V_m3),
             "Tip speed (m/s)": tip_speed(n_rps, sys.D_imp),
@@ -158,7 +158,7 @@ def test1_speed_limit_warning(sys: BourneSystem, pm_center: float) -> str:
     if not hits:
         return ""
     return ("The vessel's stir-speed limit is reached for:\n\n" + "\n".join(hits) +
-            "\n\nThe Test 1 P/m span is therefore narrower than the intended 100×, which weakens the "
+            "\n\nThe Test 1 EDR span is therefore narrower than the intended 100×, which weakens the "
             "sensitivity screen. Consider another centre point, fill volume or vessel.")
 
 
@@ -168,7 +168,7 @@ def centerpoint_metrics(sys: BourneSystem, pm_center: float) -> dict:
     eps_kg = specific_power(sys, n_rps)
     return {
         "N (RPM)": n_rps * 60.0,
-        "P/m (W/kg)": eps_kg,
+        "EDR ε̄ (W/kg)": eps_kg,
         "Re": reynolds_number(n_rps, sys.D_imp, sys.rho, sys.mu),
         "Tip speed (m/s)": tip_speed(n_rps, sys.D_imp),
         "Blend time (s)": blend_time_turbulent(sys.Np, n_rps, sys.D_imp, sys.D_tank, sys.H_liquid),
@@ -237,7 +237,7 @@ def test3_conditions(sys: BourneSystem, pm_center: float,
     return rows
 
 
-T1_PLAN_LINES = (("0.1× P/m", 0.1), ("1× P/m (centre)", 1.0), ("10× P/m", 10.0))
+T1_PLAN_LINES = (("0.1× ε̄", 0.1), ("1× ε̄ (centre)", 1.0), ("10× ε̄", 10.0))
 
 
 def t1_speed_plan(sys: BourneSystem, pm_center: float, v_min: float, v_max: float,

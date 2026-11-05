@@ -106,7 +106,7 @@ def protocol_snapshot(res: dict, md: dict, *, reaction: str, competing_label: st
 # ---------------------------------------------------------------------------
 # Bourne Protocol
 # ---------------------------------------------------------------------------
-T1_REPORT_KEYS = ("Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)",
+T1_REPORT_KEYS = ("Condition", "Volume (L)", "N (RPM)", "EDR ε̄ (W/kg)", "P/V (W/L)",
                   "Tip speed (m/s)", "Avg shear rate (1/s)", "kLa_surface (1/s)")
 
 

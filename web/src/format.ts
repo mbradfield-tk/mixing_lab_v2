@@ -17,6 +17,30 @@ function stripZeros(s: string): string {
   return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
 }
 
+/** Result-tile format: ``sig`` significant figures, thousands grouping, exponent only when very small/large. */
+export function formatSig(value: number, sig = 3): string {
+  if (value === 0) return "0";
+  if (!Number.isFinite(value)) return String(value);
+  const a = Math.abs(value);
+  if (a < 1e-4 || a >= 1e7) return formatG(value, sig);
+  const decimals = sig - 1 - Math.floor(Math.log10(a));
+  if (decimals >= 0) return group(stripZeros(value.toFixed(decimals)));
+  const step = 10 ** -decimals;
+  return group(String(Math.round(value / step) * step));
+}
+
+const PLAIN_NUMBER = /^[-+]?(\d{1,3}(,\d{3})+|\d+)?(\.\d+)?(e[-+]?\d+)?$/i;
+
+/** Re-format a value that is a bare number (string or number) with `formatSig`; other text unchanged. */
+export function tidyNumber<T>(value: T, sig = 3): T | string {
+  if (typeof value === "number") return formatSig(value, sig);
+  if (typeof value !== "string") return value;
+  const s = value.trim();
+  if (!/\d/.test(s) || !PLAIN_NUMBER.test(s)) return value;
+  const x = Number(s.replace(/,/g, ""));
+  return Number.isFinite(x) ? formatSig(x, sig) : value;
+}
+
 function group(s: string): string {
   const [int, frac] = s.split(".");
   const sign = int.startsWith("-") ? "-" : "";

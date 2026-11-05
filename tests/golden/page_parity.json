@@ -506,7 +506,8 @@
     "kLa (1/s)": "0.0008432",
     "Torque (N·m)": "1.36e-05",
     "EDCF (W/kg/s)": "0.002764",
-    "Froude number": "0.008495"
+    "Froude number": "0.008495",
+    "EDR ε̄ (W/kg)": "0.0001429"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -522,7 +523,8 @@
     "kLa (1/s)": "0.001672",
     "Torque (N·m)": "0.002173",
     "EDCF (W/kg/s)": "0.001445",
-    "Froude number": "0.002936"
+    "Froude number": "0.002936",
+    "EDR ε̄ (W/kg)": "0.0007916"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -538,7 +540,8 @@
     "kLa (1/s)": "0.001102",
     "Torque (N·m)": "0.06206",
     "EDCF (W/kg/s)": "0.0005401",
-    "Froude number": "0.001151"
+    "Froude number": "0.001151",
+    "EDR ε̄ (W/kg)": "0.0002791"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -554,7 +557,8 @@
     "kLa (1/s)": "0.002008",
     "Torque (N·m)": "1.032",
     "EDCF (W/kg/s)": "0.002682",
-    "Froude number": "0.003003"
+    "Froude number": "0.003003",
+    "EDR ε̄ (W/kg)": "0.00125"
    }
   ],
   "vc_scale_pct_df": [
@@ -572,7 +576,8 @@
     "kLa (1/s)": "+0.0%",
     "Torque (N·m)": "+0.0%",
     "EDCF (W/kg/s)": "+0.0%",
-    "Froude number": "+0.0%"
+    "Froude number": "+0.0%",
+    "EDR ε̄ (W/kg)": "+0.0%"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -588,7 +593,8 @@
     "kLa (1/s)": "+98.3%",
     "Torque (N·m)": "+15875.7%",
     "EDCF (W/kg/s)": "-47.7%",
-    "Froude number": "-65.4%"
+    "Froude number": "-65.4%",
+    "EDR ε̄ (W/kg)": "+454.1%"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -604,7 +610,8 @@
     "kLa (1/s)": "+30.7%",
     "Torque (N·m)": "+456107.3%",
     "EDCF (W/kg/s)": "-80.5%",
-    "Froude number": "-86.5%"
+    "Froude number": "-86.5%",
+    "EDR ε̄ (W/kg)": "+95.4%"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -620,7 +627,8 @@
     "kLa (1/s)": "+138.1%",
     "Torque (N·m)": "+7588686.5%",
     "EDCF (W/kg/s)": "-3.0%",
-    "Froude number": "-64.6%"
+    "Froude number": "-64.6%",
+    "EDR ε̄ (W/kg)": "+774.8%"
    }
   ],
   "vc_impact_df": [
@@ -703,6 +711,7 @@
   "vc_env_params_options": [
    "Power (W)",
    "P/V (W/L)",
+   "EDR ε̄ (W/kg)",
    "Tip speed (m/s)",
    "Blend time 95% (s)",
    "Circulation time (s)",
@@ -2079,10 +2088,10 @@
   "bp_T": 25.0,
   "bp_t1_hydro_df": [
    {
-    "Condition": "Low (0.1× P/m)",
+    "Condition": "Low (0.1× ε̄)",
     "N (RPM)": "197.5",
     "P/V (W/L)": "0.01994",
-    "P/m (W/kg)": "0.02",
+    "EDR ε̄ (W/kg)": "0.02",
     "Blend time (s)": "3.24",
     "Avg shear rate (1/s)": "150",
     "Tip speed (m/s)": "0.31",
@@ -2092,10 +2101,10 @@
     "η (µm)": "77.2"
    },
    {
-    "Condition": "Centre (1× P/m)",
+    "Condition": "Centre (1× ε̄)",
     "N (RPM)": "425.4",
     "P/V (W/L)": "0.1994",
-    "P/m (W/kg)": "0.2",
+    "EDR ε̄ (W/kg)": "0.2",
     "Blend time (s)": "1.5",
     "Avg shear rate (1/s)": "473",
     "Tip speed (m/s)": "0.668",
@@ -2105,10 +2114,10 @@
     "η (µm)": "43.4"
    },
    {
-    "Condition": "High (10× P/m)",
+    "Condition": "High (10× ε̄)",
     "N (RPM)": "916.5",
     "P/V (W/L)": "1.994",
-    "P/m (W/kg)": "2",
+    "EDR ε̄ (W/kg)": "2",
     "Blend time (s)": "0.697",
     "Avg shear rate (1/s)": "1.5e+03",
     "Tip speed (m/s)": "1.44",
@@ -2141,7 +2150,7 @@
     "High (RPM)": "1000.0 ⚠"
    }
   ],
-  "bp_t1_adj_caption": "Speeds hold each condition's P/m constant as the working volume grows — set as discrete setpoints when the volume reaches each milestone. ⚠ Some values were clamped to the reactor RPM range; the target P/m cannot be held at those steps.",
+  "bp_t1_adj_caption": "Speeds hold each condition's EDR ε̄ constant as the working volume grows — set as discrete setpoints when the volume reaches each milestone. ⚠ Some values were clamped to the reactor RPM range; the target EDR ε̄ cannot be held at those steps.",
   "bp_t2_cond_df": [
    {
     "Condition": "Slow (1/3× rate)",
@@ -2204,7 +2213,7 @@
     "Units": "–"
    }
   ],
-  "bp_t1_ctr_info": "Default centre (Sarafinas 2018): **P/m = 0.2 W/kg** at **N = 425 RPM**. Within reactor range (50–1000 RPM).",
+  "bp_t1_ctr_info": "Default centre (Sarafinas 2018): **EDR ε̄ = 0.2 W/kg** at **N = 425 RPM**. Within reactor range (50–1000 RPM).",
   "bp_t1_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). **Mixing matters.** Next: Test 2.",
   "bp_t2_verdict": "⚠️ **Sensitive** — 1 of 1 KPI(s) changed ≥ 5% (Yield (11.1%)). Feed rate matters (**mesomixing** likely). Next: Test 3.",
   "bp_t3_verdict": "✅ **Not sensitive** — no KPI changed ≥ 5% across 1 KPI(s). **Macromixing** controls. Scale-up: keep blend times short.",

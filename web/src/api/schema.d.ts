@@ -1667,7 +1667,7 @@ export interface components {
             next_test: number;
             /**
              * Pm Span
-             * @description Achieved Test 1 high/low P/m ratio (100 intended)
+             * @description Achieved Test 1 high/low EDR ε̄ ratio (100 intended)
              */
             pm_span: number;
             /**
@@ -1877,21 +1877,21 @@ export interface components {
             setpoints: components["schemas"]["SpeedSetpoint"][];
             /**
              * Speed Plan
-             * @description Iso-P/m speed lines over the fill range
+             * @description Iso-EDR speed lines over the fill range
              */
             speed_plan: {
                 [key: string]: unknown;
             } | null;
             /**
              * Test1
-             * @description Low / centre / high P/m conditions after RPM clamping
+             * @description Low / centre / high EDR ε̄ conditions after RPM clamping
              */
             test1: {
                 [key: string]: number | string | null;
             }[];
             /**
              * Test1 Pm Span
-             * @description Achieved high/low P/m ratio (100 intended)
+             * @description Achieved high/low EDR ε̄ ratio (100 intended)
              */
             test1_pm_span: number;
             /** Test2 */
@@ -1951,7 +1951,7 @@ export interface components {
             test1_speed_warning: string;
             /**
              * Test1 Summary
-             * @description Test 1 conditions: N, fill volume, P/V, P/m
+             * @description Test 1 conditions: N, fill volume, P/V, EDR ε̄
              */
             test1_summary: {
                 [key: string]: number | string | null;
@@ -3249,7 +3249,7 @@ export interface components {
             P_V_W_L: number | null;
             /**
              * P V W Kg
-             * @description P/V (W/kg)
+             * @description Energy dissipation rate ε̄ = P/(ρV) (W/kg)
              */
             P_V_W_kg: number | null;
             /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  INITIAL, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, feedRateMlMin, fillingRows, fillingTiles,
+  INITIAL, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose, feedRateMlMin, fillingRows, fillingTiles, flowRegime, flowRegimeNp,
   fromG100, heatBalanceTone, kineticModel, settlingTone, sliderStep, solidsVolPct, solveMessage, solveTiles, suspensionTone,
   switchBasis, temperatureTiles, toCsv, toG100, toTsv, transferTone, type FillingResult, type PointRequest, type SolveResult,
   type TemperatureResult,
@@ -98,7 +98,7 @@ describe("fed-batch dosing and filling", () => {
       "Start temperature", "Peak temperature (at 0.3 min)", "Lowest temperature (at 33 min)", "End (99 % conversion)",
       "No-cooling end temperature", "Reaction heat (total)", "Final conversion", "Time to 99 % conversion",
     ]);
-    expect(tiles[4].value).toBe("48.98 (+24 K)");
+    expect(tiles[4].value).toBe("49.0 (+24 K)");
     const dosed = temperatureTiles({ ...r, scenario: "dosed", Q_rxn_total_kJ: 0, t_99_min: null });
     expect(dosed.map((t) => t.label)).toContain("End of dosing");
     expect(dosed.map((t) => t.label)).not.toContain("Reaction heat (total)");
@@ -120,7 +120,7 @@ describe("fed-batch dosing and filling", () => {
     expect(fillingTiles(res)).toEqual([
       { label: "Fill volume", value: "0.05 → 0.09", unit: "L" },
       { label: "Density ρ", value: "997 → 937", unit: "kg/m³" },
-      { label: "Re", value: "6.72e+03 → 7.67e+03", unit: undefined },
+      { label: "Re", value: "6,720 → 7,670", unit: undefined },
     ]);
     expect(fillingRows(res)[2]).toEqual({ "Time (min)": "120", "Fill volume (L)": "0.09", "Density ρ (kg/m³)": "937", Re: "7.67e+03" });
   });
@@ -213,6 +213,17 @@ describe("text ports", () => {
 });
 
 describe("result status tones", () => {
+  it("classifies the impeller flow regime from Re", () => {
+    expect([5, 10, 8822, 1e4, null].map((re) => [flowRegime(re).value, flowRegime(re).tone])).toEqual([
+      ["Laminar", "critical"], ["Transitional", "warning"], ["Transitional", "warning"], ["Turbulent", "ok"], ["—", "unknown"],
+    ]);
+    // Np = 1.27 -> Re_turb = 6370 / 1.083 = 5,880
+    expect(flowRegimeNp(8822, 1.27)).toMatchObject({ value: "Turbulent", tone: "ok" });
+    expect(flowRegimeNp(8822, 1.27).hint).toContain("5,880");
+    expect(flowRegimeNp(5000, 1.27).value).toBe("Transitional");
+    expect(flowRegimeNp(5, 1.27).value).toBe("Laminar");
+    expect(flowRegimeNp(8822, null).value).toBe("—");
+  });
   it("classifies the suspension, heat-balance and mass-transfer labels", () => {
     expect(suspensionTone("Poorly suspended (N/Njs=0.45)")).toBe("critical");
     expect(suspensionTone("Just suspended (N/Njs=1.02)")).toBe("warning");
@@ -235,10 +246,10 @@ describe("result status tones", () => {
     };
     const tiles = solveTiles(base, "P/V (W/L)", { N_rpm: 400, V_L: 0.055 });
     expect(tiles.map((t) => [t.label, t.value, t.unit, t.tone])).toEqual([
-      ["Agitation speed N", "760.4", "RPM", "ok"],
+      ["Agitation speed N", "760", "RPM", "ok"],
       ["Target P/V (W/L)", "1", undefined, undefined],
       ["Held: fill volume V", "0.055", "L", undefined],
-      ["Vessel window", "50–1000", "RPM", undefined],
+      ["Vessel window", "50–1,000", "RPM", undefined],
     ]);
     expect(tiles[0].hint).toBe("Solution found · gives 1");
     const out = solveTiles({ ...base, status: "outside_vessel_range", best: null }, "P/V (W/L)", { N_rpm: 400, V_L: 0.055 });
@@ -248,7 +259,7 @@ describe("result status tones", () => {
       "P/V (W/L)",
       { N_rpm: 400, V_L: 0.055 },
     );
-    expect(none.map((t) => t.value)).toEqual(["No solution", "1", "400", "50–1000"]);
+    expect(none.map((t) => t.value)).toEqual(["No solution", "1", "400", "50–1,000"]);
     expect([none[0].tone, none[0].hint, none[2].label]).toEqual(["critical", "Achievable P/V (W/L): 0.1–0.4", "Held: agitation speed N"]);
   });
 });

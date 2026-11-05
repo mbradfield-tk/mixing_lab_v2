@@ -33,7 +33,7 @@ def test_center_point_is_structured_and_caption_matches():
 
 def test_test1_conditions_clamp_and_span_100x_when_unclamped():
     rows = plan.test1_conditions(SYS, 0.2)
-    pm = [r["P/m (W/kg)"] for r in rows]
+    pm = [r["EDR ε̄ (W/kg)"] for r in rows]
     assert all(r["note"] == "" for r in rows)
     assert plan.pm_range_ratio(pm) == pytest.approx(100.0, rel=1e-6)
     tight = plan.BourneSystem(**{**SYS.__dict__, "n_max": 400.0})
@@ -45,9 +45,9 @@ def test_test1_speed_limit_warning_names_low_and_high_cases():
     assert plan.test1_speed_limit_warning(SYS, 0.2) == ""
     tight = plan.BourneSystem(**{**SYS.__dict__, "n_min": 150.0, "n_max": 400.0})
     w = plan.test1_speed_limit_warning(tight, 0.2)
-    assert "**Low (0.1× P/m)**" in w and "minimum stir speed of 150 RPM" in w
-    assert "**High (10× P/m)**" in w and "maximum stir speed of 400 RPM" in w
-    assert "Centre (1× P/m)" not in w
+    assert "**Low (0.1× ε̄)**" in w and "minimum stir speed of 150 RPM" in w
+    assert "**High (10× ε̄)**" in w and "maximum stir speed of 400 RPM" in w
+    assert "Centre (1× ε̄)" not in w
 
 
 def test_speed_setpoints_hold_pm_as_volume_grows():

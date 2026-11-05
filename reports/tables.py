@@ -17,6 +17,7 @@ HYDRO_ROWS = [
     ("Re", "Reynolds number", "–"),
     ("Power (W)", "Power", "W"),
     ("P/V (W/L)", "Power per volume", "W/L"),
+    ("EDR ε̄ (W/kg)", "Energy dissipation rate ε̄", "W/kg"),
     ("Tip speed (m/s)", "Tip speed", "m/s"),
     ("Blend time 95% (s)", "Blend time (95%)", "s"),
     ("Micromix time t_E (s)", "Micromixing time t_E", "s"),

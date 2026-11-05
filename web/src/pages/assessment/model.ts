@@ -1,5 +1,5 @@
 import type { Schemas } from "../../api/client";
-import { formatG } from "../../format";
+import { formatG, formatSig } from "../../format";
 
 export type PointRequest = Schemas["PointRequest"];
 export type ReactionOrder = NonNullable<NonNullable<PointRequest["reaction"]>["order"]>;
@@ -284,17 +284,18 @@ export function buildTemperature(i: Inputs, point: PointRequest): TemperatureReq
 /** Headline tiles of a temperature profile. */
 export function temperatureTiles(r: TemperatureResult): { label: string; value: string; unit?: string }[] {
   const reaction = r.Q_rxn_total_kJ !== 0;
+  const tc = (x: number) => x.toFixed(1);
   const tiles = [
-    { label: "Start temperature", value: formatG(r.T_start_C, 4), unit: "°C" },
-    { label: `Peak temperature (at ${g3(r.t_T_max_min)} min)`, value: formatG(r.T_max_C, 4), unit: "°C" },
+    { label: "Start temperature", value: tc(r.T_start_C), unit: "°C" },
+    { label: `Peak temperature (at ${g3(r.t_T_max_min)} min)`, value: tc(r.T_max_C), unit: "°C" },
   ];
   if (r.T_min_C < r.T_start_C - 0.05)
-    tiles.push({ label: `Lowest temperature (at ${g3(r.t_T_min_min)} min)`, value: formatG(r.T_min_C, 4), unit: "°C" });
+    tiles.push({ label: `Lowest temperature (at ${g3(r.t_T_min_min)} min)`, value: tc(r.T_min_C), unit: "°C" });
   tiles.push(
-    { label: r.scenario === "dosed" ? "End of dosing" : "End (99 % conversion)", value: formatG(r.T_end_C, 4), unit: "°C" },
+    { label: r.scenario === "dosed" ? "End of dosing" : "End (99 % conversion)", value: tc(r.T_end_C), unit: "°C" },
     {
       label: "No-cooling end temperature",
-      value: `${formatG(r.T_ad_C, 4)} (${r.dT_ad_K >= 0 ? "+" : ""}${formatG(r.dT_ad_K, 3)} K)`,
+      value: `${tc(r.T_ad_C)} (${r.dT_ad_K >= 0 ? "+" : ""}${formatG(r.dT_ad_K, 3)} K)`,
       unit: "°C",
     },
   );
@@ -318,7 +319,8 @@ export function fillingTiles(res: FillingResult): { label: string; value: string
     const s = res.series.find((x) => x.field === field);
     if (!s) return [];
     const m = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(s.label);
-    return [{ label: m ? m[1] : s.label, value: `${g3(s.values[0])} → ${g3(s.values[s.values.length - 1])}`, unit: m?.[2] }];
+    const sig = (x: number | null) => (x === null ? "—" : formatSig(x));
+    return [{ label: m ? m[1] : s.label, value: `${sig(s.values[0])} → ${sig(s.values[s.values.length - 1])}`, unit: m?.[2] }];
   });
 }
 
@@ -454,20 +456,20 @@ export interface SolveTile {
 export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: number; V_L: number }): SolveTile[] {
   const solveN = res.solve_for === "N_rpm";
   const unit = solveN ? "RPM" : "L";
-  const g4 = (x: number) => formatG(x, 4);
+  const sig = (x: number) => formatSig(x);
   const [wlo, whi] = res.vessel_range;
   const achieved = res.solutions[0]?.achieved;
-  const gives = achieved === null || achieved === undefined ? "" : ` · gives ${g4(achieved)}`;
+  const gives = achieved === null || achieved === undefined ? "" : ` · gives ${sig(achieved)}`;
   const headline: SolveTile =
     res.status === "solved"
-      ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: g4(res.best as number), unit, tone: "ok",
+      ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: sig(res.best as number), unit, tone: "ok",
           hint: res.solutions.length > 1 ? `${res.solutions.length} solutions (see table)` : `Solution found${gives}` }
       : res.status === "outside_vessel_range"
-        ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: g4(res.solutions[0].value), unit,
+        ? { label: solveN ? "Agitation speed N" : "Fill volume V", value: sig(res.solutions[0].value), unit,
             tone: "warning", hint: `Outside the vessel window${gives}` }
         : { label: solveN ? "Agitation speed N" : "Fill volume V", value: "No solution", tone: "critical",
             hint: res.achievable_span && res.achievable_span[0] !== null && res.achievable_span[1] !== null
-              ? `Achievable ${label}: ${g4(res.achievable_span[0])}–${g4(res.achievable_span[1])}`
+              ? `Achievable ${label}: ${sig(res.achievable_span[0])}–${sig(res.achievable_span[1])}`
               : "Target not reachable" };
   return [
     headline,
@@ -475,7 +477,7 @@ export function solveTiles(res: SolveResult, label: string, fixed: { N_rpm: numb
     solveN
       ? { label: "Held: fill volume V", value: formatG(fixed.V_L, 3), unit: "L" }
       : { label: "Held: agitation speed N", value: fixed.N_rpm.toFixed(0), unit: "RPM" },
-    { label: "Vessel window", value: `${g4(wlo)}–${g4(whi)}`, unit },
+    { label: "Vessel window", value: `${sig(wlo)}–${sig(whi)}`, unit },
   ];
 }
 
@@ -515,8 +517,32 @@ export function transferTone(screening: string): Tone {
 export const HYDRO_FEATURED = [
   "Reynolds number",
   "Power per volume",
+  "Energy dissipation rate ε̄",
   "Tip speed",
   "Blend time (95%)",
   "Micromixing time t_E",
   "Kolmogorov length η",
 ];
+
+type RegimeTile = { label: string; value: string; tone: Tone; hint: string };
+
+/** Impeller flow regime from Re (same 10 / 10⁴ bounds as core.sensitivity_rules; HIM Ch. 6). */
+export function flowRegime(re: number | null | undefined): RegimeTile {
+  const label = "Flow regime (Re 10 / 10⁴)";
+  if (re === null || re === undefined || !(re > 0)) return { label, value: "—", tone: "unknown", hint: "Re unavailable" };
+  if (re < 10) return { label, value: "Laminar", tone: "critical", hint: "Re < 10 · turbulent correlations not applicable" };
+  if (re < 1e4) return { label, value: "Transitional", tone: "warning", hint: "10 ≤ Re < 10⁴ · turbulent correlations extrapolated" };
+  return { label, value: "Turbulent", tone: "ok", hint: "Re ≥ 10⁴" };
+}
+
+/** Impeller-specific regime: turbulent above Re = 6370 / Np^(1/3) (Grenville & Nienow, HIM Ch. 9). */
+export function flowRegimeNp(re: number | null | undefined, np: number | null | undefined): RegimeTile {
+  const label = "Flow regime (Np-based)";
+  if (re === null || re === undefined || !(re > 0) || np === null || np === undefined || !(np > 0))
+    return { label, value: "—", tone: "unknown", hint: "Re or Np unavailable" };
+  const reTurb = 6370 / Math.cbrt(np);
+  const limit = `Re_turb = 6370/Np^(1/3) = ${formatSig(reTurb)}`;
+  if (re < 10) return { label, value: "Laminar", tone: "critical", hint: `Re < 10 · ${limit}` };
+  if (re < reTurb) return { label, value: "Transitional", tone: "warning", hint: `Re < ${limit}` };
+  return { label, value: "Turbulent", tone: "ok", hint: `Re ≥ ${limit}` };
+}

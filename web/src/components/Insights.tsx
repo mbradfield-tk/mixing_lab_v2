@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Row } from "../api/tables";
+import { tidyNumber } from "../format";
 import { Markdown } from "./Markdown";
 import { ResultTable } from "./ResultTable";
 import { symNode } from "./Sym";
@@ -78,7 +79,7 @@ export function StatGrid({ stats, size = "md" }: { stats: Stat[]; size?: "md" | 
         <div key={i} className={`stat tone-${s.tone ?? "info"}${s.wide ? " stat-wide" : ""}`}>
           <div className="stat-label">{symNode(s.label)}</div>
           <div className="stat-value">
-            {symNode(s.value)}
+            {symNode(tidyNumber(s.value))}
             {s.unit && s.unit !== "–" && <span className="stat-unit"> {s.unit}</span>}
           </div>
           {s.hint && <div className="stat-hint">{symNode(s.hint)}</div>}

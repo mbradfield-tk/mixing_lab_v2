@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { formatConverted, formatE, formatF } from "./format";
+import { formatConverted, formatE, formatF, formatSig, tidyNumber } from "./format";
+
+describe("formatSig / tidyNumber (result tiles)", () => {
+  it("rounds to 3 significant figures with grouping", () => {
+    expect([8822, 0.3748, 0.02666, 37.09, 3550, 0.9996, 1.36e-5, 0].map((x) => formatSig(x))).toEqual([
+      "8,820", "0.375", "0.0267", "37.1", "3,550", "1", "1.36e-05", "0",
+    ]);
+  });
+  it("only touches bare numbers", () => {
+    expect(tidyNumber("8,822")).toBe("8,820");
+    expect(tidyNumber("0.0003749")).toBe("0.000375");
+    expect(tidyNumber("1.36e-05")).toBe("1.36e-05");
+    expect(tidyNumber("0.5 → 0.7")).toBe("0.5 → 0.7");
+    expect(tidyNumber("Run Test 2")).toBe("Run Test 2");
+    expect(tidyNumber("—")).toBe("—");
+    expect(tidyNumber(" ")).toBe(" ");
+  });
+});
 
 // Expected strings produced by Python's pages/unit_converter._fmt.
 const PYTHON: [number, string][] = [

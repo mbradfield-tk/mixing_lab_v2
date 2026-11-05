@@ -617,6 +617,8 @@ label.narrow {
 }
 
 .stat {
+  display: flex;
+  flex-direction: column;
   background: var(--tone-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -626,9 +628,13 @@ label.narrow {
 .stat-label {
   font-size: 0.78rem;
   color: var(--muted);
+  line-height: 1.25;
+  text-wrap: balance;
 }
 
 .stat-value {
+  margin-top: auto;
+  padding-top: 2px;
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--tone);

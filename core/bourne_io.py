@@ -35,7 +35,7 @@ def test_finding(status: str, test: int, range_ok: bool = True) -> str:
     if not status:
         return ""
     if test == 1 and status == "not_sensitive" and not range_ok:
-        return "Inconclusive (no response, but P/m span < 100x)"
+        return "Inconclusive (no response, but EDR span < 100x)"
     return TEST_FINDINGS[test].get(status, "")
 
 

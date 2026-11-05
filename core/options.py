@@ -65,7 +65,7 @@ class Coalescence(Coded):
 # --- Bourne Protocol ---------------------------------------------------------
 class CenterMode(Coded):
     DEFAULT = "default", "Default (0.2 W/kg)"
-    CUSTOM_PM = "custom_pm", "Custom P/m"
+    CUSTOM_PM = "custom_pm", "Custom EDR ε̄"
     CUSTOM_RPM = "custom_rpm", "Custom RPM"
 
 

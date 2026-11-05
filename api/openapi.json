@@ -758,7 +758,7 @@
             "type": "integer"
           },
           "pm_span": {
-            "description": "Achieved Test 1 high/low P/m ratio (100 intended)",
+            "description": "Achieved Test 1 high/low EDR ε̄ ratio (100 intended)",
             "title": "Pm Span",
             "type": "number"
           },
@@ -1225,11 +1225,11 @@
                 "type": "null"
               }
             ],
-            "description": "Iso-P/m speed lines over the fill range",
+            "description": "Iso-EDR speed lines over the fill range",
             "title": "Speed Plan"
           },
           "test1": {
-            "description": "Low / centre / high P/m conditions after RPM clamping",
+            "description": "Low / centre / high EDR ε̄ conditions after RPM clamping",
             "items": {
               "additionalProperties": {
                 "anyOf": [
@@ -1253,7 +1253,7 @@
             "type": "array"
           },
           "test1_pm_span": {
-            "description": "Achieved high/low P/m ratio (100 intended)",
+            "description": "Achieved high/low EDR ε̄ ratio (100 intended)",
             "title": "Test1 Pm Span",
             "type": "number"
           },
@@ -1444,7 +1444,7 @@
             "type": "string"
           },
           "test1_summary": {
-            "description": "Test 1 conditions: N, fill volume, P/V, P/m",
+            "description": "Test 1 conditions: N, fill volume, P/V, EDR ε̄",
             "items": {
               "additionalProperties": {
                 "anyOf": [
@@ -4737,7 +4737,7 @@
                 "type": "null"
               }
             ],
-            "description": "P/V (W/kg)",
+            "description": "Energy dissipation rate ε̄ = P/(ρV) (W/kg)",
             "title": "P V W Kg"
           },
           "P_V_W_m3": {

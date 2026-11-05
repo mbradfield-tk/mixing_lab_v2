@@ -403,7 +403,8 @@ def fluid_properties(name: str, T_C: float = 25.0, P_atm: float = 1.0) -> s.Flui
 
 # Recorded Results column -> evaluate_point key, for a saved assessment.
 _RECORDED_HYDRO = {
-    "Re": "Re", "P/V (W/L)": "P/V (W/L)", "Tip speed (m/s)": "Tip speed (m/s)",
+    "Re": "Re", "P/V (W/L)": "P/V (W/L)", "EDR ε̄ (W/kg)": "EDR ε̄ (W/kg)",
+    "Tip speed (m/s)": "Tip speed (m/s)",
     "Blend time (s)": "Blend time 95% (s)", "Circulation time (s)": "Circulation time (s)",
     "Micromix t_E (s)": "Micromix time t_E (s)",
     "Micromix t_E_local (s)": "Micromix time t_E_local (s)",
@@ -721,7 +722,7 @@ def bourne_plan(req: s.BournePlanRequest) -> s.BournePlanResult:
     ratios = plan.t3_location_ratios(req.surface_ratio, req.mid_ratio, req.impeller_ratio)
     return s.BournePlanResult(
         centre_pm_W_kg=pm, centre_info=info, centerpoint=jsonable(plan.centerpoint_metrics(sys, pm)),
-        test1=jsonable(t1), test1_pm_span=plan.pm_range_ratio([r["P/m (W/kg)"] for r in t1]),
+        test1=jsonable(t1), test1_pm_span=plan.pm_range_ratio([r["EDR ε̄ (W/kg)"] for r in t1]),
         speed_plan=jsonable(bourne_speed_plan(req)),
         setpoints=[s.SpeedSetpoint(
             step=sp["Step"], V_L=sp["Volume (L)"], low_rpm=sp["Low (RPM)"][0],
@@ -767,7 +768,7 @@ def bourne_evaluation(req: s.BourneAssessRequest) -> dict:
                2: kpi_assessment(req.test2, 2) if req.test2 else None,
                3: kpi_assessment(req.test3, 3) if req.test3 else None}
     status = [results[n]["status"] if results[n] else "" for n in (1, 2, 3)]
-    outcome = rules.bourne_outcome(*status, plan.pm_range_ratio([r["P/m (W/kg)"] for r in t1_rows]))
+    outcome = rules.bourne_outcome(*status, plan.pm_range_ratio([r["EDR ε̄ (W/kg)"] for r in t1_rows]))
     feed_time = (req.feed_volume_mL / req.feed_rate_mL_min if req.feed_basis == FeedBasis.RATE
                  else req.feed_time_min)
     ratios = plan.t3_location_ratios(req.surface_ratio, req.mid_ratio, req.impeller_ratio)

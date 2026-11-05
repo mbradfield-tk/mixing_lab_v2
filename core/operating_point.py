@@ -155,7 +155,7 @@ def hydro(inp: PointInputs, N_rps: float, V_L: float) -> dict:
 
 def feed_dissipation(h: dict, location: FeedLocation) -> float:
     """Local energy dissipation (W/kg) at the feed point."""
-    pv = h.get("P/V (W/kg)", 0.0)
+    pv = h.get("EDR ε̄ (W/kg)", 0.0)
     if location == FeedLocation.NEAR_IMPELLER:
         return h.get("ε_max (W/kg)", pv)
     if location == FeedLocation.SURFACE:

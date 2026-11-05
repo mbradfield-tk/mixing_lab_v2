@@ -54,6 +54,7 @@ _UNICODE_MAP = str.maketrans({
 
 def _safe_text(text: str, is_unicode_font: bool) -> str:
     """If using a non-Unicode font, replace special characters with ASCII."""
+    text = text.replace("\u0304", "")  # combining overline (ε̄) is not shaped by fpdf
     if is_unicode_font:
         return text
     return text.translate(_UNICODE_MAP).encode("latin-1", errors="replace").decode("latin-1")
@@ -638,6 +639,7 @@ def build_mixing_assessment_pdf(snap: dict) -> bytes:
     _hydro_rows = [
         ["Re", f"{hydro['Re']:.0f}"],
         ["P/V (W/L)", f"{hydro['P/V (W/L)']:.3g}"],
+        ["EDR ε (W/kg)", f"{hydro['EDR ε̄ (W/kg)']:.3g}"],
         ["Blend time 95% (s)", f"{hydro['Blend time 95% (s)']:.2f}"],
         ["Micromix t_E (s)", f"{hydro['Micromix time t_E (s)']:.4g}"],
         ["Tip speed (m/s)", f"{hydro['Tip speed (m/s)']:.2f}"],
@@ -1328,7 +1330,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
     pdf.sub_title("Conditions")
     if t1_conditions:
         _t_col = ["T (C)"] if T_C is not None else []
-        _t1_cond_headers = ["Condition", *_t_col, "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
+        _t1_cond_headers = ["Condition", *_t_col, "Volume (L)", "N (RPM)", "EDR ε (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
         _t1_cond_rows = []
         for cond in t1_conditions:
             _t1_cond_rows.append([
@@ -1336,7 +1338,7 @@ def build_bourne_protocol_pdf(snap: dict) -> bytes:
                 *([f"{T_C:g}"] if T_C is not None else []),
                 _fmt_sig(cond.get('Volume (L)', 0)),
                 f"{cond.get('N (RPM)', 0):.0f}",
-                f"{cond.get('P/m (W/kg)', 0):.4g}",
+                f"{cond.get('EDR ε̄ (W/kg)', 0):.4g}",
                 f"{cond.get('P/V (W/L)', 0):.4g}",
                 f"{cond.get('Tip speed (m/s)', 0):.3f}",
             ])
@@ -1592,14 +1594,14 @@ def build_bourne_step_pdf(snap: dict) -> bytes:
         pdf.section_title(step_title)
         pdf.sub_title("Conditions")
         if t1_conditions:
-            _t1_cond_headers = ["Condition", "Volume (L)", "N (RPM)", "P/m (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
+            _t1_cond_headers = ["Condition", "Volume (L)", "N (RPM)", "EDR ε (W/kg)", "P/V (W/L)", "Tip speed (m/s)"]
             _t1_cond_rows = []
             for cond in t1_conditions:
                 _t1_cond_rows.append([
                     cond.get("Condition", ""),
                     _fmt_sig(cond.get('Volume (L)', 0)),
                     f"{cond.get('N (RPM)', 0):.0f}",
-                    f"{cond.get('P/m (W/kg)', 0):.4g}",
+                    f"{cond.get('EDR ε̄ (W/kg)', 0):.4g}",
                     f"{cond.get('P/V (W/L)', 0):.4g}",
                     f"{cond.get('Tip speed (m/s)', 0):.3f}",
                 ])

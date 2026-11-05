@@ -478,10 +478,10 @@ def test_bourne_page_endpoints_match_the_taipy_page(client):
     assert tables["centre_info"] == st.bp_t1_ctr_info
     summary, detail = tables["test1_summary"], tables["test1_detail"]
     assert list(summary[0]) == ["Condition", "T (°C)", "N (RPM)", "Fill volume (L)", "P/V (W/L)",
-                                "P/m (W/kg)"]
+                                "EDR ε̄ (W/kg)"]
     assert list(detail[0])[:4] == ["Condition", "T (°C)", "N (RPM)", "Fill volume (L)"]
     for s_row, full, d_row in zip(summary, tables["test1"], detail):
-        assert (s_row["N (RPM)"], s_row["P/m (W/kg)"]) == (full["N (RPM)"], full["P/m (W/kg)"])
+        assert (s_row["N (RPM)"], s_row["EDR ε̄ (W/kg)"]) == (full["N (RPM)"], full["EDR ε̄ (W/kg)"])
         assert d_row["N (RPM)"] == s_row["N (RPM)"] and d_row["Re"] == full["Re"]
     assert {"EDR max ε_max (W/kg)", "Max shear rate (1/s)", "Blend time 95% (s)",
             "Circulation time (s)", "Torque (N·m)"} <= set(detail[0])

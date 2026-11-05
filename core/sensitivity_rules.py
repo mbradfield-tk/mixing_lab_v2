@@ -919,7 +919,7 @@ def bourne_test_lines(o: dict) -> list[str]:
     elif o["s1"] == "inconclusive":
         lines.append("- **Test 1:** mixed response to impeller speed (inconclusive).")
     elif o["s1"] == "not_sensitive" and not o["range_ok"]:
-        lines.append(f"- **Test 1:** no effect, but only a {o['ratio']:.1f}× P/m span "
+        lines.append(f"- **Test 1:** no effect, but only a {o['ratio']:.1f}× EDR span "
                      "(100× intended) - inconclusive.")
     elif o["s1"] == "not_sensitive":
         lines.append("- **Test 1:** not sensitive to impeller speed.")
@@ -948,7 +948,7 @@ def bourne_test_verdict(test: int, res: dict, ratio: float = 100.0) -> tuple[str
         if status == "inconclusive":
             return prefix + " Possible sensitivity. Next: Test 2.", True
         if ratio < 100.0:
-            return (prefix + f" Only a {ratio:.1f}× P/m span was reached (100× intended), so "
+            return (prefix + f" Only a {ratio:.1f}× EDR span was reached (100× intended), so "
                     "this is **inconclusive**. Widen the speed range, or continue to Test 2.", True)
         return prefix + " Mixing is not limiting - scale up on geometric similarity.", False
     if test == 2:
@@ -989,7 +989,7 @@ def bourne_conclusion_lines(o: dict) -> list[str]:
                          "Replicate it or widen the ε contrast between feed points.")
         else:
             lines.append("⚪ **No confirmed sensitivity** - Test 1 was inconclusive and feed rate "
-                         "had no effect. Repeat Test 1 with replicates over the full 100× P/m span.")
+                         "had no effect. Repeat Test 1 with replicates over the full 100× EDR span.")
     elif o["next_test"] == 3:
         lines.append("Tests 1 and 2 show a mixing effect. Run **Test 3** (feed location) to "
                      "separate meso- from macromixing.")
@@ -1017,7 +1017,7 @@ def bourne_conclusions(o: dict, results: dict) -> list[tuple[str, str, str]]:
             continue
         v = verdict(res)
         if test == 1 and o["s1"] == "not_sensitive" and not o["range_ok"]:
-            v += f" - only a {o['ratio']:.1f}x P/m span; treated as inconclusive"
+            v += f" - only a {o['ratio']:.1f}x EDR span; treated as inconclusive"
         rows.append((BOURNE_TEST_TITLES[test], v, ""))
     if o["tentative"]:
         rows.append(("Confidence", "**Tentative** - an earlier test was inconclusive; "

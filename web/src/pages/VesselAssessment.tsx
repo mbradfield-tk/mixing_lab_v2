@@ -21,7 +21,7 @@ import { useDebounced } from "../hooks";
 import { mergeKnown, usePageRef, usePageState, type CaseFile } from "../state/pageState";
 import {
   HYDRO_FEATURED, INITIAL, LOADING_BASES, asOrder, autoTrxn, buildFilling, buildRequest, buildTemperature, defaultDose,
-  downloadBlob, feedRateMlMin, fillingRows, fillingTiles, fromG100, heatBalanceTone, isDamkohler, kineticModel, loadingUnit,
+  downloadBlob, feedRateMlMin, fillingRows, fillingTiles, flowRegime, flowRegimeNp, fromG100, heatBalanceTone, isDamkohler, kineticModel, loadingUnit,
   settlingTone, sliderStep, solidsVolPct, solveMessage, solveTiles, suspensionTone, switchBasis, temperatureTiles, toG100,
   transferTone, type FillingRequest, type FillingResult, type Inputs, type LoadingBasis, type PointRequest, type SolveResult,
   type TemperatureRequest, type TemperatureResult,
@@ -83,6 +83,12 @@ function AssessmentInsights({ t, solids, stale }: { t: Tables; solids: boolean; 
   const hydro = statsFromRows(t.hydro);
   const featured = HYDRO_FEATURED.map((n) => hydro.find((s) => s.label === n)).filter((s): s is Stat => !!s);
   const rest = hydro.filter((s) => !featured.includes(s));
+  featured.splice(
+    featured.findIndex((s) => s.label === "Reynolds number") + 1,
+    0,
+    flowRegime(t.point.Re),
+    flowRegimeNp(t.point.Re, t.point.Np),
+  );
   const reaction = t.damkohler.length > 0;
   const suspension = solids ? String(valueOf(t.solids, "Suspension state")) : "";
   const njsRow = t.solids.find((r) => String(r.Parameter).startsWith("N_js (design"));
@@ -499,6 +505,7 @@ export function VesselAssessment() {
     temperature: Temperature | null;
   } | null>("last", null);
   const stale = !!last && currentKey !== last.key;
+  const computeBtn = useRef<HTMLButtonElement>(null);
   const corrLabel = (code: string) => corrSources.find((c) => c.code === code)?.label ?? code;
 
   const compute = useMutation({
@@ -697,6 +704,8 @@ export function VesselAssessment() {
     else set({ V: String(Math.round(best * 1e4) / 1e4) });
     setSolved({ ...solved, applied: true });
     setNotice({ kind: "info", text: "Solution applied to the operating inputs." });
+    computeBtn.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    computeBtn.current?.focus({ preventScroll: true });
   }
 
   const t = last?.tables;
@@ -1056,6 +1065,7 @@ export function VesselAssessment() {
       </Card>
 
       <button
+        ref={computeBtn}
         type="button"
         className={`compute-btn ${!last || stale ? "primary" : "done"}`}
         disabled={compute.isPending}

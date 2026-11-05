@@ -5,10 +5,10 @@ import pandas as pd
 
 from core.records import sf
 
-SETPOINTS_NOTE = ("Speeds hold each condition's P/m constant as the working volume grows — "
+SETPOINTS_NOTE = ("Speeds hold each condition's EDR ε̄ constant as the working volume grows — "
                   "set as discrete setpoints when the volume reaches each milestone.")
 SETPOINTS_CLAMPED = (" ⚠ Some values were clamped to the reactor RPM range; the target "
-                     "P/m cannot be held at those steps.")
+                     "EDR ε̄ cannot be held at those steps.")
 
 
 def reactor_limits(row: pd.Series) -> pd.DataFrame:
@@ -40,7 +40,7 @@ def test1_table(rows: list[dict]) -> pd.DataFrame:
         "Condition": r["Condition"] + r["note"],
         "N (RPM)": f"{r['N (RPM)']:,.1f}",
         "P/V (W/L)": f"{r['P/V (W/L)']:.4g}",
-        "P/m (W/kg)": f"{r['P/m (W/kg)']:.4g}",
+        "EDR ε̄ (W/kg)": f"{r['EDR ε̄ (W/kg)']:.4g}",
         "Blend time (s)": f"{r['Blend time (s)']:.3g}",
         "Avg shear rate (1/s)": f"{r['Avg shear rate (1/s)']:.3g}",
         "Tip speed (m/s)": f"{r['Tip speed (m/s)']:.3g}",
@@ -57,7 +57,7 @@ def test1_summary_table(rows: list[dict]) -> pd.DataFrame:
         "N (RPM)": f"{r['N (RPM)']:,.1f}",
         "Fill volume (L)": f"{r['Volume (L)']:.4g}",
         "P/V (W/L)": f"{r['P/V (W/L)']:.4g}",
-        "P/m (W/kg)": f"{r['P/m (W/kg)']:.4g}",
+        "EDR ε̄ (W/kg)": f"{r['EDR ε̄ (W/kg)']:.4g}",
     } for r in rows])
 
 
@@ -89,7 +89,7 @@ def test1_detail_table(rows: list[dict], hydros: list[dict], rho: float) -> pd.D
     for r, h in zip(rows, hydros):
         row = {"Condition": r["Condition"] + r["note"], "N (RPM)": f"{r['N (RPM)']:,.1f}",
                "Fill volume (L)": f"{r['Volume (L)']:.4g}", "P/V (W/L)": f"{r['P/V (W/L)']:.4g}",
-               "EDR mean ε = P/m (W/kg)": f"{r['P/m (W/kg)']:.4g}"}
+               "EDR ε̄ (W/kg)": f"{r['EDR ε̄ (W/kg)']:.4g}"}
         for key, col, spec in T1_DETAIL:
             v = h.get(key)
             row[col] = format(v, spec) if isinstance(v, (int, float)) else "—"

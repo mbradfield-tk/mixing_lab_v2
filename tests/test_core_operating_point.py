@@ -66,10 +66,10 @@ def test_surface_kla_feeds_da_gl_without_a_gas_phase():
 
 
 def test_near_impeller_feed_falls_back_to_mean_dissipation():
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, FeedLocation.NEAR_IMPELLER) == 2.0
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0, "ε_max (W/kg)": 9.0},
+    assert op.feed_dissipation({"EDR ε̄ (W/kg)": 2.0}, FeedLocation.NEAR_IMPELLER) == 2.0
+    assert op.feed_dissipation({"EDR ε̄ (W/kg)": 2.0, "ε_max (W/kg)": 9.0},
                                FeedLocation.NEAR_IMPELLER) == 9.0
-    assert op.feed_dissipation({"P/V (W/kg)": 2.0}, FeedLocation.SURFACE) == pytest.approx(0.4)
+    assert op.feed_dissipation({"EDR ε̄ (W/kg)": 2.0}, FeedLocation.SURFACE) == pytest.approx(0.4)
 
 
 def test_optional_blocks_only_appear_when_requested():

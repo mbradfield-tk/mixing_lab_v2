@@ -11,7 +11,7 @@ from core.records import sf
 # Parameters offered for the Vessel Assessment envelope, surfaces and Solve-for (core keys).
 ENVELOPE_PARAMETERS = [
     "Da_macro", "Da_micro", "Da_GL",
-    "Re", "Power (W)", "P/V (W/L)", "P/V (W/kg)", "Tip speed (m/s)",
+    "Re", "Power (W)", "P/V (W/L)", "EDR ε̄ (W/kg)", "Tip speed (m/s)",
     "Pumping rate (m³/s)", "Blend time 95% (s)", "Circulation time (s)",
     "Micromix time t_E (s)", "Kolmogorov η (µm)", "ε_max (W/kg)",
     "EDCF (W/kg/s)", "Torque (N·m)", "Froude number", "Avg shear rate (1/s)",

@@ -123,7 +123,7 @@ function OutcomeDashboard({ out }: { out: Schemas["BourneAssessResult"] }) {
             tone: nSens ? "critical" : "ok",
           },
           {
-            label: "Test 1 P/m span",
+            label: "Test 1 EDR span",
             value: `${out.pm_span.toFixed(out.pm_span < 100 ? 1 : 0)}×`,
             tone: out.pm_span >= 100 ? "ok" : "warning",
             hint: out.pm_span >= 100 ? "Full range" : "Below 100×",
@@ -407,7 +407,7 @@ export function BourneProtocol() {
                 onChange: (m) => set({ centreMode: m as Inputs["centreMode"] }),
               },
               {
-                label: "Centre P/m",
+                label: "Centre EDR ε̄",
                 unit: "W/kg",
                 value: inputs.pmCentre,
                 disabled: inputs.centreMode !== "custom_pm",
@@ -613,7 +613,7 @@ export function BourneProtocol() {
           {started && (
             <Card title="Test 1 — Impeller Speed">
               <p>
-                Vary <strong>P/m</strong> 100× (0.1× to 10× the centre) at fixed volume. No change in the response means mixing is
+                Vary the <strong>energy dissipation rate ε̄</strong> (EDR) 100× (0.1× to 10× the centre) at fixed volume. No change in the response means mixing is
                 not limiting.
               </p>
               <section className="sub-section">
@@ -642,7 +642,7 @@ export function BourneProtocol() {
               {inputs.fedBatch && (
                 <div className="grid-2 va-top">
                   <div>
-                    <p className="muted">One row per milestone volume; speeds hold P/m constant as the volume grows.</p>
+                    <p className="muted">One row per milestone volume; speeds hold EDR ε̄ constant as the volume grows.</p>
                     <table className="data-table kpi-editor" aria-label="Milestone volumes">
                       <thead>
                         <tr>
@@ -692,7 +692,7 @@ export function BourneProtocol() {
               ) : (
                 <>
                   <p className="muted">
-                    Lines hold each condition&apos;s P/m as the fill changes. Black dot: centre point; diamonds: fed-batch steps;
+                    Lines hold each condition&apos;s EDR ε̄ as the fill changes. Black dot: centre point; diamonds: fed-batch steps;
                     dashed: RPM limits.
                   </p>
                   <div className="chart-narrow">
@@ -729,7 +729,7 @@ export function BourneProtocol() {
           {show(2) && (
             <Card title="Test 2 — Feed Rate / Time">
               <p>
-                Keep P/m at the centre and vary the <strong>feed rate</strong> 9×. No change means <strong>micromixing</strong>{" "}
+                Keep EDR ε̄ at the centre and vary the <strong>feed rate</strong> 9×. No change means <strong>micromixing</strong>{" "}
                 controls; a change points to mesomixing.
               </p>
               <section className="sub-section">
@@ -752,7 +752,7 @@ export function BourneProtocol() {
           {show(3) && (
             <Card title="Test 3 — Feed Location">
               <p>
-                Keep P/m and feed rate; move the feed point between low- and high-turbulence zones. No change means{" "}
+                Keep EDR ε̄ and feed rate; move the feed point between low- and high-turbulence zones. No change means{" "}
                 <strong>macromixing</strong> controls; a change means mesomixing.
               </p>
               <section className="sub-section">

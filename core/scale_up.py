@@ -19,7 +19,7 @@ DEFAULT_FEED_PIPE_MM = 3.0
 
 # Parameters plotted / summarised in a comparison (subset present in the result dict).
 BASE_PLOT_PARAMS = [
-    "Power (W)", "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Power (W)", "P/V (W/L)", "EDR ε̄ (W/kg)", "Tip speed (m/s)", "Blend time 95% (s)",
     "Circulation time (s)", "Micromix time t_E (s)", "Kolmogorov η (µm)", "Re",
     "Avg shear rate (1/s)", "Max shear rate (1/s)", "Avg shear stress (Pa)",
     "Da_macro", "Da_micro", "Da_GL", "ε_max (W/kg)", "EDCF (W/kg/s)",
@@ -31,8 +31,8 @@ PARTICLE_PARAMS = ["N_js (RPM)", "N/N_js", "v_t (m/s)", "Re_p",
 DEFAULT_PLOT_PARAMS = ["Da_micro", "Da_macro", "Blend time 95% (s)", "P/V (W/L)"]
 # Parameters a scale-up match can hold constant.
 SCALABLE_PARAMS = [
-    "P/V (W/L)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
-    "Re", "kLa (1/s)", "kLa_surface (1/s)", "Avg shear rate (1/s)",
+    "P/V (W/L)", "EDR ε̄ (W/kg)", "Tip speed (m/s)", "Blend time 95% (s)",
+    "Micromix time t_E (s)", "Re", "kLa (1/s)", "kLa_surface (1/s)", "Avg shear rate (1/s)",
     "Max shear rate (1/s)", "Kolmogorov η (µm)", "EDCF (W/kg/s)", "Froude number",
 ]
 
@@ -84,6 +84,7 @@ def recorded_rows(env_df: pd.DataFrame, *, reaction: str, fluid: str, T_C: float
             "reactor": name, "reaction": reaction, "fluid": fluid, "fluid_T_C": T_C,
             "RPM": c["RPM"], "Volume (L)": c["V_L"],
             "Re": c.get("Re", ""), "P/V (W/L)": c.get("P/V (W/L)", ""),
+            "EDR ε̄ (W/kg)": c.get("EDR ε̄ (W/kg)", ""),
             "Tip speed (m/s)": c.get("Tip speed (m/s)", ""),
             "Blend time (s)": c.get("Blend time 95% (s)", ""),
             "Kolmogorov η (µm)": c.get("Kolmogorov η (µm)", ""),

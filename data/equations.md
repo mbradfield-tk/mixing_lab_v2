@@ -88,8 +88,11 @@ $$
 
 $Re < 10$ laminar, $10$–$10^4$ transitional, $Re > 10^4$ fully turbulent.
 
+These generic bounds are conservative for many impellers. An impeller-specific turbulent bound, used for blend time, is $Re_{turb} = 6370\,{N_p}^{-1/3}$ (about 3,700 for $N_p = 5$ and 5,900 for $N_p = 1.3$). Vessel Assessment shows the regime by both criteria.
+
 Sources:
 - Paul, E.L., Atiemo-Obeng, V.A. & Kresta, S.M. (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Wiley, Ch. 6
+- Grenville, R.K. & Nienow, A.W. (2004). Blending of miscible liquids. In Paul *et al.*, [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 9
 
 ## Power number and impeller power
 Used in: all hydrodynamic pages, Heat Transfer Tool (agitator heat input)
@@ -112,7 +115,7 @@ Sources:
 - Bates, R.L., Fondy, P.L. & Corpstein, R.R. (1963). *Ind. Eng. Chem. Process Des. Dev.* 2(4), 310–314
 - Paul *et al.* (2004). [*Handbook of Industrial Mixing*](https://doi.org/10.1002/0471451452), Ch. 6
 
-## Specific power input
+## Specific power input and energy dissipation rate (EDR)
 Used in: all hydrodynamic pages
 
 $$

@@ -125,7 +125,7 @@ class PointResult(Contract):
     torque_per_volume_N_m_m3: Num = _hydro("Torque/V (N·m/m³)")
     P_V_W_m3: Num = _hydro("P/V (W/m³)")
     P_V_W_L: Num = _hydro("P/V (W/L)")
-    P_V_W_kg: Num = _hydro("P/V (W/kg)")
+    P_V_W_kg: Num = _hydro("EDR ε̄ (W/kg)", "Energy dissipation rate ε̄ = P/(ρV) (W/kg)")
     tip_speed_m_s: Num = _hydro("Tip speed (m/s)")
     froude: Num = _hydro("Froude number", "Froude number (–)")
     pumping_rate_m3_s: Num = _hydro("Pumping rate (m³/s)")
@@ -904,9 +904,9 @@ class BournePlanResult(Contract):
     centre_pm_W_kg: float
     centre_info: str = Field(description="Markdown caption of the centre-point choice")
     centerpoint: Row
-    test1: list[Row] = Field(description="Low / centre / high P/m conditions after RPM clamping")
-    test1_pm_span: float = Field(description="Achieved high/low P/m ratio (100 intended)")
-    speed_plan: dict | None = Field(description="Iso-P/m speed lines over the fill range")
+    test1: list[Row] = Field(description="Low / centre / high EDR ε̄ conditions after RPM clamping")
+    test1_pm_span: float = Field(description="Achieved high/low EDR ε̄ ratio (100 intended)")
+    speed_plan: dict | None = Field(description="Iso-EDR speed lines over the fill range")
     setpoints: list[SpeedSetpoint]
     test2: list[Row]
     test3: list[Row]
@@ -949,7 +949,7 @@ class BourneAssessResult(Contract):
     summary: str = Field(description="Decision-tree conclusion (Markdown)")
     test_lines: list[str] = Field(description="Per-test findings of the summary (Markdown)")
     conclusion: str = Field(description="Conclusion paragraph(s) of the summary (Markdown)")
-    pm_span: float = Field(description="Achieved Test 1 high/low P/m ratio (100 intended)")
+    pm_span: float = Field(description="Achieved Test 1 high/low EDR ε̄ ratio (100 intended)")
 
 
 class BourneReportRequest(BourneAssessRequest):
@@ -966,7 +966,7 @@ class BournePlanTables(Contract):
     has_speed_plan: bool = Field(description="False for a vessel with a single working volume")
     reactor_limits: list[Row]
     test1: list[Row]
-    test1_summary: list[Row] = Field(description="Test 1 conditions: N, fill volume, P/V, P/m")
+    test1_summary: list[Row] = Field(description="Test 1 conditions: N, fill volume, P/V, EDR ε̄")
     test1_detail: list[Row] = Field(description="Test 1 conditions with the full hydrodynamics "
                                     "(dissipation, shear, mixing times, ...)")
     setpoints: list[Row]
@@ -1268,6 +1268,7 @@ class RecordedResult(Record):
     V_L: Num = _col("Volume (L)")
     Re: Num = None
     P_V_W_L: Num = _col("P/V (W/L)")
+    edr_W_kg: Num = _col("EDR ε̄ (W/kg)")
     tip_speed_m_s: Num = _col("Tip speed (m/s)")
     blend_time_s: Num = _col("Blend time (s)")
     circulation_time_s: Num = _col("Circulation time (s)")

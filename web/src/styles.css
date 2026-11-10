@@ -116,6 +116,7 @@ h3 {
 /* Content */
 .content {
   flex: 1;
+  min-width: 0; /* let wide tables scroll inside .table-scroll instead of widening the page */
   padding: 16px 32px 48px;
   max-width: 1400px;
 }
@@ -335,6 +336,28 @@ button.icon-btn {
 
 .table-scroll {
   overflow-x: auto;
+}
+
+/* Always-visible horizontal scrollbar (Safari/WebKit otherwise hides overlay bars until scrolled). */
+.table-scroll::-webkit-scrollbar,
+.vessel-row::-webkit-scrollbar,
+.tex-display::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-track,
+.vessel-row::-webkit-scrollbar-track,
+.tex-display::-webkit-scrollbar-track {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb,
+.vessel-row::-webkit-scrollbar-thumb,
+.tex-display::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 5px;
+  border: 2px solid var(--border);
 }
 
 .data-table td {

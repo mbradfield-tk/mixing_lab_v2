@@ -148,6 +148,16 @@ def normalize_reactions(df: pd.DataFrame) -> pd.DataFrame:
 class ReactorRepository(Repository):
     """Vessels keep generated ``reactor_id`` / ``search_name`` columns in step."""
 
+    def load(self) -> pd.DataFrame:
+        """Load, assigning IDs / search names to rows added by editing the CSV directly."""
+        df = super().load()
+        out, assigned = vimport.assign_missing_reactor_ids(df)
+        out = vimport.fill_missing_search_names(out)
+        if assigned or not out["search_name"].equals(df.get("search_name")):
+            out = tables.reset(out)
+            save_csv(out, self.path)
+        return out
+
     def create(self, df, data, principal):
         out, _ = vimport.assign_missing_reactor_ids(super().create(df, data, principal))
         return self.save(vimport.fill_missing_search_names(out), principal)

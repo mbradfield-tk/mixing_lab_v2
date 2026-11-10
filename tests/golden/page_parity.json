@@ -37,7 +37,8 @@
     "Da_meso": "0.000135 – 0.00269",
     "Da_micro": "6.27e-05 – 0.0177",
     "Da_GL": "0.0608 – 10.2",
-    "Re": "840 – 1.68e+04"
+    "Re": "840 – 1.68e+04",
+    "Mesomixing time t_meso (s)": "0.00928 – 0.186"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -50,7 +51,8 @@
     "Da_meso": "0.000143 – 0.000954",
     "Da_micro": "0.000252 – 0.0111",
     "Da_GL": "0.524 – 10.8",
-    "Re": "7.43e+03 – 4.96e+04"
+    "Re": "7.43e+03 – 4.96e+04",
+    "Mesomixing time t_meso (s)": "0.00987 – 0.0658"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -63,7 +65,8 @@
     "Da_meso": "0.000777 – 0.0108",
     "Da_micro": "0.00011 – 0.0192",
     "Da_GL": "0.27 – 16.8",
-    "Re": "3.08e+04 – 4.29e+05"
+    "Re": "3.08e+04 – 4.29e+05",
+    "Mesomixing time t_meso (s)": "0.0536 – 0.745"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -76,7 +79,8 @@
     "Da_meso": "9.16e-05 – 0.000954",
     "Da_micro": "7.57e-05 – 0.00913",
     "Da_GL": "0.2 – 9.24",
-    "Re": "1.22e+05 – 1.27e+06"
+    "Re": "1.22e+05 – 1.27e+06",
+    "Mesomixing time t_meso (s)": "0.00632 – 0.0658"
    }
   ],
   "vc_detail_df": [
@@ -95,7 +99,8 @@
     "Da_meso": "0.00269",
     "Da_micro": "0.0177",
     "Da_GL": "10.2",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.186"
    },
    {
     "Reactor": "TMA EasyMax-102",
@@ -112,7 +117,8 @@
     "Da_meso": "0.000135",
     "Da_micro": "0.000198",
     "Da_GL": "0.432",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00928"
    },
    {
     "Reactor": "TMA EasyMax-102",
@@ -129,7 +135,8 @@
     "Da_meso": "0.00269",
     "Da_micro": "0.00561",
     "Da_GL": "0.575",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.186"
    },
    {
     "Reactor": "TMA EasyMax-102",
@@ -146,7 +153,8 @@
     "Da_meso": "0.000135",
     "Da_micro": "6.27e-05",
     "Da_GL": "0.0608",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00928"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -163,7 +171,8 @@
     "Da_meso": "0.000954",
     "Da_micro": "0.0111",
     "Da_GL": "10.8",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0658"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -180,7 +189,8 @@
     "Da_meso": "0.000143",
     "Da_micro": "0.000644",
     "Da_GL": "1.11",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00987"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -197,7 +207,8 @@
     "Da_meso": "0.000954",
     "Da_micro": "0.00434",
     "Da_GL": "5.1",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0658"
    },
    {
     "Reactor": "TMA 15 L Buchi",
@@ -214,7 +225,8 @@
     "Da_meso": "0.000143",
     "Da_micro": "0.000252",
     "Da_GL": "0.524",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00987"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -231,7 +243,8 @@
     "Da_meso": "0.0108",
     "Da_micro": "0.0192",
     "Da_GL": "16.8",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.745"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -248,7 +261,8 @@
     "Da_meso": "0.000777",
     "Da_micro": "0.000371",
     "Da_GL": "0.713",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0536"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -265,7 +279,8 @@
     "Da_meso": "0.0108",
     "Da_micro": "0.00572",
     "Da_GL": "6.36",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.745"
    },
    {
     "Reactor": "Cambrex R-101",
@@ -282,7 +297,8 @@
     "Da_meso": "0.000777",
     "Da_micro": "0.00011",
     "Da_GL": "0.27",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0536"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -299,7 +315,8 @@
     "Da_meso": "0.000954",
     "Da_micro": "0.00913",
     "Da_GL": "9.24",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0658"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -316,7 +333,8 @@
     "Da_meso": "9.16e-05",
     "Da_micro": "0.000272",
     "Da_GL": "0.555",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00632"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -333,7 +351,8 @@
     "Da_meso": "0.000954",
     "Da_micro": "0.00254",
     "Da_GL": "3.33",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.0658"
    },
    {
     "Reactor": "Cambrex R-B01",
@@ -350,7 +369,8 @@
     "Da_meso": "9.16e-05",
     "Da_micro": "7.57e-05",
     "Da_GL": "0.2",
-    "Da_SL": "0.0872"
+    "Da_SL": "0.0872",
+    "Mesomixing time t_meso (s)": "0.00632"
    }
   ],
   "vc_rpm_ref_df": [
@@ -716,6 +736,7 @@
    "Blend time 95% (s)",
    "Circulation time (s)",
    "Micromix time t_E (s)",
+   "Mesomixing time t_meso (s)",
    "Kolmogorov η (µm)",
    "Re",
    "Avg shear rate (1/s)",

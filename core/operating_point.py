@@ -200,9 +200,11 @@ def evaluate_point(inp: PointInputs, N_rps: float, V_L: float) -> dict:
             kLa=h.get("kLa (1/s)", 0.0), kLa_surface=h.get("kLa_surface (1/s)", 0.0),
             kLa_SL=kla_sl))
 
-    if inp.feed is not None and inp.reaction.present:
+    if inp.feed is not None:
         t_meso = mesomixing_time(feed_dissipation(h, inp.feed.location), inp.feed.d_pipe_m)
-        out["Da_meso"] = t_meso / t_rxn if t_rxn > 0 and np.isfinite(t_meso) else 0.0
+        out["Mesomixing time t_meso (s)"] = t_meso
+        if inp.reaction.present:
+            out["Da_meso"] = t_meso / t_rxn if t_rxn > 0 and np.isfinite(t_meso) else 0.0
 
     q_feed = inp.feed.sensible_W if inp.feed is not None else 0.0
     if inp.heat is not None and (inp.reaction.dH != 0.0 or q_feed != 0.0):

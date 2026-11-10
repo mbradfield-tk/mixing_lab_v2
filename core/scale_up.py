@@ -98,6 +98,7 @@ def recorded_rows(env_df: pd.DataFrame, *, reaction: str, fluid: str, T_C: float
 def plot_params(fed: bool, incl_heat: bool, incl_particles: bool) -> list[str]:
     params = list(BASE_PLOT_PARAMS)
     if fed:
+        params.insert(params.index("Micromix time t_E (s)") + 1, "Mesomixing time t_meso (s)")
         params.insert(params.index("Da_micro") + 1, "Da_meso")
     if incl_heat:
         params += HEAT_PARAMS

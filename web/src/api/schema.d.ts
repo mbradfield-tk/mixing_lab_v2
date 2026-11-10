@@ -3401,6 +3401,11 @@ export interface components {
              */
             t_E_s: number | null;
             /**
+             * T Meso S
+             * @description Feed-plume mesomixing time 1.2·(d_feed²/ε_feed)^(1/3); None without a feed
+             */
+            t_meso_s?: number | null;
+            /**
              * Tip Speed M S
              * @description Tip speed (m/s)
              */

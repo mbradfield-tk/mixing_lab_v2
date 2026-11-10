@@ -19,8 +19,9 @@ def _fmt_range(lo, hi) -> str:
 
 def summary_tables(env_df: pd.DataFrame, agg_df: pd.DataFrame, present: list[str]) -> dict:
     """{summary (ranges per vessel), detail (4 corners), rpm_ref (stir-speed reference)}."""
-    key_cols = [p for p in ["P/V (W/L)", "Blend time 95% (s)", "Tip speed (m/s)",
-                            "Da_macro", "Da_meso", "Da_micro", "Da_GL", "Re"] if p in present]
+    key_cols = [p for p in ["P/V (W/L)", "Blend time 95% (s)", "Mesomixing time t_meso (s)",
+                            "Tip speed (m/s)", "Da_macro", "Da_meso", "Da_micro", "Da_GL", "Re"]
+                if p in present]
     rows = []
     for _, a in agg_df.iterrows():
         row = {"Reactor": a["Reactor"], "Scale": a.get("Scale_first", ""),
@@ -31,7 +32,8 @@ def summary_tables(env_df: pd.DataFrame, agg_df: pd.DataFrame, present: list[str
 
     detail_cols = [c for c in ["Reactor", "Corner", "RPM", "V_L", "Re", "P/V (W/L)",
                                "Tip speed (m/s)", "Blend time 95% (s)",
-                               "Micromix time t_E (s)", "Kolmogorov η (µm)",
+                               "Micromix time t_E (s)", "Mesomixing time t_meso (s)",
+                               "Kolmogorov η (µm)",
                                "Da_macro", "Da_meso", "Da_micro", "Da_GL", "Da_SL"]
                    if c in env_df.columns]
     det = env_df[detail_cols].copy()
@@ -80,6 +82,7 @@ def scaling_tables(match: dict | None, basis: str) -> dict:
     full_df = pd.DataFrame(full)
     show_cols = [c for c in ["Reactor", "Role", "RPM", "Volume (L)", "Re", "P/V (W/L)",
                              "EDR ε̄ (W/kg)", "Tip speed (m/s)", "Blend time 95% (s)", "Micromix time t_E (s)",
+                             "Mesomixing time t_meso (s)",
                              "Kolmogorov η (µm)", "kLa (1/s)", "Torque (N·m)",
                              "EDCF (W/kg/s)", "Froude number"] if c in full_df.columns]
     disp = full_df[show_cols].copy()

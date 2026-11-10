@@ -155,6 +155,8 @@ class PointResult(Contract):
     k_SL_m_s: Num = _hydro("k_SL (m/s)", "", None)
     kLa_SL_1_s: Num = _hydro("kLa_SL (1/s)", "", None)
     Da_meso: Num = _hydro("Da_meso", "Feed mesomixing time / t_rxn (–)", None)
+    t_meso_s: Num = _hydro("Mesomixing time t_meso (s)", "Feed-plume mesomixing time "
+                           "1.2·(d_feed²/ε_feed)^(1/3); None without a feed", None)
     Q_gen_W: Num = _hydro("Q_gen (W)", "", None)
     Q_cool_W: Num = _hydro("Q_cool (W)", "", None)
     U_W_m2K: Num = _hydro("U (W/m²·K)", "", None)

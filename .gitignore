@@ -1,0 +1,10 @@
+*.pyc
+.venv/
+web/node_modules/
+web/dist/
+
+# Local diagnostic: dish-height comparison script and its generated report
+scripts/dish_height_comparison.py
+scripts/dish_height_comparison_gui.py
+scripts/dish_height_comparison_out/
+scripts/freecad_build_100ml_vessel.py
